@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "id": "jflow",
+  "name": "jflow development workflow",
+  "actions": [
+    {
+      "name": "brainstorm",
+      "kind": "stage",
+      "summary": "Investigate an idea or existing problem and produce a specification for human acceptance.",
+      "requiredRoles": [
+        { "role": "investigator", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 3, "allowParallelWithinUnit": true },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": ["specification"],
+      "requiresHumanAcceptanceOf": "specification"
+    },
+    {
+      "name": "plan",
+      "kind": "stage",
+      "summary": "Turn an accepted specification into a proposed ticket breakdown of small, independently testable vertical slices.",
+      "requiredRoles": [
+        { "role": "planner", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 2, "allowParallelWithinUnit": true },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": ["specification.accepted"],
+      "produces": ["plan"],
+      "requiresHumanAcceptanceOf": "plan"
+    },
+    {
+      "name": "implement",
+      "kind": "stage",
+      "summary": "Carry out one assigned ticket at a time, with bounded parallel work inside that ticket.",
+      "requiredRoles": [
+        { "role": "implementer", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 3, "allowParallelWithinUnit": true },
+      "canEditCode": true,
+      "requiresGitRepository": true,
+      "prerequisites": [
+        "plan.accepted",
+        "execution.authorized",
+        "ticket.assigned",
+        "git.repository"
+      ],
+      "produces": ["commit"]
+    },
+    {
+      "name": "troubleshoot",
+      "kind": "stage",
+      "summary": "Diagnose a problem without editing code; remediation goes through an authorized implement action.",
+      "requiredRoles": [
+        { "role": "diagnostician", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 2, "allowParallelWithinUnit": true },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": ["diagnosis"]
+    },
+    {
+      "name": "review",
+      "kind": "stage",
+      "summary": "Independently assess a ticket's changes and, at plan end, the integrated result across tickets.",
+      "requiredRoles": [
+        { "role": "reviewer", "independentFromImplementer": true }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": true,
+      "prerequisites": ["ticket.changesPresent", "git.repository"],
+      "produces": ["review"]
+    },
+    {
+      "name": "wrap",
+      "kind": "stage",
+      "summary": "Reconcile outcomes, unresolved todos and lessons, and leave a resume record; never pushes, merges, publishes or destructively cleans up.",
+      "requiredRoles": [
+        { "role": "reconciler", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": ["resumeRecord"]
+    },
+    {
+      "name": "status",
+      "kind": "always-available",
+      "summary": "Report current workflow progress from the authoritative project records.",
+      "requiredRoles": [
+        { "role": "reporter", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": []
+    },
+    {
+      "name": "next",
+      "kind": "always-available",
+      "summary": "Recommend the next eligible action and relevant supporting skills; a recommendation is not authorization.",
+      "requiredRoles": [
+        { "role": "router", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": []
+    },
+    {
+      "name": "todo",
+      "kind": "always-available",
+      "summary": "Record future work outside the active plan; promotion into the plan requires an explicit human decision.",
+      "requiredRoles": [
+        { "role": "recorder", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": ["todoItem"]
+    },
+    {
+      "name": "learn",
+      "kind": "always-available",
+      "summary": "Assess and record a candidate project lesson; learning never changes workflow logic.",
+      "requiredRoles": [
+        { "role": "recorder", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": [],
+      "produces": ["lesson"]
+    }
+  ],
+  "configurationSurface": {
+    "configurableStageModels": [
+      "brainstorm",
+      "plan",
+      "implement",
+      "troubleshoot",
+      "review",
+      "wrap"
+    ],
+    "allowImplicitModelFallback": false,
+    "settings": [
+      {
+        "key": "commitOnSuccess",
+        "type": "boolean",
+        "summary": "Create a local commit after a ticket passes checks and independent review.",
+        "default": true
+      },
+      {
+        "key": "jev.retryCount",
+        "type": "integer",
+        "summary": "Retries after the initial attempt for a temporary Jev failure, before asking the human.",
+        "default": 2,
+        "minimum": 0,
+        "maximum": 5
+      },
+      {
+        "key": "jev.timeoutMs",
+        "type": "integer",
+        "summary": "Finite timeout for a single Jev request.",
+        "default": 30000,
+        "minimum": 1000,
+        "maximum": 300000
+      },
+      {
+        "key": "review.fixRetryLimit",
+        "type": "integer",
+        "summary": "Unsuccessful fix-and-re-review attempts on the same blocking finding before asking the human.",
+        "default": 2,
+        "minimum": 1,
+        "maximum": 5
+      },
+      {
+        "key": "review.requireIndependentReviewer",
+        "type": "boolean",
+        "summary": "Review always uses a reviewer agent distinct from the implementer; cannot be disabled.",
+        "default": true,
+        "locked": true
+      },
+      {
+        "key": "delegation.maxParallelWorkers",
+        "type": "integer",
+        "summary": "Global ceiling on concurrent stage workers, further bounded per action.",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 8
+      },
+      {
+        "key": "traces.retention",
+        "type": "enum",
+        "summary": "Raw Jev and evidence traces are kept until explicit local cleanup; never auto-deleted, exported or uploaded.",
+        "default": "manual-cleanup",
+        "values": ["manual-cleanup"],
+        "locked": true
+      },
+      {
+        "key": "evidenceSharing.excludeCredentials",
+        "type": "boolean",
+        "summary": "Credentials are never included in evidence sent to Jev.",
+        "default": true,
+        "locked": true
+      },
+      {
+        "key": "evidenceSharing.excludeFullConversation",
+        "type": "boolean",
+        "summary": "Full conversation content is excluded from evidence sent to Jev by default.",
+        "default": true
+      },
+      {
+        "key": "evidenceSharing.excludeFullRepository",
+        "type": "boolean",
+        "summary": "Full repository content is excluded from evidence sent to Jev by default.",
+        "default": true
+      }
+    ]
+  }
+}

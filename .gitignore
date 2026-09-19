@@ -1,2 +1,15 @@
 .DS_Store
 node_modules/
+
+# Secrets are never stored in project files or version control (SPEC.md,
+# confirmed default 8); supply them via the environment or host secret storage
+.env
+.env.*
+!.env.example
+
+# Local-only jflow traces and evidence; never version-controlled (SPEC.md D23)
+.jflow/
+traces/
+
+coverage/
+*.log

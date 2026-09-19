@@ -1,0 +1,35 @@
+{
+  "name": "jflow",
+  "version": "0.1.0",
+  "description": "A JSON-defined workflow package for running one custom development workflow end to end with an AI primary agent.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johnviklund/jflow.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/johnviklund/jflow/issues"
+  },
+  "homepage": "https://github.com/johnviklund/jflow#readme",
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "workflow"
+  ],
+  "private": true
+}
