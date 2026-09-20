@@ -75,7 +75,7 @@ describe("createProjectHarness", () => {
   it("refuses to run any action but status against an unreadable record", () => {
     const harness = createProjectHarness({ state: { specificationAccepted: true } });
     try {
-      harness.writeFile("jflow/state.json", "{ broken");
+      harness.writeFile("jflow/progress.json", "{ broken");
 
       const outcome = harness.runAction("plan");
 
@@ -91,7 +91,7 @@ describe("createProjectHarness", () => {
     const harness = createProjectHarness();
     try {
       expect(harness.readState().kind).toBe("uninitialized");
-      expect(existsSync(harness.path("jflow/state.json"))).toBe(false);
+      expect(existsSync(harness.path("jflow/progress.json"))).toBe(false);
     } finally {
       harness.cleanup();
     }

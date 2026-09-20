@@ -65,9 +65,39 @@ export {
 export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
 
 export {
+  AUTHORIZATION_SCOPES,
+  FALLBACK_SCOPES,
+  FALLBACK_STATUSES,
+  LESSON_STATUSES,
   PROJECT_RECORD_DIRECTORY,
-  PROJECT_STATE_FILE,
-  projectStatePath,
+  RECORD_KINDS,
+  RecordValidationError,
+  TICKET_STATUSES,
+  readRecord,
+  recordPath,
+  writeRecord,
+  type AuthorizationScope,
+  type FallbackScope,
+  type FallbackStatus,
+  type JevRecord,
+  type LessonEvidence,
+  type LessonRecord,
+  type LessonStatus,
+  type LessonsRecord,
+  type PlanRecord,
+  type ProgressRecord,
+  type ProjectRecords,
+  type ReconciliationDiscrepancy,
+  type RecordKind,
+  type RecordReadResult,
+  type ResumeRecord,
+  type TicketRecord,
+  type TicketStatus,
+  type TicketsRecord,
+} from "./project/records.js";
+
+export {
   readProjectState,
+  writeProjectState,
   type ProjectStateResult,
 } from "./project/state.js";

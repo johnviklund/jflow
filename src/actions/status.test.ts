@@ -66,7 +66,7 @@ describe("status", () => {
   it("reports a malformed record as a problem naming the file, with no state or eligibility", () => {
     const harness = createProjectHarness();
     try {
-      harness.writeFile("jflow/state.json", "not json at all");
+      harness.writeFile("jflow/progress.json", "not json at all");
 
       const outcome = harness.runAction("status");
 
@@ -74,7 +74,7 @@ describe("status", () => {
       if (outcome.kind !== "completed") return;
       expect(outcome.report.project).toBe("malformed");
       if (outcome.report.project !== "malformed") return;
-      expect(outcome.report.path).toContain("state.json");
+      expect(outcome.report.path).toContain("progress.json");
       expect(outcome.report).not.toHaveProperty("actions");
     } finally {
       harness.cleanup();

@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice only (issues #1 and #2; TICKETS.md T1–T5 decompose them):
+Foundation slice (issues #1–#3; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -27,15 +27,25 @@ Foundation slice only (issues #1 and #2; TICKETS.md T1–T5 decompose them):
 - `src/actions/` — workflow-action-contract resolution: workflow state in,
   eligible/blocked decision out. `status` is the first action that runs end
   to end, reading the state from project files.
-- `src/project/` — walking-skeleton persistence of the workflow state in
-  `jflow/state.json` (Git presence is observed from `.git`, never recorded).
-  The full record store (plans, tickets, progress, lessons) is issue #3.
+- `src/project/` — the authoritative record store (issue #3): one JSON file
+  per record kind under `jflow/` — `plan`, `tickets`, `progress`, `lessons`,
+  `jev` (fallback status: off, awaiting approval with the pending decision
+  kept, or approved for a recorded scope) and `resume` — read and written
+  through `readRecord`/`writeRecord`. Schemas are closed, so a raw Jev trace
+  has no field of its own; a credential-looking key or value is refused on
+  write; each write goes through a temporary file and rename; a malformed
+  record is reported with the offending paths and never read as empty. `state.ts` derives the resolver's `WorkflowState`
+  from the `progress` record (Git presence is observed from `.git`, never
+  recorded).
+- `src/validation.ts` and `src/secrets.ts` — the shared issue collector and
+  field validators, and the one definition of what counts as a credential,
+  used by the package loader, configuration and the record store.
 - `src/testing/` — the project-directory test harness: set up a directory in
   a known workflow state, run an action, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, the Jev client, the full project-record store,
-Git/commit behaviour, and compound learning are not implemented yet.
+The other workflow actions, the Jev client, Git/commit behaviour, and
+compound learning are not implemented yet.
 
 ## Invariants enforced in code
 
@@ -52,7 +62,10 @@ Git/commit behaviour, and compound learning are not implemented yet.
   is rejected if found in configuration. A missing key produces a question for
   the human, not a silent fallback.
 - Raw traces are kept until explicit local cleanup and stay out of version
-  control.
+  control; project records carry trace references only.
+- A superseded lesson must name its successor and the evidence; an approved
+  Jev fallback and an authorized execution must record their scope; a parked
+  ticket must record why.
 - Every declared decision carries an `authority` and a `basis`, and every
   policy entry a `basis`; a version-1 package carrying `decisions` or
   `policy` is rejected rather than widened. No test asserts a threshold's

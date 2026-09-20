@@ -3,6 +3,10 @@ import type {
   ValidationIssue,
   WorkflowPackage,
 } from "../workflow/types.js";
+import { JEV_API_KEY_ENV_VAR, SECRET_KEY_PATTERN, SECRET_MESSAGE } from "../secrets.js";
+import { isRecord, joinPath } from "../validation.js";
+
+export { JEV_API_KEY_ENV_VAR };
 
 export interface StageModelConfiguration {
   readonly model: string;
@@ -29,22 +33,6 @@ const STAGE_MODEL_KEYS = new Set(["model", "fallbackModel"]);
 
 /** Placeholders that would amount to an implicit, unapproved substitution. */
 const IMPLICIT_FALLBACK_PLACEHOLDERS = new Set(["auto", "any", "default", "*"]);
-
-const SECRET_KEY_PATTERN = /(api[-_]?key|apikey|api[-_]?token|token|secret|password|credential)/i;
-
-export const JEV_API_KEY_ENV_VAR = "JFLOW_JEV_API_KEY";
-
-const SECRET_MESSAGE =
-  `secrets must never be stored in jflow configuration or version control; ` +
-  `provide the Jev API key via the ${JEV_API_KEY_ENV_VAR} environment variable or host secret storage`;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function joinPath(prefix: string, key: string): string {
-  return prefix === "" ? key : `${prefix}.${key}`;
-}
 
 function validateSettingValue(
   definition: SettingDefinition,

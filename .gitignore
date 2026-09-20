@@ -13,3 +13,6 @@ traces/
 
 coverage/
 *.log
+
+# In-flight record writes; a crash may leave one behind
+jflow/*.tmp

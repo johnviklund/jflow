@@ -24,6 +24,14 @@ import {
   type WorkflowRole,
   type WorkflowSchemaVersion,
 } from "./types.js";
+import {
+  IssueCollector,
+  isRecord,
+  requireBoolean,
+  requireIntegerInRange,
+  requireNonEmptyString,
+  validateEnumValue,
+} from "../validation.js";
 
 export type ValidationResult =
   | { readonly ok: true; readonly package: WorkflowPackage }
@@ -59,63 +67,6 @@ const READ_ONLY_ARTEFACTS: readonly WorkflowArtefact[] = ["review", "diagnosis"]
 
 const ACTION_KINDS: readonly ActionKind[] = ["stage", "always-available"];
 const SETTING_TYPES: readonly SettingType[] = ["boolean", "integer", "enum"];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-class IssueCollector {
-  readonly issues: ValidationIssue[] = [];
-
-  add(path: string, message: string): void {
-    this.issues.push({ path, message });
-  }
-
-  get ok(): boolean {
-    return this.issues.length === 0;
-  }
-
-  get count(): number {
-    return this.issues.length;
-  }
-}
-
-function requireBoolean(
-  value: unknown,
-  path: string,
-  issues: IssueCollector,
-): boolean {
-  if (typeof value !== "boolean") {
-    issues.add(path, "must be a boolean");
-    return false;
-  }
-  return value;
-}
-
-function requireNonEmptyString(
-  value: unknown,
-  path: string,
-  issues: IssueCollector,
-): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    issues.add(path, "must be a non-empty string");
-    return "";
-  }
-  return value;
-}
-
-function requireIntegerInRange(
-  value: unknown,
-  path: string,
-  minimum: number,
-  issues: IssueCollector,
-): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum) {
-    issues.add(path, `must be an integer of at least ${minimum}`);
-    return minimum;
-  }
-  return value;
-}
 
 function validateRoles(
   value: unknown,
@@ -197,19 +148,6 @@ function validateEnumArray<T extends string>(
     result.push(entry as T);
   });
   return result;
-}
-
-function validateEnumValue<T extends string>(
-  value: unknown,
-  path: string,
-  allowed: readonly T[],
-  issues: IssueCollector,
-): T | undefined {
-  if (typeof value !== "string" || !allowed.includes(value as T)) {
-    issues.add(path, `must be one of ${allowed.join(", ")}`);
-    return undefined;
-  }
-  return value as T;
 }
 
 function validateAction(
