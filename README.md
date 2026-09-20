@@ -10,10 +10,18 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 Foundation slice only (issues #1 and #2; TICKETS.md T1–T5 decompose them):
 
-- `workflow/jflow.workflow.json` — the single shipped workflow package: the
-  action set, per-action roles, delegation limits, Git and code-edit rules,
-  prerequisites, and the supported configuration surface.
-- `src/workflow/` — workflow package types, loading, and validation.
+- `workflow/jflow.workflow.json` — the single shipped workflow package
+  (schema version 2): the action set, per-action roles, delegation limits,
+  Git and code-edit rules, prerequisites, the supported configuration
+  surface, and the seven declared Jev decisions with their `authority`,
+  `basis` and policy thresholds (D37, D43).
+- `workflow/questions/` — one question file per declared decision. These are
+  versioned skeletons: the package validates that they resolve and are
+  well-formed; the wording of each is proposed for acceptance by the issue
+  that owns the decision (#17, #25, #26, #28, #29).
+- `src/workflow/` — workflow package types, loading, and validation;
+  `policy.ts` routes an answer above or below a declared threshold without
+  any code or test treating the number itself as correct.
 - `src/config/` — configuration validation, defaults, and Jev API key
   resolution.
 - `src/actions/` — workflow-action-contract resolution: workflow state in,
@@ -45,6 +53,10 @@ Git/commit behaviour, and compound learning are not implemented yet.
   the human, not a silent fallback.
 - Raw traces are kept until explicit local cleanup and stay out of version
   control.
+- Every declared decision carries an `authority` and a `basis`, and every
+  policy entry a `basis`; a version-1 package carrying `decisions` or
+  `policy` is rejected rather than widened. No test asserts a threshold's
+  value.
 
 ## Development
 

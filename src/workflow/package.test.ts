@@ -1,15 +1,54 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { loadShippedWorkflowPackage, validateWorkflowPackage } from "./package.js";
 import { WorkflowPackageError } from "./types.js";
 
+/** In-memory question files for the fixture package, keyed by package-relative path. */
+function questionFiles(): Map<string, unknown> {
+  return new Map<string, unknown>([
+    [
+      "questions/escalate.json",
+      {
+        decision: "escalate",
+        version: 1,
+        status: "skeleton",
+        prompt: "Must the human be consulted before proceeding?",
+        answers: ["proceed", "escalate"],
+      },
+    ],
+  ]);
+}
+
+function readerFor(files: Map<string, unknown>) {
+  return (path: string): string | undefined => {
+    const file = files.get(path);
+    return file === undefined ? undefined : JSON.stringify(file);
+  };
+}
+
 /**
- * A structurally valid minimal package used as the base for negative cases, so
- * each test changes exactly the one thing under assessment.
+ * A structurally valid minimal version-2 package used as the base for negative
+ * cases, so each test changes exactly the one thing under assessment.
  */
 function validPackage(): Record<string, unknown> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    decisions: {
+      escalate: {
+        question: "questions/escalate.json",
+        version: 1,
+        authority: "binding",
+        basis: "Fixture.",
+      },
+    },
+    policy: {
+      escalate: {
+        thresholds: { confidence: 0.5 },
+        basis: "Fixture.",
+      },
+    },
     id: "test",
     name: "Test workflow",
     actions: [
@@ -51,9 +90,260 @@ function validPackage(): Record<string, unknown> {
   };
 }
 
+function validate(doc: unknown, files: Map<string, unknown> = questionFiles()) {
+  return validateWorkflowPackage(doc, { readQuestionFile: readerFor(files) });
+}
+
+/** Validates and returns the issues, failing the test if the document is accepted. */
+function issuesOf(doc: unknown, files?: Map<string, unknown>) {
+  const result = validate(doc, files);
+  expect(result.ok).toBe(false);
+  return result.ok ? [] : result.issues;
+}
+
+describe("validateWorkflowPackage schema versions", () => {
+  it("accepts a version-1 document without decisions or policy", () => {
+    const doc = validPackage();
+    doc["schemaVersion"] = 1;
+    delete doc["decisions"];
+    delete doc["policy"];
+
+    const result = validate(doc);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.package.schemaVersion).toBe(1);
+    expect(result.package.decisions).toEqual({});
+    expect(result.package.policy).toEqual({});
+  });
+
+  it("rejects a version-1 document carrying decisions or policy rather than widening it", () => {
+    const doc = validPackage();
+    doc["schemaVersion"] = 1;
+
+    const paths = issuesOf(doc).map((issue) => issue.path);
+
+    expect(paths).toContain("decisions");
+    expect(paths).toContain("policy");
+  });
+
+  it("requires decisions and policy in a version-2 document", () => {
+    const doc = validPackage();
+    delete doc["decisions"];
+    delete doc["policy"];
+
+    const paths = issuesOf(doc).map((issue) => issue.path);
+
+    expect(paths).toContain("decisions");
+    expect(paths).toContain("policy");
+  });
+
+  it("rejects an unknown schema version without validating either version's surface", () => {
+    const doc = validPackage();
+    doc["schemaVersion"] = 3;
+
+    expect(issuesOf(doc)).toEqual([{ path: "schemaVersion", message: "must be 1 or 2" }]);
+  });
+});
+
+describe("validateWorkflowPackage decisions", () => {
+  function decision(doc: Record<string, unknown>): Record<string, unknown> {
+    const decisions = doc["decisions"] as Record<string, Record<string, unknown>>;
+    return decisions["escalate"]!;
+  }
+
+  it("exposes a declared decision with its authority and basis", () => {
+    const result = validate(validPackage());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.package.decisions["escalate"]).toEqual({
+      question: "questions/escalate.json",
+      version: 1,
+      authority: "binding",
+      basis: "Fixture.",
+    });
+  });
+
+  it("rejects a missing authority naming the decision path", () => {
+    const doc = validPackage();
+    delete decision(doc)["authority"];
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "decisions.escalate.authority",
+      message: "must be one of binding, advisory",
+    });
+  });
+
+  it("rejects an invalid authority", () => {
+    const doc = validPackage();
+    decision(doc)["authority"] = "mandatory";
+
+    expect(issuesOf(doc).map((issue) => issue.path)).toContain(
+      "decisions.escalate.authority",
+    );
+  });
+
+  it("rejects a decision without a basis", () => {
+    const doc = validPackage();
+    delete decision(doc)["basis"];
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "decisions.escalate.basis",
+      message: "must be a non-empty string",
+    });
+  });
+
+  it("rejects a question file that cannot be resolved", () => {
+    const doc = validPackage();
+    decision(doc)["question"] = "questions/missing.json";
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "decisions.escalate.question",
+      message: 'question file "questions/missing.json" cannot be resolved',
+    });
+  });
+
+  it.each(["../secrets.json", "questions/../secrets.json"])(
+    "rejects the question path %s outside the questions directory",
+    (path) => {
+      const doc = validPackage();
+      decision(doc)["question"] = path;
+
+      expect(issuesOf(doc).map((issue) => issue.path)).toContain(
+        "decisions.escalate.question",
+      );
+    },
+  );
+
+  it("reports an invalid declared version once, without a misleading mismatch", () => {
+    const doc = validPackage();
+    decision(doc)["version"] = 0;
+
+    const issues = issuesOf(doc).filter((issue) => issue.path === "decisions.escalate.version");
+
+    expect(issues).toEqual([
+      { path: "decisions.escalate.version", message: "must be an integer of at least 1" },
+    ]);
+  });
+
+  it("rejects an unversioned question file", () => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    delete file["version"];
+
+    expect(issuesOf(validPackage(), files)).toContainEqual({
+      path: "questions/escalate.json#version",
+      message: "must be an integer of at least 1",
+    });
+  });
+
+  it("rejects a question file whose version differs from the declared version", () => {
+    const doc = validPackage();
+    decision(doc)["version"] = 2;
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "decisions.escalate.version",
+      message: 'declares version 2 but "questions/escalate.json" carries version 1',
+    });
+  });
+
+  it("rejects a question file naming a different decision", () => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    file["decision"] = "validate";
+
+    expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
+      "questions/escalate.json#decision",
+    );
+  });
+
+  it("rejects a malformed question file naming the file", () => {
+    const result = validateWorkflowPackage(validPackage(), {
+      readQuestionFile: () => "{not json",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const issue = result.issues.find((entry) => entry.path === "questions/escalate.json");
+    expect(issue?.message).toContain("not valid JSON");
+  });
+
+  it("rejects a question file with an empty answer set", () => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    file["answers"] = [];
+
+    expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
+      "questions/escalate.json#answers",
+    );
+  });
+
+  it("reports unresolvable question files when no reader is supplied", () => {
+    const result = validateWorkflowPackage(validPackage());
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toContain("decisions.escalate.question");
+  });
+});
+
+describe("validateWorkflowPackage policy", () => {
+  function policy(doc: Record<string, unknown>): Record<string, unknown> {
+    return doc["policy"] as Record<string, unknown>;
+  }
+
+  it("rejects a policy entry without a basis", () => {
+    const doc = validPackage();
+    delete (policy(doc)["escalate"] as Record<string, unknown>)["basis"];
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "policy.escalate.basis",
+      message: "must be a non-empty string",
+    });
+  });
+
+  it("rejects a non-numeric threshold", () => {
+    const doc = validPackage();
+    (policy(doc)["escalate"] as Record<string, unknown>)["thresholds"] = { confidence: "high" };
+
+    expect(issuesOf(doc).map((issue) => issue.path)).toContain(
+      "policy.escalate.thresholds.confidence",
+    );
+  });
+
+  it("rejects a policy entry for an undeclared decision", () => {
+    const doc = validPackage();
+    policy(doc)["validate"] = { thresholds: {}, basis: "Fixture." };
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "policy.validate",
+      message: 'no decision named "validate" is declared',
+    });
+  });
+
+  it("rejects a declared decision with no policy entry", () => {
+    const doc = validPackage();
+    delete policy(doc)["escalate"];
+
+    expect(issuesOf(doc)).toContainEqual({
+      path: "policy.escalate",
+      message: 'decision "escalate" has no policy entry',
+    });
+  });
+
+  it("defaults weights to an empty set", () => {
+    const result = validate(validPackage());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.package.policy["escalate"]?.weights).toEqual({});
+  });
+});
+
 describe("validateWorkflowPackage", () => {
   it("accepts a structurally valid package", () => {
-    const result = validateWorkflowPackage(validPackage());
+    const result = validate(validPackage());
 
     expect(result.ok).toBe(true);
   });
@@ -63,7 +353,7 @@ describe("validateWorkflowPackage", () => {
     const actions = doc["actions"] as unknown[];
     actions.push(structuredClone(actions[0]));
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -78,7 +368,7 @@ describe("validateWorkflowPackage", () => {
     const actions = doc["actions"] as Record<string, unknown>[];
     actions[0]!["prerequisites"] = ["plan.blessed"];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -91,7 +381,7 @@ describe("validateWorkflowPackage", () => {
     const actions = doc["actions"] as Record<string, unknown>[];
     actions[0]!["requiredRoles"] = [];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -108,7 +398,7 @@ describe("validateWorkflowPackage", () => {
       { role: "reviewer", independentFromImplementer: false },
     ];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -124,7 +414,7 @@ describe("validateWorkflowPackage", () => {
     const actions = doc["actions"] as Record<string, unknown>[];
     actions[1]!["canEditCode"] = true;
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -139,7 +429,7 @@ describe("validateWorkflowPackage", () => {
     const surface = doc["configurationSurface"] as Record<string, unknown>;
     surface["allowImplicitModelFallback"] = true;
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -154,7 +444,7 @@ describe("validateWorkflowPackage", () => {
     const surface = doc["configurationSurface"] as Record<string, unknown>;
     surface["configurableStageModels"] = ["implement", "deploy"];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -171,7 +461,7 @@ describe("validateWorkflowPackage", () => {
     const surface = doc["configurationSurface"] as Record<string, unknown>;
     surface["configurableStageModels"] = ["implement"];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -193,7 +483,7 @@ describe("validateWorkflowPackage", () => {
     const surface = doc["configurationSurface"] as Record<string, unknown>;
     surface["configurableStageModels"] = ["implement", "assess"];
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -219,7 +509,7 @@ describe("validateWorkflowPackage", () => {
       produces: [],
     });
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -229,7 +519,7 @@ describe("validateWorkflowPackage", () => {
   });
 
   it("rejects a non-object document", () => {
-    const result = validateWorkflowPackage("not a package");
+    const result = validate("not a package");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -245,7 +535,7 @@ describe("validateWorkflowPackage", () => {
     actions[0]!["requiredRoles"] = [];
     actions[1]!["canEditCode"] = true;
 
-    const result = validateWorkflowPackage(doc);
+    const result = validate(doc);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -256,8 +546,8 @@ describe("validateWorkflowPackage", () => {
 describe("loadShippedWorkflowPackage", () => {
   const pkg = loadShippedWorkflowPackage();
 
-  it("loads the single shipped workflow package", () => {
-    expect(pkg.schemaVersion).toBe(1);
+  it("loads the single shipped workflow package at schema version 2", () => {
+    expect(pkg.schemaVersion).toBe(2);
     expect(pkg.id).toBe("jflow");
   });
 
@@ -271,7 +561,51 @@ describe("loadShippedWorkflowPackage", () => {
       "troubleshoot",
       "review",
       "wrap",
+      "realign",
     ]);
+  });
+
+  it("declares realign as a stage action that implements nothing and needs an accepted plan", () => {
+    const realign = pkg.actions.find((a) => a.name === "realign");
+
+    expect(realign?.canEditCode).toBe(false);
+    expect(realign?.prerequisites).toContain("plan.accepted");
+    expect(realign?.requiresHumanAcceptanceOf).toBe("plan");
+  });
+
+  it("declares the seven first-release decisions with their authority", () => {
+    const authorities = Object.fromEntries(
+      Object.entries(pkg.decisions).map(([name, decision]) => [name, decision.authority]),
+    );
+
+    expect(authorities).toEqual({
+      "next-action": "advisory",
+      assignment: "advisory",
+      "lesson-retention": "advisory",
+      "model-selection": "advisory",
+      classify: "advisory",
+      escalate: "binding",
+      validate: "binding",
+    });
+  });
+
+  it("gives every decision a basis, a question skeleton and a policy entry with a basis", () => {
+    for (const [name, decision] of Object.entries(pkg.decisions)) {
+      expect(decision.basis, name).not.toBe("");
+      expect(decision.question, name).toMatch(/^questions\/[a-z-]+\.json$/);
+      expect(pkg.policy[name]?.basis, name).not.toBe("");
+    }
+  });
+
+  it("keeps policy thresholds out of the question files", () => {
+    for (const decision of Object.values(pkg.decisions)) {
+      const file = JSON.parse(
+        readFileSync(new URL(`../../workflow/${decision.question}`, import.meta.url), "utf8"),
+      ) as Record<string, unknown>;
+
+      expect(file).not.toHaveProperty("thresholds");
+      expect(file).not.toHaveProperty("policy");
+    }
   });
 
   it("declares status, next, todo and learn as always available", () => {
@@ -328,7 +662,7 @@ describe("loadShippedWorkflowPackage", () => {
     expect(() => {
       const doc = validPackage();
       delete doc["actions"];
-      const result = validateWorkflowPackage(doc);
+      const result = validate(doc);
       if (!result.ok) throw new WorkflowPackageError(result.issues);
     }).toThrow(WorkflowPackageError);
   });

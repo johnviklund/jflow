@@ -1,0 +1,12 @@
+{
+  "decision": "lesson-retention",
+  "version": 1,
+  "status": "skeleton",
+  "ownedBy": "#17",
+  "prompt": "Skeleton (D37): given a candidate project lesson and its evidence, should it be retained, and when is it likely to apply again? Wording proposed in #17 for explicit acceptance.",
+  "answers": [
+    "retain",
+    "discard",
+    "escalate"
+  ]
+}

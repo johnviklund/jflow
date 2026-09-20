@@ -1,0 +1,11 @@
+{
+  "decision": "next-action",
+  "version": 1,
+  "status": "skeleton",
+  "ownedBy": "#17",
+  "prompt": "Skeleton (D37): given the workflow state and eligible actions, which action should run next, and which supporting skills apply? Wording proposed in #17 for explicit acceptance.",
+  "answers": [
+    "recommend",
+    "no-recommendation"
+  ]
+}

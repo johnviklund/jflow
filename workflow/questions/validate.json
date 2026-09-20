@@ -1,0 +1,12 @@
+{
+  "decision": "validate",
+  "version": 1,
+  "status": "skeleton",
+  "ownedBy": "#26",
+  "prompt": "Skeleton (D37, D47): given a ticket's accepted acceptance criteria and the recorded verification evidence, is each criterion met? Wording proposed in #26 for explicit acceptance.",
+  "answers": [
+    "met",
+    "not-met",
+    "insufficient-evidence"
+  ]
+}

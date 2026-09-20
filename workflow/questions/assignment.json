@@ -1,0 +1,11 @@
+{
+  "decision": "assignment",
+  "version": 1,
+  "status": "skeleton",
+  "ownedBy": "#17",
+  "prompt": "Skeleton (D37): given the proposed stage-worker assignments and the unit of work, are they relevant and free of overlap? Wording proposed in #17 for explicit acceptance.",
+  "answers": [
+    "accept",
+    "revise"
+  ]
+}

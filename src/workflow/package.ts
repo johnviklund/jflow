@@ -1,12 +1,19 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DECISION_AUTHORITIES,
+  QUESTION_STATUSES,
   WORKFLOW_ARTEFACTS,
   WORKFLOW_CONDITIONS,
   WorkflowPackageError,
   type ActionKind,
   type ConfigurationSurface,
+  type DecisionAuthority,
+  type DecisionDeclaration,
+  type PolicyEntry,
+  type QuestionStatus,
   type SettingDefinition,
   type SettingType,
   type ValidationIssue,
@@ -15,11 +22,32 @@ import {
   type WorkflowCondition,
   type WorkflowPackage,
   type WorkflowRole,
+  type WorkflowSchemaVersion,
 } from "./types.js";
 
 export type ValidationResult =
   | { readonly ok: true; readonly package: WorkflowPackage }
   | { readonly ok: false; readonly issues: readonly ValidationIssue[] };
+
+/**
+ * Reads a question file by its package-relative path (e.g.
+ * `questions/escalate.json`), returning its raw text or `undefined` when no
+ * such file exists.
+ */
+export type QuestionFileReader = (relativePath: string) => string | undefined;
+
+export interface ValidationOptions {
+  /**
+   * Without a reader no question file can resolve, so a version-2 document
+   * that declares decisions fails validation.
+   */
+  readonly readQuestionFile?: QuestionFileReader;
+}
+
+const SCHEMA_VERSIONS: readonly WorkflowSchemaVersion[] = [1, 2];
+
+/** Question files must live here so a decision cannot point outside the package (D37). */
+const QUESTION_DIRECTORY = "questions/";
 
 /**
  * Artefacts whose producing action is an assessment: it must be performed by an
@@ -45,6 +73,10 @@ class IssueCollector {
 
   get ok(): boolean {
     return this.issues.length === 0;
+  }
+
+  get count(): number {
+    return this.issues.length;
   }
 }
 
@@ -167,6 +199,19 @@ function validateEnumArray<T extends string>(
   return result;
 }
 
+function validateEnumValue<T extends string>(
+  value: unknown,
+  path: string,
+  allowed: readonly T[],
+  issues: IssueCollector,
+): T | undefined {
+  if (typeof value !== "string" || !allowed.includes(value as T)) {
+    issues.add(path, `must be one of ${allowed.join(", ")}`);
+    return undefined;
+  }
+  return value as T;
+}
+
 function validateAction(
   value: unknown,
   path: string,
@@ -179,13 +224,8 @@ function validateAction(
 
   const name = requireNonEmptyString(value["name"], `${path}.name`, issues);
 
-  const kindValue = value["kind"];
-  let kind: ActionKind = "stage";
-  if (typeof kindValue !== "string" || !ACTION_KINDS.includes(kindValue as ActionKind)) {
-    issues.add(`${path}.kind`, `must be one of ${ACTION_KINDS.join(", ")}`);
-  } else {
-    kind = kindValue as ActionKind;
-  }
+  const kind =
+    validateEnumValue<ActionKind>(value["kind"], `${path}.kind`, ACTION_KINDS, issues) ?? "stage";
 
   const summary = requireNonEmptyString(value["summary"], `${path}.summary`, issues);
   const requiredRoles = validateRoles(
@@ -308,12 +348,8 @@ function validateSetting(
   const key = requireNonEmptyString(value["key"], `${path}.key`, issues);
   const summary = requireNonEmptyString(value["summary"], `${path}.summary`, issues);
 
-  const typeValue = value["type"];
-  if (typeof typeValue !== "string" || !SETTING_TYPES.includes(typeValue as SettingType)) {
-    issues.add(`${path}.type`, `must be one of ${SETTING_TYPES.join(", ")}`);
-    return undefined;
-  }
-  const type = typeValue as SettingType;
+  const type = validateEnumValue<SettingType>(value["type"], `${path}.type`, SETTING_TYPES, issues);
+  if (type === undefined) return undefined;
 
   const defaultValue = value["default"];
   const minimum = value["minimum"];
@@ -464,11 +500,206 @@ function validateIndependentReviewGate(
 }
 
 /**
+ * Parses and checks a question file for well-formedness: it names its decision,
+ * carries a version, and closes its answer set. Wording is not judged here; it
+ * is proposed to the human by the decision that owns it (SPEC.md D37).
+ * Returns the file's version when it is well-formed.
+ */
+function validateQuestionFile(
+  raw: string,
+  relativePath: string,
+  decisionName: string,
+  issues: IssueCollector,
+): number | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    issues.add(relativePath, `is not valid JSON: ${(error as Error).message}`);
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    issues.add(relativePath, "question file must be an object");
+    return undefined;
+  }
+
+  // Issue paths inside a question file are `<file>#<field>`, so they read as
+  // a location in that file rather than a key of the package document.
+  const field = (name: string) => `${relativePath}#${name}`;
+  const before = issues.count;
+  const decision = requireNonEmptyString(parsed["decision"], field("decision"), issues);
+  if (decision !== "" && decision !== decisionName) {
+    issues.add(
+      field("decision"),
+      `names decision "${decision}" but is declared by decision "${decisionName}"`,
+    );
+  }
+  const version = requireIntegerInRange(parsed["version"], field("version"), 1, issues);
+  validateEnumValue<QuestionStatus>(parsed["status"], field("status"), QUESTION_STATUSES, issues);
+  requireNonEmptyString(parsed["prompt"], field("prompt"), issues);
+
+  const answers = parsed["answers"];
+  if (
+    !Array.isArray(answers) ||
+    answers.length === 0 ||
+    answers.some((answer) => typeof answer !== "string" || answer.trim() === "")
+  ) {
+    issues.add(field("answers"), "must be a non-empty array of answer names");
+  }
+
+  return issues.count === before ? version : undefined;
+}
+
+function validateDecision(
+  value: unknown,
+  name: string,
+  path: string,
+  readQuestionFile: QuestionFileReader | undefined,
+  issues: IssueCollector,
+): DecisionDeclaration | undefined {
+  if (!isRecord(value)) {
+    issues.add(path, "must be an object");
+    return undefined;
+  }
+
+  const question = requireNonEmptyString(value["question"], `${path}.question`, issues);
+  const versionValue = value["version"];
+  const version = requireIntegerInRange(versionValue, `${path}.version`, 1, issues);
+  const versionIsValid = versionValue === version;
+  const authority = validateEnumValue<DecisionAuthority>(
+    value["authority"],
+    `${path}.authority`,
+    DECISION_AUTHORITIES,
+    issues,
+  );
+  const basis = requireNonEmptyString(value["basis"], `${path}.basis`, issues);
+
+  if (question !== "") {
+    if (!question.startsWith(QUESTION_DIRECTORY) || question.split("/").includes("..")) {
+      issues.add(
+        `${path}.question`,
+        `must be a path under "${QUESTION_DIRECTORY}" inside the package`,
+      );
+    } else {
+      const raw = readQuestionFile?.(question);
+      if (raw === undefined) {
+        issues.add(`${path}.question`, `question file "${question}" cannot be resolved`);
+      } else {
+        const fileVersion = validateQuestionFile(raw, question, name, issues);
+        if (versionIsValid && fileVersion !== undefined && fileVersion !== version) {
+          issues.add(
+            `${path}.version`,
+            `declares version ${version} but "${question}" carries version ${fileVersion}`,
+          );
+        }
+      }
+    }
+  }
+
+  if (authority === undefined) return undefined;
+  return { question, version, authority, basis };
+}
+
+function validateNumberMap(
+  value: unknown,
+  path: string,
+  issues: IssueCollector,
+): Record<string, number> {
+  if (!isRecord(value)) {
+    issues.add(path, "must be an object of named numbers");
+    return {};
+  }
+  const result: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "number" || !Number.isFinite(entry)) {
+      issues.add(`${path}.${key}`, "must be a finite number");
+      continue;
+    }
+    result[key] = entry;
+  }
+  return result;
+}
+
+function validatePolicyEntry(
+  value: unknown,
+  path: string,
+  issues: IssueCollector,
+): PolicyEntry | undefined {
+  if (!isRecord(value)) {
+    issues.add(path, "must be an object");
+    return undefined;
+  }
+  const thresholds = validateNumberMap(value["thresholds"], `${path}.thresholds`, issues);
+  const weights =
+    value["weights"] === undefined
+      ? {}
+      : validateNumberMap(value["weights"], `${path}.weights`, issues);
+  const basis = requireNonEmptyString(value["basis"], `${path}.basis`, issues);
+  return { thresholds, weights, basis };
+}
+
+/**
+ * Validates the version-2 declaration surface: decisions and their policy are
+ * a bijection, so no decision runs without declared thresholds and no
+ * threshold exists for a decision nobody declared (SPEC.md D37, D49).
+ */
+function validateDecisionsAndPolicy(
+  document: Record<string, unknown>,
+  readQuestionFile: QuestionFileReader | undefined,
+  issues: IssueCollector,
+): Pick<WorkflowPackage, "decisions" | "policy"> {
+  const decisions: Record<string, DecisionDeclaration> = {};
+  const policy: Record<string, PolicyEntry> = {};
+
+  const decisionsValue = document["decisions"];
+  if (!isRecord(decisionsValue)) {
+    issues.add("decisions", "must be an object keyed by decision name");
+  } else {
+    for (const [name, entry] of Object.entries(decisionsValue)) {
+      const decision = validateDecision(
+        entry,
+        name,
+        `decisions.${name}`,
+        readQuestionFile,
+        issues,
+      );
+      if (decision) decisions[name] = decision;
+    }
+  }
+
+  const policyValue = document["policy"];
+  if (!isRecord(policyValue)) {
+    issues.add("policy", "must be an object keyed by decision name");
+  } else {
+    for (const [name, entry] of Object.entries(policyValue)) {
+      if (isRecord(decisionsValue) && !(name in decisionsValue)) {
+        issues.add(`policy.${name}`, `no decision named "${name}" is declared`);
+        continue;
+      }
+      const policyEntry = validatePolicyEntry(entry, `policy.${name}`, issues);
+      if (policyEntry) policy[name] = policyEntry;
+    }
+    if (isRecord(decisionsValue)) {
+      for (const name of Object.keys(decisionsValue)) {
+        if (!(name in policyValue)) {
+          issues.add(`policy.${name}`, `decision "${name}" has no policy entry`);
+        }
+      }
+    }
+  }
+
+  return { decisions, policy };
+}
+
+/**
  * Validates a parsed workflow package document, collecting every issue rather
  * than failing at the first, so misconfiguration surfaces as one actionable
  * report (SPEC.md user story 50).
  */
-export function validateWorkflowPackage(document: unknown): ValidationResult {
+export function validateWorkflowPackage(
+  document: unknown,
+  options: ValidationOptions = {},
+): ValidationResult {
   const issues = new IssueCollector();
 
   if (!isRecord(document)) {
@@ -476,8 +707,12 @@ export function validateWorkflowPackage(document: unknown): ValidationResult {
     return { ok: false, issues: issues.issues };
   }
 
-  if (document["schemaVersion"] !== 1) {
-    issues.add("schemaVersion", "must be 1");
+  const schemaVersionValue = document["schemaVersion"];
+  const schemaVersion = SCHEMA_VERSIONS.includes(schemaVersionValue as WorkflowSchemaVersion)
+    ? (schemaVersionValue as WorkflowSchemaVersion)
+    : undefined;
+  if (schemaVersion === undefined) {
+    issues.add("schemaVersion", `must be ${SCHEMA_VERSIONS.join(" or ")}`);
   }
   const id = requireNonEmptyString(document["id"], "id", issues);
   const name = requireNonEmptyString(document["name"], "name", issues);
@@ -510,17 +745,46 @@ export function validateWorkflowPackage(document: unknown): ValidationResult {
     issues,
   );
 
-  if (!issues.ok) {
+  // A released schema is not widened in place (SPEC.md D37): version 1 has no
+  // declaration surface, and a version-1 document carrying one is rejected
+  // rather than read as version 2.
+  let declarations: Pick<WorkflowPackage, "decisions" | "policy"> = {
+    decisions: {},
+    policy: {},
+  };
+  if (schemaVersion === 1) {
+    for (const key of ["decisions", "policy"] as const) {
+      if (document[key] !== undefined) {
+        issues.add(key, `is not part of schema version 1; declare schemaVersion: 2 to use it`);
+      }
+    }
+  } else if (schemaVersion === 2) {
+    declarations = validateDecisionsAndPolicy(document, options.readQuestionFile, issues);
+  }
+
+  if (!issues.ok || schemaVersion === undefined) {
     return { ok: false, issues: issues.issues };
   }
 
   return {
     ok: true,
-    package: { schemaVersion: 1, id, name, actions, configurationSurface },
+    package: { schemaVersion, id, name, actions, configurationSurface, ...declarations },
   };
 }
 
-const SHIPPED_PACKAGE_URL = new URL("../../workflow/jflow.workflow.json", import.meta.url);
+const SHIPPED_PACKAGE_DIRECTORY = fileURLToPath(new URL("../../workflow/", import.meta.url));
+const SHIPPED_PACKAGE_PATH = join(SHIPPED_PACKAGE_DIRECTORY, "jflow.workflow.json");
+
+/** Reads a question file relative to the shipped package; absent files resolve to undefined. */
+function readShippedQuestionFile(relativePath: string): string | undefined {
+  try {
+    return readFileSync(join(SHIPPED_PACKAGE_DIRECTORY, relativePath), "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
+    throw error;
+  }
+}
 
 let cached: WorkflowPackage | undefined;
 
@@ -532,8 +796,10 @@ let cached: WorkflowPackage | undefined;
 export function loadShippedWorkflowPackage(): WorkflowPackage {
   if (cached) return cached;
 
-  const raw = readFileSync(fileURLToPath(SHIPPED_PACKAGE_URL), "utf8");
-  const result = validateWorkflowPackage(JSON.parse(raw));
+  const raw = readFileSync(SHIPPED_PACKAGE_PATH, "utf8");
+  const result = validateWorkflowPackage(JSON.parse(raw), {
+    readQuestionFile: readShippedQuestionFile,
+  });
   if (!result.ok) {
     throw new WorkflowPackageError(result.issues);
   }

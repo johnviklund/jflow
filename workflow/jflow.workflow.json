@@ -1,7 +1,81 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "jflow",
   "name": "jflow development workflow",
+  "decisions": {
+    "next-action": {
+      "question": "questions/next-action.json",
+      "version": 1,
+      "authority": "advisory",
+      "basis": "DISCOVERY.md D18, D43: next eligible action and supporting skills; weighed by the primary agent, never authorization (D6)."
+    },
+    "assignment": {
+      "question": "questions/assignment.json",
+      "version": 1,
+      "authority": "advisory",
+      "basis": "DISCOVERY.md D18, D43, D49: relevance and overlap of proposed agent assignments; advisory as D18 accepted it."
+    },
+    "lesson-retention": {
+      "question": "questions/lesson-retention.json",
+      "version": 1,
+      "authority": "advisory",
+      "basis": "DISCOVERY.md D18, D43: retention and later relevance of a candidate project lesson; the D21 criteria decide, Jev advises."
+    },
+    "model-selection": {
+      "question": "questions/model-selection.json",
+      "version": 1,
+      "authority": "advisory",
+      "basis": "DISCOVERY.md D49: recommends a model and effort from the configured set for the stage; the primary agent may override with a recorded reason (D6)."
+    },
+    "classify": {
+      "question": "questions/classify.json",
+      "version": 1,
+      "authority": "advisory",
+      "basis": "DISCOVERY.md D49, D50: one advisory classification over item routing, lesson scope and ticket testability; review-finding disposition excluded (D33)."
+    },
+    "escalate": {
+      "question": "questions/escalate.json",
+      "version": 1,
+      "authority": "binding",
+      "basis": "DISCOVERY.md D40, D43, D44: Jev's proceed/escalate signal decides whether the human is asked at every human-facing boundary; hard rules (D7, D16/D17, D27/D28) never reach it."
+    },
+    "validate": {
+      "question": "questions/validate.json",
+      "version": 1,
+      "authority": "binding",
+      "basis": "DISCOVERY.md D41, D47: per-criterion judgment over accepted acceptance criteria and recorded evidence; the gate into review, where an LLM grading its own work is least trustworthy (D38)."
+    }
+  },
+  "policy": {
+    "next-action": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D36, D37): no useful confidence threshold has been established; set conservatively so low-confidence recommendations route to the human. Lowered only by an accepted proposal after replay (D39, D46)."
+    },
+    "assignment": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D36, D37); conservative; lowered only by an accepted proposal after replay (D39, D46)."
+    },
+    "lesson-retention": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D36, D37); conservative; lowered only by an accepted proposal after replay (D39, D46)."
+    },
+    "model-selection": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D37, D49); conservative; lowered only by an accepted proposal after replay (D39, D46)."
+    },
+    "classify": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D37, D50); conservative; lowered only by an accepted proposal after replay (D39, D46)."
+    },
+    "escalate": {
+      "thresholds": { "confidence": 0.95 },
+      "basis": "Uncalibrated placeholder, conservative per D37 and D45: below-threshold confidence routes to the human, and Jev must be clearly sure before proceed is honoured. Every over-ask is a harness observation (D35); to be lowered by proposal once a recorded corpus supports it (D39, D46). No test asserts this value."
+    },
+    "validate": {
+      "thresholds": { "confidence": 0.9 },
+      "basis": "Uncalibrated placeholder (D37, D47): a per-criterion answer below this confidence is treated as insufficient-evidence rather than met; lowered only by an accepted proposal after replay (D39, D46)."
+    }
+  },
   "actions": [
     {
       "name": "brainstorm",
@@ -89,6 +163,20 @@
       "produces": ["resumeRecord"]
     },
     {
+      "name": "realign",
+      "kind": "stage",
+      "summary": "Human-invoked: reconcile the accepted specification, ticket breakdown and progress with a changed direction and present the result for acceptance; implements nothing.",
+      "requiredRoles": [
+        { "role": "planner", "independentFromImplementer": false }
+      ],
+      "delegationLimits": { "maxParallelWorkers": 2, "allowParallelWithinUnit": true },
+      "canEditCode": false,
+      "requiresGitRepository": false,
+      "prerequisites": ["plan.accepted"],
+      "produces": ["plan"],
+      "requiresHumanAcceptanceOf": "plan"
+    },
+    {
       "name": "status",
       "kind": "always-available",
       "summary": "Report current workflow progress from the authoritative project records.",
@@ -148,7 +236,8 @@
       "implement",
       "troubleshoot",
       "review",
-      "wrap"
+      "wrap",
+      "realign"
     ],
     "allowImplicitModelFallback": false,
     "settings": [

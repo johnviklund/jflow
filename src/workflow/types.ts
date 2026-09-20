@@ -94,12 +94,59 @@ export interface ConfigurationSurface {
   readonly settings: readonly SettingDefinition[];
 }
 
+/**
+ * How the workflow treats a Jev answer (SPEC.md D43): `binding` acts on it
+ * directly (subject only to D6's recorded override and the hard rules);
+ * `advisory` is weighed by the primary agent alongside its own evidence.
+ */
+export const DECISION_AUTHORITIES = ["binding", "advisory"] as const;
+
+export type DecisionAuthority = (typeof DECISION_AUTHORITIES)[number];
+
+/** A judgment Jev makes within the process (SPEC.md D37, D43). */
+export interface DecisionDeclaration {
+  /** Package-relative path of the question file, under `questions/`. */
+  readonly question: string;
+  /** Version the question file must carry; a change is a new version. */
+  readonly version: number;
+  readonly authority: DecisionAuthority;
+  /** Where the authority came from; changes only through a proposal (D39/D46). */
+  readonly basis: string;
+}
+
+/**
+ * Thresholds and weights for one declared decision (SPEC.md D37). Values are
+ * deliberately opaque here: no code path and no test may treat a number as
+ * correct, only route above and below it.
+ */
+export interface PolicyEntry {
+  readonly thresholds: Readonly<Record<string, number>>;
+  readonly weights: Readonly<Record<string, number>>;
+  /** Where the numbers came from (SPEC.md D37, D45). */
+  readonly basis: string;
+}
+
+/**
+ * Lifecycle of a question file's wording under `workflow/questions/`: a
+ * `skeleton` is well-formed and resolvable but its prompt is a placeholder
+ * until the owning decision's wording is accepted by the human (SPEC.md D37).
+ */
+export const QUESTION_STATUSES = ["skeleton", "accepted"] as const;
+
+export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
+
+export type WorkflowSchemaVersion = 1 | 2;
+
 export interface WorkflowPackage {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: WorkflowSchemaVersion;
   readonly id: string;
   readonly name: string;
   readonly actions: readonly WorkflowAction[];
   readonly configurationSurface: ConfigurationSurface;
+  /** Declared Jev decisions by name; empty for a version-1 package. */
+  readonly decisions: Readonly<Record<string, DecisionDeclaration>>;
+  /** One policy entry per declared decision; empty for a version-1 package. */
+  readonly policy: Readonly<Record<string, PolicyEntry>>;
 }
 
 export interface ValidationIssue {

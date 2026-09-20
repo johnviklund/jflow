@@ -101,6 +101,25 @@ describe("resolveAction acceptance and authorization gates", () => {
     expect(result.requiresHumanAsk).toBe(true);
   });
 
+  it("blocks realign until there is an accepted plan to change", () => {
+    const result = resolve("realign", createWorkflowState({ specificationAccepted: true }));
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") return;
+    expect(result.unmet.map((entry) => entry.condition)).toEqual(["plan.accepted"]);
+  });
+
+  it("allows realign on an accepted plan without a Git repository or execution authorization", () => {
+    const state = createWorkflowState({ specificationAccepted: true, planAccepted: true });
+
+    const result = resolve("realign", state);
+
+    expect(result.status).toBe("eligible");
+    if (result.status !== "eligible") return;
+    expect(result.action.canEditCode).toBe(false);
+    expect(result.action.requiresHumanAcceptanceOf).toBe("plan");
+  });
+
   it("allows implement once the plan is accepted and execution is authorized", () => {
     const state = createWorkflowState({
       specificationAccepted: true,

@@ -8,16 +8,28 @@
 export {
   loadShippedWorkflowPackage,
   validateWorkflowPackage,
+  type QuestionFileReader,
+  type ValidationOptions,
   type ValidationResult,
 } from "./workflow/package.js";
 
 export {
+  confidenceThreshold,
+  routeByConfidence,
+  type ConfidenceRoute,
+} from "./workflow/policy.js";
+
+export {
+  DECISION_AUTHORITIES,
   WORKFLOW_ARTEFACTS,
   WORKFLOW_CONDITIONS,
   WorkflowPackageError,
   type ActionKind,
   type ConfigurationSurface,
+  type DecisionAuthority,
+  type DecisionDeclaration,
   type DelegationLimits,
+  type PolicyEntry,
   type SettingDefinition,
   type ValidationIssue,
   type WorkflowAction,
@@ -25,6 +37,7 @@ export {
   type WorkflowCondition,
   type WorkflowPackage,
   type WorkflowRole,
+  type WorkflowSchemaVersion,
 } from "./workflow/types.js";
 
 export {
