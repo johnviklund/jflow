@@ -1,7 +1,7 @@
 # jflow release discovery
 
 Updated: 2026-09-20
-Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending. D35-D37 were added on 2026-09-19 during a review of proposals from a second assistant; they change D3, D21 and the Jev scope recorded in D18 rather than editing those entries. D38-D42 were added on 2026-09-20 from the user's review of SPEC.md and RELEASE-SCOPE.md; they reframe the product around the LLM+Jev harness and widen Jev's role. D43-D50, from a grill the same day, resolve their collisions with D7, D10, D16, D18, D35 and D36. Nothing is open.
+Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending. D35-D37 were added on 2026-09-19 during a review of proposals from a second assistant; they change D3, D21 and the Jev scope recorded in D18 rather than editing those entries. D38-D42 were added on 2026-09-20 from the user's review of SPEC.md and RELEASE-SCOPE.md; they reframe the product around the LLM+Jev harness and widen Jev's role. D43-D50, from a grill the same day, resolve their collisions with D7, D10, D16, D18, D35 and D36. D51, also 2026-09-20, settles the skill/helper boundary. Nothing is open.
 
 ## Resume here
 
@@ -1001,6 +1001,45 @@ Even advisory Jev classification beside it would invite the LLM to argue the
 rule down, and D36 rejected a Jev disposition judgment on grounds that still
 hold. Disagreement is not a harness observation here because there is no Jev
 answer to disagree with.
+
+### D51: Skills carry the methods; a bundled helper carries the exact parts
+
+Source: user's question during implementation of issue #1 and acceptance of
+the assistant's recommendation, 2026-09-20. Answers PROJECT-BRIEF.md's open
+question "Which behavior remains in the agent's skill instructions?", which no
+earlier decision covered. TICKETS.md and issue #1 chose TypeScript and Vitest
+as the stack without recording where code stops and skill instructions start;
+issues #5-#22 were written as if every action were software.
+
+jflow ships as a **skill**: a directory of instructions with a bundled script,
+the packaging the target host documents. The user's reason is adoption: jflow
+is to be open-sourced, and a skill lowers the bar to use it.
+
+- **Skills carry the methods.** One `jflow` skill with per-action instruction
+  files supplies how to brainstorm, plan, implement, review, wrap and realign,
+  how to present results to the human, and when to run the helper. The
+  primary agent reads them. They are verified by execution on the host, not by
+  unit tests.
+- **The helper carries the exact parts.** A small command-line helper the
+  skill shells out to: validate the package and configuration, read and write
+  project records, resolve prerequisites and authorization, call Jev and store
+  envelopes and traces, apply the `validate` and `escalate` outcomes, hold the
+  per-ticket fix counter, run replay, and create the local commit. These are
+  the precise, repeatable decisions D38 says the LLM is bad at, so they live in
+  code. PROJECT-BRIEF.md already said "use code for exact computations and
+  established prerequisites."
+
+The workflow-action-contract test seam tests the helper: project records plus
+a request in, eligible, blocked or ask-the-human out. Each action issue has two
+deliverables, its instruction file and the helper commands it relies on, and
+the release demonstrations split the same way: helper behaviour as automated
+tests, primary-agent behaviour as a recorded host run.
+
+Rejected: skills plus a minimal Jev-call script, with counters, envelopes and
+gating kept in instructions. That returns the repeatable decisions to the LLM,
+the problem the product exists to remove. Consequence accepted: the helper
+needs a runtime on the host; how it is bundled for distribution is decided
+with the deferred packaging questions, not here.
 
 Grill closed 2026-09-20: D43-D50 settle every item in the list below.
 

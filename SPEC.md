@@ -20,6 +20,10 @@ confirmed in the same pass; see the Further Notes list. The
 document as a durable record of what was proposed vs. originally accepted in
 discovery, even though all 8 are now confirmed.
 
+Status update (2026-09-20, later): D51 records the skill/helper boundary,
+answering a brief question no earlier decision covered; see Implementation
+Decisions. It changes how tickets are delivered, not what they deliver.
+
 Status update (2026-09-20): the human reviewed this draft and RELEASE-SCOPE.md
 and recorded D38-D42 in DISCOVERY.md. D39, D40 and D41 reopened D35, D36, D18
 and D10; a grill the same day settled every collision as D43-D50. This revision
@@ -403,6 +407,18 @@ claim that Jev improves routing (D36).
   decisions are declared in the first release: `next-action`, `assignment`,
   `lesson-retention`, `model-selection`, `classify` (advisory) and
   `escalate`, `validate` (binding); see the Jev integration boundary.
+- **Skill and helper boundary (D51)**: jflow ships as a skill, a directory of
+  instructions with a bundled helper script. The skill's per-action
+  instruction files carry the methods (how to brainstorm, plan, implement,
+  review, wrap and realign, how to present results, when to run the helper)
+  and are verified by execution on the host. The helper carries the exact
+  parts: package and configuration validation, project-record reads and
+  writes, prerequisite and authorization resolution, Jev calls with envelopes
+  and traces, the `validate` and `escalate` outcomes, the per-ticket fix
+  counter, replay, and the local commit. The workflow-action-contract seam
+  tests the helper. Every action ticket delivers both its instruction file and
+  the helper commands it relies on. The reason is adoption of an open-source
+  release; a skill lowers the bar to use it.
 - **Primary agent contract**: jflow does not assume or require a specific
   host or primary-agent model (D11). It targets GPT Desktop as the first
   verified host (D13); exact invocation syntax, host capabilities, and
@@ -686,6 +702,9 @@ claim that Jev improves routing (D36).
   14. Model selection and classification (D49, D50): a recommended model
       outside the configured set is rejected by the workflow, not just
       ignored; `classify` never receives a review finding.
+- The seam tests the helper (D51). Instruction-file behaviour is not unit
+  tested; it is verified by a recorded run on the host, and the release
+  demonstrations split along the same line.
 - Prior art: none in this repository yet (no implementation exists). The
   installed AI Hero `implement` skill already expects TDD where possible plus
   review-then-commit; the installed `code-review` skill expects a fixed Git

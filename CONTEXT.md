@@ -11,7 +11,10 @@ The reasoning agent responsible for the user's conversation and for coordinating
 The user's defined process for choosing and carrying out actions, including their prerequisites and stopping conditions.
 
 **Workflow skill**:
-A set of instructions supplying the method for a workflow action.
+A set of instructions supplying the method for a workflow action. jflow ships as one skill whose per-action instruction files the primary agent reads; they are verified by running them on the host, not by unit tests.
+
+**jflow helper**:
+The bundled command-line script the skill runs for the exact parts of the workflow: validation, record reads and writes, prerequisite and authorization checks, Jev calls and envelopes, the validate and escalate outcomes, the fix counter, replay, and the local commit. The workflow-action-contract seam tests the helper.
 
 **Workflow orchestration**:
 Coordination of workflow actions, supporting skills, and agent assignments through the primary agent as work progresses.
