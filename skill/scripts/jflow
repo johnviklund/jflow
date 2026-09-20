@@ -1,0 +1,3 @@
+#!/bin/sh
+# jflow helper entry point for the skill. Build once with `npm run build`.
+exec node "$(dirname "$0")/../../bin/jflow.js" "$@"

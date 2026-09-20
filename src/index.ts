@@ -64,6 +64,24 @@ export {
 
 export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
 
+export { resolveRequest, type RequestResolution } from "./actions/request.js";
+
+export {
+  dispatch,
+  type DispatchOptions,
+  type DispatchOutcome,
+  type HumanAskEvent,
+} from "./actions/dispatch.js";
+
+export {
+  HOST_CAPABILITIES,
+  checkHostCapabilities,
+  type HostCapability,
+  type HostCapabilityReport,
+  type HostCapabilityResult,
+  type HostProbeOptions,
+} from "./host/capabilities.js";
+
 export {
   AUTHORIZATION_SCOPES,
   FALLBACK_SCOPES,

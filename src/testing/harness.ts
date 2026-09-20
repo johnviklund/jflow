@@ -1,25 +1,12 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
+import { dispatch, type DispatchOutcome, type HumanAskEvent } from "../actions/dispatch.js";
+import { createWorkflowState, type ResolutionContext, type WorkflowState } from "../actions/resolve.js";
 import { resolveConfiguration } from "../config/configuration.js";
-import { loadShippedWorkflowPackage } from "../workflow/package.js";
-import {
-  createWorkflowState,
-  resolveAction,
-  type ActionResolution,
-  type ResolutionContext,
-  type WorkflowState,
-} from "../actions/resolve.js";
-import { runStatus, type StatusReport } from "../actions/status.js";
 import { readProjectState, writeProjectState, type ProjectStateResult } from "../project/state.js";
+import { loadShippedWorkflowPackage } from "../workflow/package.js";
 
 /**
  * The workflow-action-contract test seam (SPEC.md, Testing Decisions): a
@@ -36,33 +23,17 @@ export interface HarnessOptions {
   readonly gitRepository?: boolean;
 }
 
-/** An event where the workflow stopped to ask the human (SPEC.md D28, D40). */
-export interface HumanAskEvent {
-  readonly kind: "human-ask";
-  readonly action: string;
-  readonly reasons: readonly string[];
-}
+export type { HumanAskEvent };
 
-export type ActionOutcome =
-  | { readonly kind: "completed"; readonly action: "status"; readonly report: StatusReport }
-  | { readonly kind: "blocked"; readonly resolution: Extract<ActionResolution, { status: "blocked" }> }
-  | { readonly kind: "unknown-action"; readonly message: string }
-  | {
-      /** Eligible, but no executor exists yet for this action. */
-      readonly kind: "not-implemented";
-      readonly resolution: Extract<ActionResolution, { status: "eligible" }>;
-    }
-  | {
-      /** The state record is unreadable, so nothing but `status` may run. */
-      readonly kind: "malformed-record";
-      readonly path: string;
-      readonly message: string;
-    };
+export type ActionOutcome = DispatchOutcome;
 
 export interface ProjectHarness {
   readonly root: string;
   /** Human-ask events recorded so far, in order. */
   readonly events: readonly HumanAskEvent[];
+  /** Runs a request as the developer would phrase it: an action name or a sentence. */
+  request(text: string): ActionOutcome;
+  /** Runs an action by name. */
   runAction(action: string): ActionOutcome;
   readState(): ProjectStateResult;
   /** All files under the root, keyed by relative path, for before/after assertions. */
@@ -95,38 +66,14 @@ export function createProjectHarness(options: HarnessOptions = {}): ProjectHarne
   if (options.state) writeProjectState(root, createWorkflowState(options.state));
 
   const events: HumanAskEvent[] = [];
+  const request = (text: string) =>
+    dispatch(root, text, context, { onHumanAsk: (event) => events.push(event) });
 
   return {
     root,
     events,
-    runAction(action) {
-      // `status` is the one action that may run against an unreadable record,
-      // because reporting the problem is its job.
-      if (action === "status") {
-        return { kind: "completed", action, report: runStatus(root, context) };
-      }
-
-      const read = readProjectState(root);
-      if (read.kind === "malformed") {
-        return { kind: "malformed-record", path: read.path, message: read.message };
-      }
-
-      const resolution = resolveAction({ action }, read.state, context);
-      if (resolution.status === "unknown-action") {
-        return { kind: "unknown-action", message: resolution.message };
-      }
-      if (resolution.status === "blocked") {
-        if (resolution.requiresHumanAsk) {
-          events.push({
-            kind: "human-ask",
-            action,
-            reasons: resolution.unmet.filter((u) => u.needsHuman).map((u) => u.reason),
-          });
-        }
-        return { kind: "blocked", resolution };
-      }
-      return { kind: "not-implemented", resolution };
-    },
+    request,
+    runAction: request,
     readState: () => readProjectState(root),
     snapshot: () => listFiles(root),
     path: (relativePath) => join(root, relativePath),

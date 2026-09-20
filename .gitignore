@@ -16,3 +16,9 @@ coverage/
 
 # In-flight record writes; a crash may leave one behind
 jflow/*.tmp
+
+# Build output of the helper (npm run build)
+dist/
+
+# Probe file check-host writes and removes; left behind only by a crash
+.jflow-host-check-*

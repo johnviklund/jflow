@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#3; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#4; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -40,12 +40,26 @@ Foundation slice (issues #1–#3; TICKETS.md T1–T5 decompose #1 and #2):
 - `src/validation.ts` and `src/secrets.ts` — the shared issue collector and
   field validators, and the one definition of what counts as a credential,
   used by the package loader, configuration and the record store.
+- `src/actions/request.ts` and `dispatch.ts` — a request (an action name or
+  a sentence) resolves to exactly one action or to a clarifying question;
+  dispatch checks its prerequisites against the records and runs it when an
+  executor exists (issue #4).
+- `src/host/` — host capability checks, verified by execution and labelled
+  `verified`/`unverified`, never assumed from documentation.
+- `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
+  `validate`, `check-host`); one JSON object per command. `npm run build`
+  emits `dist/`.
+- `skill/` — the `jflow` skill directory in the layout the host documents:
+  `SKILL.md`, `actions/<action>.md` method files (only `status.md` so far),
+  `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
+  on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in
-  a known workflow state, run an action, assert the resulting files and the
+  a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
 The other workflow actions, the Jev client, Git/commit behaviour, and
-compound learning are not implemented yet.
+compound learning are not implemented yet. Nothing has been run on the
+ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
 
@@ -77,4 +91,5 @@ compound learning are not implemented yet.
 npm install
 npm test          # vitest run
 npm run typecheck # tsc --noEmit
+npm run build     # emit dist/ for bin/jflow.js and skill/scripts/jflow
 ```

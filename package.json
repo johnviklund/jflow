@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A JSON-defined workflow package for running one custom development workflow end to end with an AI primary agent.",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -25,11 +26,20 @@
     "vitest": "^5.0.1"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
-    "src",
+    "bin",
+    "dist",
+    "skill",
     "workflow"
   ],
-  "private": true
+  "private": true,
+  "bin": {
+    "jflow": "bin/jflow.js"
+  },
+  "types": "./dist/index.d.ts"
 }
