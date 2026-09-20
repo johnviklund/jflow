@@ -1021,6 +1021,14 @@ Added 2026-09-20; all items settled the same day.
    "worth remembering" as a distinct judgment): which of these, if any, move
    into release 1?
 
+### Specification accepted
+
+2026-09-20: the human accepted SPEC.md as revised for D38-D50, satisfying the
+D27 gate. D28 (ticket breakdown acceptance and execution authorization) is not
+yet satisfied for the revised scope: GitHub issues #1-#24 and TICKETS.md
+predate D38-D50, and issue #17 in particular still describes three advisory
+judgments.
+
 ### Session handoff
 
 The user asked to finish soon because remaining usage is limited. Consolidate

@@ -1,7 +1,8 @@
 # jflow first release: specification (draft)
 
 Date: 2026-09-18
-Status: DRAFT — awaiting human acceptance (per D27). Synthesized from
+Status: ACCEPTED by the human on 2026-09-20 (D27 gate passed; revision
+including D38-D50). Synthesized from
 RELEASE-SCOPE.md and DISCOVERY.md D1-D34 using AI Hero's to-spec process.
 No tracker is configured yet, so this spec is kept as a project file rather
 than published to an external issue tracker.
@@ -22,7 +23,9 @@ discovery, even though all 8 are now confirmed.
 Status update (2026-09-20): the human reviewed this draft and RELEASE-SCOPE.md
 and recorded D38-D42 in DISCOVERY.md. D39, D40 and D41 reopened D35, D36, D18
 and D10; a grill the same day settled every collision as D43-D50. This revision
-applies D38-D50. Nothing is open; the spec awaits acceptance under D27.
+applies D38-D50. Nothing is open. The human accepted this revision on
+2026-09-20. Per D28, ticket-breakdown acceptance and execution authorization
+are separate and have not been given for the revised scope.
 
 ## Problem Statement
 
