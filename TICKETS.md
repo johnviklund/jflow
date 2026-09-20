@@ -2,6 +2,18 @@
 
 Date: 2026-09-19
 Source: SPEC.md (draft, human-confirmed defaults 1-8)
+
+**This file decomposes GitHub issues #1 and #2 only.** The authoritative
+tickets are GitHub issues #1-#24; this is a working breakdown of two of them,
+not a parallel ticket system. T1 and T5 belong to issue #1; T2, T3 and T4 all
+belong to issue #2.
+
+**Do not map T-numbers onto issue numbers.** They are different sets and the
+numbering does not line up: T4 is configuration validation, whereas issue #4
+is action dispatch; T5 is the test harness, whereas issue #5 is `brainstorm`.
+A by-number mapping was made once and led to three unstarted issues nearly
+being closed as delivered.
+
 Scope of this breakdown: the **foundation slice** only — the JSON workflow
 package, its validation, the configuration surface and its validation, and the
 workflow-action-contract test harness (the seam named in SPEC.md's Testing

@@ -52,7 +52,11 @@ not a verified availability list or exclusive support requirement.
 - Compound learning retains project lessons only. Automatically retain lessons
   supported by evidence, with clear scope, source links, and a visible report.
   Speculation stays a candidate; conflicts with accepted decisions go to the human.
-  Learning never modifies workflow logic.
+  Project lessons never modify workflow logic. Narrowed by D35: harness
+  observations (low-confidence answers, overrides, repeated escalations) are
+  also recorded automatically, as a derived view over existing trace records,
+  and are applied never. Question and policy files change only through a
+  human-accepted proposal replayed against recorded envelopes.
 - Keep authoritative plans, tickets, progress, and lessons in project files.
   On resume, reconcile them with actual work and relevant verification evidence.
   Preserve partial work and run missing checks rather than restarting by default.
@@ -93,6 +97,21 @@ Other workflow packages; general workflow editing and method replacement;
 GitHub/Linear integration; concurrent implementation of separate tickets;
 automatic Jev model/effort selection; Jev completion scoring; workflow changes
 through learning; automatic main-conversation model switching.
+
+Also deferred, and deliberately left visible rather than closed quietly (D36):
+**whether Jev improves routing at all.** Jev stays advisory for the whole first
+release, which therefore makes no routing-improvement claim. What the release
+demonstrates is that decisions are bounded, recorded in full, and
+reconstructable from their own records. Whether Jev earns its place is a
+release-2 question, answered by replaying recorded envelopes against the corpus
+the first release builds. Replay and tuning machinery are themselves deferred.
+No first-release demonstration may be presented as evidence that Jev routes
+better than the stated rules or ordinary primary-agent judgment.
+
+Compound learning is narrowed rather than simply deferred (D35): project
+lessons still never change workflow logic, harness observations are recorded
+but applied never, and question and policy files change only through a
+human-accepted proposal replayed against recorded envelopes.
 
 ## Proposed defaults, not yet accepted
 

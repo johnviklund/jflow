@@ -255,9 +255,16 @@ workflow customization, and concurrent ticket implementation.
     before use, with contradicted lessons marked superseded (with evidence)
     rather than silently overwritten, so that stale lessons don't mislead
     future work **(proposed default — confirm)**.
-57. As a developer, I want it guaranteed that compound learning never changes
-    workflow logic, so that "learning" can't become a backdoor for
-    unreviewed behavior changes.
+57. As a developer, I want jflow to keep two kinds of memory separate, so that
+    "learning" can't become a backdoor for unreviewed behavior changes while
+    the workflow's own weak spots still get recorded. Project lessons are
+    retained automatically per D21. Harness observations (low-confidence
+    answers, overrides, repeated escalations) are recorded automatically and
+    applied never, as a derived view over the trace records the Jev client
+    already persists rather than a second store, and are never filtered by
+    Jev. Question and policy files change only through a proposal that has
+    been replayed against recorded envelopes and explicitly accepted by me
+    (D35, narrowing D3/D21).
 58. As a developer, I want raw traces (Jev traces, detailed evidence) kept
     until I explicitly clean them up, with no automatic deletion, export, or
     upload, so that I control retention and can inspect history later
@@ -284,7 +291,24 @@ workflow customization, and concurrent ticket implementation.
   roles and delegation limits, and the supported configuration surface
   (stage models, explicit model fallbacks, delegation/retry limits,
   evidence-sharing limits). Arbitrary stage addition and method replacement
-  are out of scope for this release (D24).
+  are out of scope for this release (D24). **Decisions and policy (D37)**:
+  the package also declares the judgments Jev makes within the process, which
+  PROJECT-BRIEF.md names as the configuration's second job and which the
+  first draft omitted. Two top-level keys are added at **schema version 2**
+  (a released schema is not widened in place): `decisions`, mapping a named
+  decision to a question reference and version, and `policy`, mapping a named
+  decision to its thresholds and weights. Question content lives in separate
+  files under `workflow/questions/`, and policy thresholds live in their own
+  file separate from the question files, so changing a threshold is a
+  one-line diff. Every policy entry must declare a `basis` field recording
+  where its numbers came from; the first threshold ships as an uncalibrated
+  placeholder pointing at D36, set conservatively so it routes to the human
+  readily, because DISCOVERY.md records that no useful confidence threshold
+  has been established. No test may assert a threshold's value. Tests assert
+  only that routing behaves correctly above and below it. The package schema
+  owns whether a question file is well-formed, versioned and resolvable; the
+  content of the first question is proposed for explicit human acceptance
+  under the same gate D35 imposes on later changes.
 - **Primary agent contract**: jflow does not assume or require a specific
   host or primary-agent model (D11). It targets GPT Desktop as the first
   verified host (D13); exact invocation syntax, host capabilities, and
@@ -313,7 +337,19 @@ workflow customization, and concurrent ticket implementation.
   selected excerpts) honoring project sharing limits; credentials and full
   conversation/repository content are excluded by default (D22). Jev
   request/response traces are stored locally, outside version control;
-  project records keep summaries plus trace references only (D23).
+  project records keep summaries plus trace references only (D23). **Jev
+  stays advisory for the whole first release (D36)**: a proposal to make
+  review finding disposition a binding Jev answer was rejected, because it
+  collided with D18's three permitted judgments, with D6's always-available
+  override, and with the exclusion of Jev completion and correctness scoring.
+  Disposition stays the deterministic rule in D33. The release makes no claim
+  that Jev improves routing. It demonstrates only that decisions are bounded,
+  recorded in full, and reconstructable from their own records, meaning the
+  stored packet, question and policy versions, answer and reason code
+  together rebuild the exact request without chat history or a live Jev call.
+  Next-action and skill recommendation is the first worked example of the
+  decisions and policy surface (D37), with a threshold routing low-confidence
+  answers to the human.
 - **Jev failure handling**: Temporary Jev failures are retried a limited,
   configurable number of times; exhausting retries requires human approval
   before continuing without Jev, scoped to the current ticket/stage unless
@@ -388,8 +424,17 @@ workflow customization, and concurrent ticket implementation.
   supporting evidence, clear scope, and no conflict with accepted decisions;
   report what was saved with evidence links. Speculative lessons remain
   candidates only; conflicts with accepted decisions escalate to the human
-  (D21). Learning never modifies workflow logic (D3, D21, D57-equivalent
-  user story). **(Proposed default — confirm)**: re-check a retained
+  (D21). **Two memory kinds, kept separate (D35, narrowing D3/D21)**: project
+  lessons as above, and harness observations (low-confidence answers,
+  overrides, repeated escalations) recorded automatically and applied never.
+  Harness observations are a derived view over the trace records the Jev
+  client and its failure handling already persist, not a second store, and
+  are never filtered by Jev. Question and policy files change only through a
+  proposal replayed against recorded envelopes and explicitly accepted by the
+  human. This depends on the closed reason-code requirement: a view over
+  unlabelled records is worthless, so if reason codes are cut, D35 is
+  revisited rather than shipped hollow. A `memory/<slug>/` layout is proposed
+  but not implemented in this release. **(Proposed default — confirm)**: re-check a retained
   lesson's applicability before use each time; mark contradicted lessons
   superseded with evidence rather than silently overwriting an accepted human
   decision. **(Proposed default — confirm)**: keep raw traces until explicit
@@ -474,7 +519,15 @@ workflow customization, and concurrent ticket implementation.
 - Concurrent implementation of separate (non-dependent) tickets (D29).
 - Automatic Jev model/effort selection and Jev completion/correctness scoring
   (D18).
-- Workflow logic changes driven by compound learning (D3, D21).
+- Workflow logic changes driven by compound learning. Narrowed by D35: project
+  lessons still never change workflow logic, and harness observations are
+  recorded but applied never. Question and policy files change only through a
+  human-accepted proposal replayed against recorded envelopes (D3, D21, D35).
+- Replay and tuning machinery, and any claim that Jev improves routing. The
+  first release demonstrates only that decisions are bounded, recorded in
+  full, and reconstructable from their own records. Whether Jev earns its
+  place is a release-2 question, answered by replaying recorded envelopes
+  (D36).
 - Automatic switching of the main conversational model between stages (D19).
 - License, GitHub ownership, and public distribution/packaging decisions
   (deferred until before public publication; not required for this draft

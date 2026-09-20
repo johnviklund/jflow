@@ -1,7 +1,7 @@
 # jflow release discovery
 
-Updated: 2026-09-18
-Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending.
+Updated: 2026-09-19
+Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending. D35-D37 were added on 2026-09-19 during a review of proposals from a second assistant; they change D3, D21 and the Jev scope recorded in D18 rather than editing those entries.
 
 ## Resume here
 
@@ -593,9 +593,117 @@ independent review. Enable this by default and make it configurable. Include onl
 the ticket's changes and relevant project records. Pushing, publishing, and merging
 remain separately authorized actions.
 
+### D35: Two memory kinds; harness observations are recorded and never applied
+
+Source: user's acceptance during the 2026-09-19 review of a proposal by a second
+assistant (Fable), reworked in that session. This decision **changes D3 and D21
+rather than replacing them**. D3 and D21 remain the record of what was decided on
+2026-09-18 and why; this entry records that the guarantee was narrowed, when, and
+on what grounds. Do not edit D3 or D21 to match.
+
+D3 and D21 gave an absolute guarantee that compound learning never changes workflow
+logic. That was written before harness improvement had been designed, and it is
+broader than what the project actually needs. It is narrowed here to a smaller but
+stronger guarantee.
+
+jflow keeps two kinds of memory, and never mixes them:
+
+- **Project lessons.** Evidence-backed lessons about the project being built,
+  retained automatically under D21's existing criteria.
+- **Harness observations.** Records of how the workflow itself behaved: low-confidence
+  answers, overrides, and repeated escalations.
+
+Harness observations are recorded automatically and **applied never**. They are a
+derived view over the trace records the Jev client and its failure handling already
+persist, not a second memory store. Recording all of them is deliberate: they are
+not filtered by Jev, because filtering the record of the system's own failures
+through the system being judged would remove exactly the cases worth keeping.
+
+Question files and policy files change only through a proposal that has been replayed
+against recorded envelopes and explicitly accepted by the human. Nothing else may
+change them, including the primary agent acting within existing authority.
+
+This decision depends on the closed reason-code requirement being implemented. A
+derived view over records that carry no labels is worth nothing, so if reason codes
+are cut, this decision must be revisited rather than shipped hollow.
+
+A `memory/<slug>/` layout is proposed for the two kinds, but is not implemented in
+this release.
+
+### D36: Jev stays advisory in the first release, and the release claims no routing improvement
+
+Source: user's acceptance during the 2026-09-19 review, 2026-09-19.
+
+A proposal to make one Jev judgment binding, specifically review finding disposition,
+was **rejected**. It collided with three accepted decisions at once: D18 permits
+exactly three judgments and disposition is not among them; D6 and the specification's
+Jev integration boundary make every Jev output advisory with an override always
+available; and disposition is out of scope as Jev completion and correctness scoring.
+Finding disposition stays the deterministic rule D33 defines.
+
+Jev therefore remains advisory throughout the first release. The release makes **no
+claim that Jev improves routing**, and no demonstration should be read as evidence
+that it does.
+
+What the first release does demonstrate is narrower and testable: that decisions are
+bounded, recorded in full, and reconstructable from their own records. Reconstructable
+means the stored packet, the question and policy versions, the answer and the reason
+code are together sufficient to rebuild the exact request without consulting chat
+history or the live Jev service. That is an assertion about stored records. It is not
+replay machinery, which is deliberately deferred.
+
+Whether Jev earns its place is a **release-2 question**, answered by replaying recorded
+envelopes against the corpus the first release builds. This gap must stay visible. It
+is recorded in RELEASE-SCOPE.md's deferred list for that reason, and must not be closed
+quietly by a later claim that the demonstrations show Jev working.
+
+One judgment is made load-bearing to the extent D18 allows: next-action and skill
+recommendation becomes the first worked example of the decisions and policy surface
+D37 defines, with a threshold routing low-confidence answers to the human.
+
+### D37: The workflow package declares decisions and policy, at schema version 2
+
+Source: user's acceptance during the 2026-09-19 review, 2026-09-19.
+
+PROJECT-BRIEF.md states that the configuration has two jobs, describing the process
+and defining the judgments Jev makes within it. Only the first was built. The workflow
+package gains two top-level keys to close that gap:
+
+- `decisions`: a named decision maps to a question reference and a version.
+- `policy`: a named decision maps to its thresholds and weights.
+
+Question content lives in separate files under `workflow/questions/`, and policy
+thresholds live in their own file separate from the question files, so changing a
+threshold is a one-line diff.
+
+This is a **schema version 2** change. The shipped validator and its version field
+exist so that a released schema is not widened in place.
+
+Two constraints attach to policy, and both exist because DISCOVERY.md already records
+that no useful confidence threshold has been established and that thresholds must be
+tested against application data the project does not yet have:
+
+- Every policy entry **must** declare a `basis` field recording where its numbers came
+  from. The first threshold ships as an uncalibrated placeholder pointing at D36, set
+  conservatively so that it routes to the human readily. The requirement is schema-wide,
+  not specific to the first entry, so that no future threshold can ship without
+  declaring its provenance.
+- **No test may assert a threshold's value.** Tests assert only that routing behaves
+  correctly above and below it. A passing suite must never be readable as evidence that
+  a number is correct.
+
+Ownership is split. The package schema owns whether a question file is well-formed,
+versioned and resolvable. The Jev judgment issue owns what the first question actually
+asks, and that content reaches the human as a proposal for explicit acceptance under
+the same gate D35 imposes on later changes. Exempting the founding question file from
+that gate would hollow out D35 before it is written.
+
+The decision is accepted; the corresponding change to the tracker issue that owns the
+workflow package is a scope change and is proposed separately rather than folded in.
+
 ### Session handoff
 
 The user asked to finish soon because remaining usage is limited. Consolidate
 accepted decisions and distinguish unresolved defaults rather than extending the
 interview. RELEASE-SCOPE.md is a discovery handoff, not an approved specification
-or authorization to implement. Preserve D1-D34 when producing the specification.
+or authorization to implement. Preserve D1-D37 when producing the specification.
