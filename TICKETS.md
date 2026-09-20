@@ -14,6 +14,12 @@ is action dispatch; T5 is the test harness, whereas issue #5 is `brainstorm`.
 A by-number mapping was made once and led to three unstarted issues nearly
 being closed as delivered.
 
+Update 2026-09-20: issue #2 was extended to schema version 2 (`decisions`,
+`policy`, per-decision `authority` and `basis`, question files under
+`workflow/questions/`) when the D38-D50 ticket breakdown was accepted. T2-T4
+below describe the version-1 surface that shipped in `ed6e50b`; the
+version-2 criteria live on issue #2 only.
+
 Scope of this breakdown: the **foundation slice** only — the JSON workflow
 package, its validation, the configuration surface and its validation, and the
 workflow-action-contract test harness (the seam named in SPEC.md's Testing

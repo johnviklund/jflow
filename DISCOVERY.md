@@ -1029,6 +1029,19 @@ yet satisfied for the revised scope: GitHub issues #1-#24 and TICKETS.md
 predate D38-D50, and issue #17 in particular still describes three advisory
 judgments.
 
+### Ticket breakdown accepted
+
+2026-09-20: the human accepted the revised ticket breakdown, satisfying the
+acceptance half of D28. Issues #2, #17, #8, #9 were revised in place (schema
+version 2; seven decisions with per-decision authority and the decision
+envelope; the validate gate and the shared per-ticket fix counter), #6, #12,
+#19, #22 and #23 received smaller updates, and #25-#31 were added: escalate,
+validate, minimal replay, model-selection, classify, question-file proposals
+and realign. Execution authorization has not been given. Accepted choices:
+#8 waits for #25 and #26 rather than shipping with a placeholder gate; each
+decision issue proposes its own question wording for acceptance under D37;
+#29 keeps all three classify call sites in one issue.
+
 ### Session handoff
 
 The user asked to finish soon because remaining usage is limited. Consolidate
