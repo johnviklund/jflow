@@ -29,8 +29,41 @@ _Avoid_: what, as an action name
 **Todo item**:
 A recorded piece of future work outside the active plan. Capturing it does not authorize implementation or add it to the current assignment.
 
+**Realign**:
+The human-invoked jflow action for changing the plan while implementation is in flight. It reconciles the specification, tickets and progress with the new direction and re-enters acceptance; it implements nothing and the agent never runs it unasked.
+
+**Decision authority**:
+Whether a declared Jev decision is _binding_ (the workflow acts on the answer directly, subject only to a recorded evidence-based override and the hard rules) or _advisory_ (the primary agent weighs it). Declared per decision in the workflow package; never changes by drift.
+
+**Escalation signal**:
+Jev's binding answer, at a human-facing boundary, to whether the human must be asked before proceeding. "Proceed" means continue within existing authority; "escalate" means ask. Hard rules (consequential conflicts, continuing without Jev, acceptance gates) always ask and never reach Jev.
+
+**Human-facing boundary**:
+A point in the workflow where the human could be asked before proceeding, such as the next ticket under whole-plan authorization, a failed fix attempt, a disputed finding, a conflicting lesson, or a resume discrepancy.
+
+**Validation**:
+Jev's binding, per-criterion judgment of whether a ticket's recorded verification evidence satisfies its accepted acceptance criteria (met, not met, or insufficient evidence). The gate into independent review, never a substitute for it.
+
+**Acceptance criteria**:
+The testable conditions a ticket must satisfy, written by plan and accepted with the plan. A ticket without them is not a valid ticket.
+
+**Model selection**:
+Jev's advisory recommendation of a model and effort for a stage worker, chosen only from the models the user configured for that stage and their explicit fallbacks.
+
+**Classification**:
+Jev's advisory proposal of a class for a piece of workflow content: whether a discovered item is a todo or in scope, which part of the project a lesson applies to, or whether a drafted acceptance criterion is testable. Review finding disposition is not classified; a fixed rule decides it.
+
+**Harness observation**:
+A record of how the workflow itself behaved (a low-confidence answer, an override, a repeated escalation). Recorded automatically, applied never; the input to a question-file proposal.
+
+**Question-file proposal**:
+A proposed change to a Jev question or policy file, derived from harness observations and project lessons, with linked evidence and a replay report. Takes effect only when the human accepts it.
+
+**Replay**:
+Re-running a proposed question or threshold against the stored envelopes for that decision and reporting which answers would change. Gates a proposal; does not evaluate whether Jev is good.
+
 **Compound learning**:
-Retention and reuse of project lessons in later work. It does not include changes to workflow logic.
+Retention and reuse of project lessons in later work, plus generating question-file proposals. Neither applies a change to workflow logic or Jev questions without human acceptance.
 
 **Project lesson**:
 Knowledge learned from work in a project that can inform relevant future tasks in that project.

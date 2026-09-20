@@ -1,7 +1,7 @@
 # jflow release discovery
 
-Updated: 2026-09-19
-Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending. D35-D37 were added on 2026-09-19 during a review of proposals from a second assistant; they change D3, D21 and the Jev scope recorded in D18 rather than editing those entries.
+Updated: 2026-09-20
+Status: interview stopped at the user's request to conserve usage. Scope consolidated in RELEASE-SCOPE.md; final shared-understanding confirmation is pending. D35-D37 were added on 2026-09-19 during a review of proposals from a second assistant; they change D3, D21 and the Jev scope recorded in D18 rather than editing those entries. D38-D42 were added on 2026-09-20 from the user's review of SPEC.md and RELEASE-SCOPE.md; they reframe the product around the LLM+Jev harness and widen Jev's role. D43-D50, from a grill the same day, resolve their collisions with D7, D10, D16, D18, D35 and D36. Nothing is open.
 
 ## Resume here
 
@@ -701,9 +701,329 @@ that gate would hollow out D35 before it is written.
 The decision is accepted; the corresponding change to the tracker issue that owns the
 workflow package is a scope change and is proposed separately rather than folded in.
 
+### D38: The product is the LLM+Jev harness; skill routing is one use case
+
+Source: user's review comments on SPEC.md and RELEASE-SCOPE.md, 2026-09-20. This
+decision **reframes D1 and extends D2** rather than replacing them. D1 stays as the
+record of the first answer given; this entry records that it was the wrong emphasis.
+
+"Losing track of which skill to invoke next" is an important use case but not the
+main value. The main value is an optimised, efficient AI-agent harness built from
+the combination of an LLM and Jev (TypeSafe Server One). LLMs are built to please
+humans and produce human-facing content, not to make precise, repeatable decisions
+at scale. Jev is built for exactly those decisions. Without Jev, jflow is just
+another LLM workflow; the combination is the product.
+
+The repeatable decisions the user names as Jev's territory: selecting the most
+efficient model, knowing what to do next, validating and scoring output, escalating
+to the human when needed, classifying content, and judging whether a session solved
+a problem worth remembering.
+
+Scope note, not a reversal: D18 defers automatic model/effort selection and
+completion scoring, and D36 says the release claims no routing improvement. D38
+sets the product vision and the spec's Problem Statement; it does not by itself add
+judgments to the first-release set. D41 adds one. The rest of the list stays in the
+vision and the deferred list until a later decision moves it.
+
+### D39: Jev question and policy files improve from learnings, through proposals
+
+Source: user's review comment 2 and clarification, 2026-09-20. This decision
+**changes D35** rather than replacing it. Do not edit D35 to match.
+
+Jev's output is only as good as its input questions, so the question files (and
+the policy thresholds attached to them) should improve from learnings when the
+evidence supports it. jflow helps with this the same way it helps improve
+LLM-facing instructions such as AGENTS.md: it is a first-release capability, not
+just a gate that later work might pass through.
+
+What D39 keeps from D35: harness observations are still recorded automatically
+and applied never; question and policy files still change only through a proposal
+explicitly accepted by the human; the reason-code dependency still holds.
+
+What D39 changes: generating such proposals is now an expected jflow behaviour,
+derived from harness observations and project lessons. D35 required a proposal to
+be replayed against recorded envelopes before acceptance, and D36 defers replay
+machinery to release 2. Until replay exists, a proposal is accepted on its linked
+evidence (the observations and envelopes that motivated it) rather than on a
+replay result. Whether that weaker gate is acceptable for the first release is
+open; see "Open for the next grill".
+
+### D40: Minimise human approvals; Jev's escalation signal decides when to ask
+
+Source: user's review comment 3 and clarification, 2026-09-20. This decision
+**changes D36 and touches D6, D7 and D16**. Do not edit those entries to match.
+
+Always aim to minimise human approvals. Seek human approval only when Jev's
+response signals escalation. When Jev signals proceed, the primary agent proceeds
+within its existing authority without asking.
+
+What stays: D6's override (the primary agent may choose a different permitted
+action with a recorded evidence-based reason); D7's consequential-conflict rule
+(requirements, scope, workflow rules and permissions still go to the human); D16
+and D17 (continuing without Jev at all still needs human approval, scoped to the
+ticket or stage); acceptance gates D27 and D28. Jev never grants authorization.
+
+What changes: D36 described Jev as advisory throughout, with the human-routing
+threshold as the only load-bearing use. Under D40, Jev's escalate/proceed signal is
+the default router for whether the human is asked. That is a binding use of a Jev
+answer in the sense D36 rejected, though narrower than the disposition proposal it
+rejected: it decides whether to interrupt the human, not what the work's outcome
+is. The threshold and basis requirements of D37 apply to the escalation signal.
+How this reconciles with D36's "no routing-improvement claim" is open; see "Open
+for the next grill".
+
+### D41: Every ticket is testable; Jev validates ticket output; escalate on unfixable failures
+
+Source: user's review comment 4, 2026-09-20. This decision **changes D18 and
+narrows D10**. Do not edit those entries to match.
+
+Each ticket in a plan must be testable, with acceptance criteria whose outcome Jev
+can validate. This extends the D28 plan-acceptance requirement and the ticket-sizing
+mitigation recorded in SPEC.md: an untestable ticket is not an acceptable ticket.
+
+Validating ticket output against its acceptance criteria becomes a fourth Jev
+judgment. D18 deferred "scoring completion claims"; D41 admits the narrower form:
+Jev judges whether the recorded verification evidence satisfies the ticket's
+stated criteria. It still does not judge correctness in the abstract, and the
+independent review (D9, D32) and exact prerequisite checks remain separate.
+
+Human escalation during implementation happens when the LLM cannot solve a failed
+test. D10's limit (two unsuccessful fix-and-re-review attempts, configurable) is
+the concrete trigger for that. D7's consequential-conflict escalation is not
+removed by this; a failed test is the normal escalation path, a scope conflict the
+exceptional one. Whether the D10 counter should apply to failed tests as well as
+blocking review findings, or get its own counter, is open.
+
+### D42: Add a realign action for in-flight plan changes
+
+Source: user's review comment 5, 2026-09-20. This decision **changes D25**. Do not
+edit D25 to match.
+
+Add `realign` to the action set. The human invokes it when they decide to change
+the plan while implementation is in flight. It reconciles the accepted
+specification, the ticket breakdown, and progress records with the human's new
+direction: affected tickets are re-scoped, added, parked or withdrawn; completed
+work is re-checked against the changed requirements; and the result is presented
+for acceptance under D27/D28 before implementation continues. It does not itself
+implement anything. The user's personal `workflow` skill already has a `realign`
+verb, which is the reference behaviour.
+
+`realign` is invoked by the human. The primary agent may recommend it (for
+example when D15 resume or a review finds a consequential discrepancy) but may
+not run it on its own authority, since its whole purpose is a human-driven change
+to agreed scope.
+
+### D43: Per-decision authority, declared in the package
+
+Source: user's acceptance of grill Q1, 2026-09-20. This decision **resolves the
+D40/D36 collision** and changes D36. Do not edit D36 to match.
+
+Every `decisions` entry in the workflow package (D37) declares its authority:
+`binding` or `advisory`.
+
+- **Binding**: the workflow acts on Jev's answer directly. The only exceptions are
+  D6's override (a different permitted action, with an evidence-based reason
+  recorded in the decision envelope) and the hard rules that hold regardless of
+  any Jev answer: D7 consequential conflicts, D16/D17 continuing without Jev, and
+  the D27/D28 acceptance gates.
+- **Advisory**: the primary agent weighs the answer alongside its own evidence.
+
+The escalation signal (D40) ships binding. Next-action/skill recommendation,
+assignment assessment and lesson assessment (D18) stay advisory in the first
+release. The authority of D41's validation judgment is a separate decision.
+
+D36's "advisory throughout" wording is superseded by this per-decision field.
+D36's other content stands: the release makes no routing-*improvement* claim,
+demonstrates only that decisions are bounded, recorded and reconstructable, and
+leaves whether Jev earns its place to release-2 replay. Authority and improvement
+are different claims; a binding decision is not evidence that it is a good one.
+
+Nothing becomes binding by drift: authority is a declared package field with the
+same `basis` requirement D37 puts on thresholds, changed only through the D35/D39
+proposal gate. A fact checked before this question: the shipped package is still
+schema version 1 with no `decisions` or `policy` keys, so D37's surface, and this
+field, are unbuilt.
+
+### D44: One general escalation question, split later from evidence
+
+Source: user's acceptance of grill Q2, 2026-09-20. Defines the binding decision
+D43 names.
+
+The first release ships one declared decision, `escalate`, asked at every
+human-facing boundary the workflow reaches: before starting the next ticket under
+whole-plan authorization, after a fix attempt fails, when a review finding is
+disputed, when a candidate lesson conflicts, at resume with a discrepancy, and
+any other point where the workflow could ask the human. The question is "given
+this situation packet, must the human be consulted before proceeding?" The answer
+is `proceed` or `escalate`, with a closed reason code and a confidence. One
+question file, one threshold, many call sites. The packet carries the boundary
+kind so the answer is reconstructable (D36) and so later splitting is possible.
+
+Splitting into per-boundary questions (`escalate.fix-loop`,
+`escalate.review-dispute`, and so on) is the intended path once harness
+observations show which call sites misroute. That split happens through D39
+proposals, not by design up front. This is D39's first concrete job.
+
+Hard rules never reach Jev and always ask: D7 consequential conflicts
+(requirements, scope, workflow rules, permissions), D16/D17 continuing without
+Jev, and the D27/D28 acceptance gates. They are not escalation call sites.
+
+### D45: The first escalation threshold is conservative, lowered only by proposal
+
+Source: user's acceptance of grill Q3, 2026-09-20. Applies D37's basis rule to
+the D44 decision.
+
+The `escalate` decision's first threshold is set conservatively: below-threshold
+confidence routes to the human, and the threshold is high enough that Jev must be
+clearly sure before `proceed` is honoured. The user accepts being asked more often
+than D40 ultimately intends during the first release. Every over-ask is recorded
+as a harness observation (D35), and the threshold is lowered through a D39
+proposal once envelopes exist, not by guess.
+
+The policy entry's `basis` field states this in full: an uncalibrated placeholder,
+conservative per D37 and D45, to be lowered by proposal once a recorded corpus
+supports it. No test asserts its value (D37).
+
+Rejected alternatives: a permissive first threshold (fewer interruptions from day
+one, but the mistakes worth learning from would be the unseen ones), and split
+thresholds by boundary kind (a step toward D44's future split, taken too early).
+
+### D46: Minimal replay ships in release 1 to gate proposals
+
+Source: user's acceptance of grill Q4, 2026-09-20. This decision **changes D36's
+deferral of replay machinery** and restores D35's gate in full. Do not edit D36
+to match.
+
+A question/policy proposal (D39) is accepted only after minimal replay: the
+proposed question or threshold is re-run against the stored envelopes for that
+decision, and the result reports how many answers would have changed and in
+which direction, per boundary kind and reason code. The human accepts or rejects
+on that report plus the linked observations.
+
+Minimal means exactly this: load envelopes, call Jev with the proposed inputs,
+diff the answers. It is not tuning, not scoring, and not a claim that the
+proposal is better. Whether Jev improves routing remains a release-2 question
+(D36); replay here gates a change, it does not evaluate Jev. The input side is
+free because D36 already requires every envelope to be stored in full and
+reconstructable without chat history or a live Jev call.
+
+Cost accepted: one release-1 ticket and the Jev calls a replay burns. Rejected
+alternatives: evidence-linked acceptance without replay (weakest exactly where
+D45's threshold lowering needs it most) and no proposals in release 1 (leaves
+D44's split and D45's lowering waiting for release 2).
+
+### D47: Ticket validation is a binding judgment over criteria and evidence
+
+Source: user's acceptance of grill Q5, 2026-09-20. Defines the judgment D41
+added and sets its authority under D43.
+
+The `validate` decision takes a bounded packet (D22): the ticket's acceptance
+criteria as accepted under D28, and the recorded verification evidence (test
+results, check outputs, the implementer's claim of what was done). Not the diff,
+not the repository. It answers per criterion: `met`, `not-met` or
+`insufficient-evidence`, with a closed reason code and a confidence.
+
+Limits: it judges whether the evidence satisfies the stated criteria. It does not
+judge code quality, requirements the criteria omitted, or anything the
+independent review owns (D9, D32). All criteria `met` admits the ticket to
+review; validation is the gate into review, never a replacement for it.
+
+Authority: **binding**. `not-met` returns the ticket to fix. `met` on every
+criterion admits it to review. `insufficient-evidence` means run the missing
+check; if no such check exists, the `escalate` decision (D44) is asked. The
+implementer's own "done" claim carries no weight on its own. D6's override
+applies, so proceeding past a `not-met` requires an evidence-based reason in the
+envelope; that friction is intended. This is the judgment where an LLM grading
+its own work is least trustworthy (D38), so it is the one most worth binding.
+
+### D48: One shared fix-attempt counter per ticket
+
+Source: user's acceptance of grill Q6, 2026-09-20. This decision **widens D10**
+from "the same blocking finding" to the ticket. Do not edit D10 to match.
+
+Every unsuccessful fix attempt on a ticket increments one counter, whether the
+failure was a `not-met` validation criterion (D47) or a blocking review finding
+(D33). At the configured limit, default 2 as D10 set, the `escalate` decision
+(D44) is asked with the attempts, the evidence and a recommended next step.
+
+The unit that matters is the ticket: D41's framing is "the LLM cannot solve a
+failed test", not which gate caught it. A per-ticket counter also yields the
+cleanest harness observation ("tickets needing more than N fixes") for D39.
+Accepted cost: two validation misses and one review finding reach the limit with
+no review retry left. Rejected: independent counters per gate (up to four failed
+attempts before escalation) and a counter keyed to each criterion or finding
+(most faithful to D10's wording, most bookkeeping).
+
+### D49: Model selection and content classification enter release 1, advisory
+
+Source: user's acceptance of grill Q7, 2026-09-20. This decision **changes D18's
+deferral of model/effort selection** and adds a judgment D36 kept out, in the
+advisory form D43 permits. Do not edit D18 or D36 to match.
+
+The first release declares seven Jev decisions. Five were settled earlier: next-action
+(D18, advisory), assignment assessment (D18, advisory; omitted from the grill's
+count of six by the assistant, never removed), escalate (D44, binding), validate
+(D47, binding), and lesson retention (D18, advisory). Two more join, both advisory:
+
+- **Model selection.** For a stage-worker assignment, Jev recommends a model and
+  effort from the user's configured set for that stage, including its explicit
+  fallbacks (D19, D20). Never a model outside that set. The primary agent may
+  follow or override with a recorded reason (D6). D20's unavailable-model rule is
+  unchanged: no silent substitution, ask the human when no configured fallback
+  exists. The actual model used is still recorded.
+- **Content classification.** Jev proposes a class for a piece of workflow
+  content. Advisory only, so it does not displace D33's deterministic disposition
+  rule; D36's rejection was of a *binding* disposition judgment, and D43 now makes
+  authority a per-decision field. The set of classified content is settled in D50.
+
+Accepted cost: seven question files, thresholds and calibrations from zero
+envelopes. The user chose coverage of the D38 vision over a thinner first corpus.
+Rejected: neither (four judgments), and model selection alone.
+
+### D50: One classify decision covering item routing, lesson scope and testability
+
+Source: user's acceptance of grill Q8, 2026-09-20. Completes D49.
+
+The first release ships one advisory decision, `classify`, whose packet carries
+the content kind, mirroring D44's boundary kind so it can be split later by D46
+replay. Three content kinds:
+
+- **Discovered item routing**: todo versus in-scope for the current ticket
+  (D26). Today the primary agent decides alone.
+- **Lesson scope**: which part of the project a candidate lesson applies to,
+  feeding D21's clear-scope criterion and the applicability re-check.
+- **Ticket testability**: whether a drafted acceptance criterion is validatable
+  under D47. Runs inside `plan` before the breakdown is presented for D28
+  acceptance; a criterion classed untestable is rewritten, not shipped.
+
+**Excluded: review finding disposition.** D33's deterministic rule stands alone.
+Even advisory Jev classification beside it would invite the LLM to argue the
+rule down, and D36 rejected a Jev disposition judgment on grounds that still
+hold. Disagreement is not a harness observation here because there is no Jev
+answer to disagree with.
+
+Grill closed 2026-09-20: D43-D50 settle every item in the list below.
+
+### Open for the next grill
+
+Added 2026-09-20; all items settled the same day.
+
+1. ~~D39 vs D35/D36~~: settled by D46 (minimal replay in release 1).
+2. ~~D40 vs D36~~: settled by D43, D44, D45.
+3. ~~D41 vs D18/D10~~: settled by D47 and D48.
+4. ~~D38's remaining Jev territory~~: settled by D49 and D50.
+
+1. ~~D39 vs D35/D36~~: settled by D46 (minimal replay in release 1).
+2. ~~D40 vs D36~~: settled by D43, D44, D45.
+3. ~~D41 vs D18/D10~~: settled by D47 (binding validation) and D48 (shared
+   per-ticket counter).
+4. D38's remaining Jev territory (model selection, content classification,
+   "worth remembering" as a distinct judgment): which of these, if any, move
+   into release 1?
+
 ### Session handoff
 
 The user asked to finish soon because remaining usage is limited. Consolidate
 accepted decisions and distinguish unresolved defaults rather than extending the
 interview. RELEASE-SCOPE.md is a discovery handoff, not an approved specification
-or authorization to implement. Preserve D1-D37 when producing the specification.
+or authorization to implement. Preserve D1-D50 when producing the specification.

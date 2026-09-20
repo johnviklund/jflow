@@ -19,30 +19,53 @@ confirmed in the same pass; see the Further Notes list. The
 document as a durable record of what was proposed vs. originally accepted in
 discovery, even though all 8 are now confirmed.
 
+Status update (2026-09-20): the human reviewed this draft and RELEASE-SCOPE.md
+and recorded D38-D42 in DISCOVERY.md. D39, D40 and D41 reopened D35, D36, D18
+and D10; a grill the same day settled every collision as D43-D50. This revision
+applies D38-D50. Nothing is open; the spec awaits acceptance under D27.
+
 ## Problem Statement
 
-Developers running long, multi-stage plans with AI agents lose track of which
-skill or action to invoke next, especially once work departs from the expected
-sequence (a blocked ticket, a failed check, a disputed review finding, an
-interrupted session). They also lack a way to keep judgment calls bounded,
-delegate stage work safely, and carry lessons from one work session into the
-next without re-explaining the project every time.
+LLMs are built to please humans and produce human-facing content. They are not
+built to make precise, repeatable decisions at scale: which model is the most
+efficient for this stage, what to do next, whether an output meets its stated
+criteria, whether this is the moment to interrupt the human, what kind of
+content this is, whether this session solved something worth remembering.
+An agent harness that leaves all of those calls to the LLM is inconsistent
+run to run, over-asks the human, and cannot be tuned from its own record.
+
+Developers running long, multi-stage plans with AI agents feel this most when
+work departs from the expected sequence (a blocked ticket, a failed check, a
+disputed review finding, an interrupted session): they lose track of what to
+invoke next, get interrupted for approvals that a bounded rule could have
+made, and re-explain the project every session because lessons are not kept.
 
 ## Solution
 
-Ship jflow: a single, JSON-defined workflow package that a user's own primary
-conversational agent (host- and model-agnostic) loads to run one custom
-development workflow end-to-end in one conversation. jflow supplies: a fixed
-set of workflow actions (brainstorm, plan, implement, troubleshoot, review,
-wrap, plus status/next/todo/learn available throughout); a bounded-judgment
-assistant ("Jev") that recommends next actions, evaluates proposed agent
-assignments, and assesses candidate project lessons without granting
-authorization itself; mandatory independent review; project-file-based
-authoritative records for plans, tickets, progress, and lessons so any fresh
-conversation can reconcile and resume; and local Git commits after a ticket
-passes review. The first release targets GPT Desktop as host, ships one
-workflow package (no alternates), and defers tracker integration, arbitrary
-workflow customization, and concurrent ticket implementation.
+Ship jflow: an AI-agent harness built from the combination of an LLM and Jev
+(TypeSafe Server One), packaged as a single, JSON-defined workflow that a
+user's own primary conversational agent (host- and model-agnostic) loads to
+run one custom development workflow end-to-end in one conversation. The LLM
+converses, investigates, writes and coordinates; Jev makes the bounded,
+repeatable decisions the workflow declares (D37, D38). Without Jev this would
+be another LLM workflow; the combination is the product.
+
+jflow supplies: a fixed set of workflow actions (brainstorm, plan, implement,
+troubleshoot, review, wrap, realign, plus status/next/todo/learn available
+throughout); seven declared Jev decisions, each with a declared authority (D43):
+`escalate` and `validate` are binding, `next-action`, `assignment`,
+`lesson-retention`, `model-selection` and `classify` are advisory, and none
+grants authorization;
+a bias toward the fewest human approvals the workflow's rules allow (D40);
+mandatory independent review; project-file-based authoritative records for
+plans, tickets, progress, and lessons so any fresh conversation can reconcile
+and resume; two kinds of learning, project lessons applied automatically and
+harness observations that feed replay-gated, human-accepted proposals to
+improve the Jev question and policy files (D39, D46); and local Git commits
+after a ticket passes review. The first release targets GPT Desktop as host,
+ships one workflow package (no alternates), and defers tracker integration,
+arbitrary workflow customization, concurrent ticket implementation, and any
+claim that Jev improves routing (D36).
 
 ## User Stories
 
@@ -95,6 +118,20 @@ workflow customization, and concurrent ticket implementation.
     window, so that redoing a ticket lost to session compaction is cheap
     rather than a large loss. I accept this is a mitigation, not a guarantee
     a ticket won't still blow out mid-run.
+14b. As a developer, I want every ticket to carry acceptance criteria whose
+    outcome can be validated by Jev from recorded verification evidence, and
+    I want `plan` to refuse to emit a ticket that has none, so that "done" is
+    a checked claim rather than an implementer's assertion (D41).
+14c. As a developer, I want a `realign` action I can invoke when I change my
+    mind about the plan mid-implementation, so that the spec, tickets and
+    progress records are reconciled with my new direction (affected tickets
+    re-scoped, added, parked or withdrawn; completed work re-checked) and
+    presented for my acceptance before implementation continues, instead of
+    me hand-editing records or restarting the plan (D42).
+14d. As a developer, I want `realign` to be mine to invoke — the agent may
+    recommend it when resume or review finds a consequential discrepancy, but
+    never run it on its own authority — so that agreed scope only changes when
+    I say so.
 15. As a developer, I want a `troubleshoot` action that diagnoses problems
     without itself making code edits, so that diagnosis and remediation stay
     separated and remediation goes through an authorized implement/fix action.
@@ -160,6 +197,12 @@ workflow customization, and concurrent ticket implementation.
     on the same blocking finding before the agent asks me for input with the
     unresolved problem, attempted fixes, and a recommendation, so that repeated
     failed attempts don't loop indefinitely.
+32a. As a developer, I want a failed ticket test to be the normal reason I'm
+    asked for help during implementation — only once the agent has exhausted
+    its fix attempts on it — so that I'm escalated to for problems the LLM
+    genuinely can't solve, not for routine progress (D41). Failed validation
+    criteria and blocking review findings share one per-ticket counter, so
+    "this ticket has had N failed fixes" is the whole story (D48).
 33. As a developer, I want that fix-and-review retry limit to be configurable,
     so that I can tune it for my own risk tolerance.
 34. As a developer, I want a local commit created after a ticket passes checks
@@ -182,14 +225,47 @@ workflow customization, and concurrent ticket implementation.
 39. As a developer, I want Jev to assess candidate project lessons for
     retention and later relevance, so that noisy or irrelevant lessons don't
     accumulate.
+39a. As a developer, I want Jev to validate a ticket's output against its
+    stated acceptance criteria using the recorded verification evidence,
+    answering per criterion met / not-met / insufficient-evidence, so that
+    completion is a bounded, repeatable judgment rather than the
+    implementer's own claim (D41, D47). This judgment is binding: not-met
+    returns the ticket to fix, all-met admits it to review, and
+    insufficient-evidence means run the missing check or escalate. It is the
+    gate into review, never a replacement for it.
+39b. As a developer, I want the workflow to ask me for approval only when
+    Jev's `escalate` decision says so, and otherwise to proceed within the
+    authority I've already given, so that I'm interrupted as little as the
+    rules allow (D40, D44). It is one general question asked at every
+    human-facing boundary, binding, with a conservative first threshold that
+    I accept will over-ask until a recorded corpus supports lowering it
+    (D45). Consequential conflicts (story 42), continuing without Jev
+    (stories 43-44) and the acceptance gates (stories 4, 6) still come to me
+    regardless and never go through Jev.
+39c. As a developer, I want every declared Jev decision to carry a declared
+    authority, binding or advisory, in the workflow package, so that nothing
+    becomes binding by drift and I can see at a glance which answers the
+    workflow acts on and which the agent merely weighs (D43).
+39d. As a developer, I want Jev to recommend a model and effort for each
+    stage worker from the models I configured for that stage and their
+    explicit fallbacks, never from outside that set, so that cost and
+    capability get matched per assignment without jflow ever picking a model
+    I didn't approve (D49, advisory; D20 unchanged).
+39e. As a developer, I want Jev to classify whether a discovered item is todo
+    or in scope, which part of the project a candidate lesson applies to, and
+    whether a drafted acceptance criterion is actually testable, so that the
+    places where the LLM currently sorts things alone get a bounded second
+    opinion (D50, advisory). Review finding disposition is deliberately not
+    classified; the fixed rule in story 29 decides it alone.
 40. As a developer, I want it made clear that Jev's scores never prove
-    correctness or completion, and that exact prerequisite/authorization
+    correctness in the abstract, and that exact prerequisite/authorization
     checks are always performed separately (not by Jev judgment alone), so
     that jflow doesn't silently under-verify important gates.
-41. As a developer, I want the primary agent able to override a
-    Jev-assisted recommendation when it records an evidence-based reason
-    within workflow rules and its existing authority, so that Jev's advice
-    doesn't become an unquestionable gate.
+41. As a developer, I want the primary agent able to override any Jev
+    answer, binding or advisory, when it records an evidence-based reason
+    within workflow rules and its existing authority, so that Jev's answers
+    don't become an unquestionable gate; for a binding answer that recorded
+    reason is the only way past (D6, D43).
 42. As a developer, I want consequential conflicts (requirements, scope,
     workflow rules, permissions) escalated to me rather than resolved
     silently, while ordinary technical disagreements get resolved by
@@ -265,6 +341,15 @@ workflow customization, and concurrent ticket implementation.
     Jev. Question and policy files change only through a proposal that has
     been replayed against recorded envelopes and explicitly accepted by me
     (D35, narrowing D3/D21).
+57a. As a developer, I want jflow to generate proposals that improve the Jev
+    question and policy files from harness observations and project lessons,
+    the same way it helps improve LLM-facing instructions such as AGENTS.md,
+    so that Jev's judgments get better for this repo over time instead of
+    staying as good as the first draft of their questions (D39). Each
+    proposal still needs my explicit acceptance, and before I see it jflow
+    replays the proposed question or threshold against the stored envelopes
+    and reports how many answers would change and in which direction (D46),
+    so that I'm accepting a shown effect rather than a hunch.
 58. As a developer, I want raw traces (Jev traces, detailed evidence) kept
     until I explicitly clean them up, with no automatic deletion, export, or
     upload, so that I control retention and can inspect history later
@@ -286,8 +371,8 @@ workflow customization, and concurrent ticket implementation.
 
 - **Workflow package shape**: One JSON-defined workflow package, shipped as
   the sole workflow in the first release (D8, D24). It declares the action
-  set (brainstorm, plan, implement, troubleshoot, review, wrap; status, next,
-  todo, learn as always-available cross-cutting actions), per-stage required
+  set (brainstorm, plan, implement, troubleshoot, review, wrap, realign;
+  status, next, todo, learn as always-available cross-cutting actions), per-stage required
   roles and delegation limits, and the supported configuration surface
   (stage models, explicit model fallbacks, delegation/retry limits,
   evidence-sharing limits). Arbitrary stage addition and method replacement
@@ -300,15 +385,21 @@ workflow customization, and concurrent ticket implementation.
   decision to its thresholds and weights. Question content lives in separate
   files under `workflow/questions/`, and policy thresholds live in their own
   file separate from the question files, so changing a threshold is a
-  one-line diff. Every policy entry must declare a `basis` field recording
-  where its numbers came from; the first threshold ships as an uncalibrated
-  placeholder pointing at D36, set conservatively so it routes to the human
-  readily, because DISCOVERY.md records that no useful confidence threshold
-  has been established. No test may assert a threshold's value. Tests assert
-  only that routing behaves correctly above and below it. The package schema
-  owns whether a question file is well-formed, versioned and resolvable; the
-  content of the first question is proposed for explicit human acceptance
-  under the same gate D35 imposes on later changes.
+  one-line diff. **Every `decisions` entry also declares its `authority`,
+  `binding` or `advisory` (D43)**, with the same `basis` requirement as
+  thresholds; authority changes only through the D39/D46 proposal gate.
+  Every policy entry must declare a `basis` field recording
+  where its numbers came from; the `escalate` threshold ships as an
+  uncalibrated placeholder, set conservatively so it routes to the human
+  readily (D45), because DISCOVERY.md records that no useful confidence
+  threshold has been established. No test may assert a threshold's value.
+  Tests assert only that routing behaves correctly above and below it. The
+  package schema owns whether a question file is well-formed, versioned and
+  resolvable; the content of each question file is proposed for explicit
+  human acceptance under the same gate D35 imposes on later changes. Seven
+  decisions are declared in the first release: `next-action`, `assignment`,
+  `lesson-retention`, `model-selection`, `classify` (advisory) and
+  `escalate`, `validate` (binding); see the Jev integration boundary.
 - **Primary agent contract**: jflow does not assume or require a specific
   host or primary-agent model (D11). It targets GPT Desktop as the first
   verified host (D13); exact invocation syntax, host capabilities, and
@@ -326,30 +417,67 @@ workflow customization, and concurrent ticket implementation.
   jflow asks the human how to configure it rather than proceeding without Jev
   or silently falling back; this is distinct from the temporary-failure
   retry/fallback handling below, which assumes a key is already configured.
-- **Jev integration boundary**: Jev provides three judgment types only —
-  next-action/skill recommendation, agent-assignment relevance/overlap
-  assessment, and lesson retention/relevance assessment (D18). Jev output is
-  advisory; exact prerequisite and authorization checks are performed
-  independently of Jev (per RELEASE-SCOPE and D6/D18). Overrides of a
-  Jev-assisted recommendation must be recorded with an evidence-based reason
-  and stay within existing workflow rules and authority (D6). Evidence sent
+- **Jev integration boundary**: The first release declares six Jev
+  decisions, each with a declared authority (D43):
+  - `next-action` (advisory, D18): next eligible action and supporting
+    skills.
+  - `assignment` (advisory, D18): relevance and overlap of proposed agent
+    assignments. Not counted in the grill's "six" (D49); it was never
+    removed and stays as D18 accepted it, so seven decisions are declared.
+  - `lesson-retention` (advisory, D18): retention and later relevance of a
+    candidate project lesson.
+  - `escalate` (**binding**, D44): one general question at every
+    human-facing boundary (next ticket under whole-plan authorization, a
+    failed fix attempt, a disputed finding, a conflicting lesson, a resume
+    discrepancy): must the human be consulted before proceeding? Answer
+    `proceed` or `escalate` with a closed reason code and confidence; the
+    packet carries the boundary kind so it can be split per boundary later
+    by D46 replay. First threshold conservative (D45).
+  - `validate` (**binding**, D47): per criterion `met` / `not-met` /
+    `insufficient-evidence` over the ticket's accepted acceptance criteria
+    and the recorded verification evidence (test results, check outputs,
+    the implementer's claim). Not the diff, not the repository. It judges
+    whether evidence satisfies stated criteria, not code quality or omitted
+    requirements. `not-met` returns the ticket to fix; all `met` admits it
+    to review; `insufficient-evidence` runs the missing check or, if none
+    exists, asks `escalate`. Validation is the gate into review, never a
+    replacement for it (D9, D32).
+  - `model-selection` (advisory, D49): a model and effort for a stage
+    worker, chosen only from the stage's configured models and explicit
+    fallbacks (D19, D20). D20 is unchanged: no silent substitution, the
+    actual model is recorded.
+  - `classify` (advisory, D50): a class for a piece of workflow content,
+    with the content kind in the packet: discovered-item routing (todo vs
+    in-scope, D26), lesson scope (feeding D21), and ticket testability (run
+    inside `plan`; an untestable criterion is rewritten before D28
+    acceptance). Review finding disposition is not classified; D33's rule
+    stands alone.
+
+  Hard rules never reach Jev and always ask the human: D7 consequential
+  conflicts, D16/D17 continuing without Jev, and the D27/D28 acceptance
+  gates. Jev never grants authorization; exact prerequisite and authorization
+  checks are performed independently of Jev (D6/D18). Binding means the
+  workflow acts on the answer directly; advisory means the primary agent
+  weighs it. Either way, the primary agent may choose a different permitted
+  action only by recording an evidence-based reason in the decision envelope,
+  within existing workflow rules and authority (D6). Evidence sent
   to Jev is a bounded, decision-specific packet (task summary, candidates,
   selected excerpts) honoring project sharing limits; credentials and full
   conversation/repository content are excluded by default (D22). Jev
   request/response traces are stored locally, outside version control;
-  project records keep summaries plus trace references only (D23). **Jev
-  stays advisory for the whole first release (D36)**: a proposal to make
-  review finding disposition a binding Jev answer was rejected, because it
-  collided with D18's three permitted judgments, with D6's always-available
-  override, and with the exclusion of Jev completion and correctness scoring.
-  Disposition stays the deterministic rule in D33. The release makes no claim
-  that Jev improves routing. It demonstrates only that decisions are bounded,
-  recorded in full, and reconstructable from their own records, meaning the
-  stored packet, question and policy versions, answer and reason code
-  together rebuild the exact request without chat history or a live Jev call.
-  Next-action and skill recommendation is the first worked example of the
-  decisions and policy surface (D37), with a threshold routing low-confidence
-  answers to the human.
+  project records keep summaries plus trace references only (D23).
+
+  **Authority versus improvement (D36, D43)**: D36's "advisory throughout"
+  wording is superseded by the per-decision authority field; its other
+  content stands. A proposal to make review finding disposition a Jev
+  judgment was rejected on 2026-09-19 and stays rejected (D50). The release
+  makes no claim that Jev improves routing; a binding decision is not
+  evidence that it is a good one. It demonstrates only that decisions are
+  bounded, recorded in full, and reconstructable from their own records,
+  meaning the stored packet, question and policy versions, answer and reason
+  code together rebuild the exact request without chat history or a live Jev
+  call. Whether Jev earns its place is a release-2 question answered by
+  replaying the corpus this release builds.
 - **Jev failure handling**: Temporary Jev failures are retried a limited,
   configurable number of times; exhausting retries requires human approval
   before continuing without Jev, scoped to the current ticket/stage unless
@@ -381,6 +509,25 @@ workflow customization, and concurrent ticket implementation.
   (see Testing Decisions/resume behavior); a ticket only writes its
   completion/commit state once it passes checks and review. A ticket lost to
   compaction before that point is redone, not resumed from a partial state.
+- **Testable tickets (D41, D47, D48)**: every ticket carries acceptance
+  criteria whose outcome Jev can validate from recorded verification
+  evidence; `plan` does not emit a ticket without them, and runs `classify`
+  on each drafted criterion for testability before presenting the breakdown
+  (D50). During `implement`, a failed test is the normal escalation path:
+  the agent attempts fixes, and asks the human (via `escalate`) only when it
+  cannot solve the failure within the retry limit. One counter per ticket
+  covers every unsuccessful fix attempt, whether a `not-met` validation
+  criterion or a blocking review finding triggered it (D48, widening D10);
+  the default is 2 and it is configurable.
+- **Realign (D42)**: a human-invoked action for changing the plan while
+  implementation is in flight. It reconciles the accepted specification, the
+  ticket breakdown and progress records with the human's new direction
+  (affected tickets re-scoped, added, parked or withdrawn; completed work
+  re-checked against the changed requirements) and presents the result for
+  acceptance under D27/D28 before implementation continues. It implements
+  nothing. The primary agent may recommend it, for example when D15 resume
+  or a review finds a consequential discrepancy, but may not run it on its
+  own authority.
 - **Review gate**: Every ticket gets an independent review from a reviewer
   agent distinct from the implementer, using a fresh reviewer context
   (requirements, standards, changes, verification evidence); the reviewer's
@@ -392,10 +539,12 @@ workflow customization, and concurrent ticket implementation.
   review (D9). Finding disposition: confirmed requirement/correctness/
   mandatory-standard violations block completion; optional improvements
   become todo items; disputed findings need evidence-backed resolution or
-  human escalation for consequential disputes (D33). Retry limit on the same
-  blocking finding: two unsuccessful fix-and-re-review attempts, then ask the
-  human with the unresolved problem, attempted fixes, and a recommendation;
-  this limit is configurable and independent of the Jev retry count (D10).
+  human escalation for consequential disputes (D33). Retry limit: two
+  unsuccessful fix attempts on the ticket, counting validation misses and
+  blocking findings together (D10, D48), then ask the human with the
+  unresolved problem, attempted fixes, and a recommendation; this limit is
+  configurable and independent of the Jev retry count. A ticket reaches
+  review only after `validate` reports every criterion met (D47).
 - **Commits**: After a ticket passes checks and independent review, jflow
   creates a local commit containing only that ticket's changes and relevant
   project records; enabled by default, configurable off. Pushing, publishing,
@@ -434,7 +583,21 @@ workflow customization, and concurrent ticket implementation.
   human. This depends on the closed reason-code requirement: a view over
   unlabelled records is worthless, so if reason codes are cut, D35 is
   revisited rather than shipped hollow. A `memory/<slug>/` layout is proposed
-  but not implemented in this release. **(Proposed default — confirm)**: re-check a retained
+  but not implemented in this release. **Changed by D39 (2026-09-20)**:
+  generating question/policy improvement proposals from harness observations
+  and project lessons is a first-release capability, not only a gate; Jev's
+  output is only as good as its questions, so the questions should improve
+  from learnings for this repo, alongside LLM-facing instructions such as
+  AGENTS.md. Human acceptance is still required for every proposal, and
+  **minimal replay ships in release 1 to gate it (D46, changing D36's
+  deferral)**: the proposed question or threshold is re-run against the
+  stored envelopes for that decision and the report shows how many answers
+  would change and in which direction, per boundary kind and reason code.
+  Load envelopes, call Jev, diff answers; nothing more. It gates a change and
+  does not evaluate Jev. The first expected proposals are lowering the
+  `escalate` threshold (D45) and splitting `escalate` or `classify` by kind
+  (D44, D50).
+  **(Proposed default — confirm)**: re-check a retained
   lesson's applicability before use each time; mark contradicted lessons
   superseded with evidence rather than silently overwriting an accepted human
   decision. **(Proposed default — confirm)**: keep raw traces until explicit
@@ -450,7 +613,8 @@ workflow customization, and concurrent ticket implementation.
   D28), implement (D29/D30 above), troubleshoot (diagnosis only, no edits),
   review (D9/D31-D33 above), wrap (reconcile outcomes/todos/lessons, leave a
   resume record; never auto-push/merge/publish/destructively clean, D34-
-  equivalent user story from RELEASE-SCOPE). status/next/todo/learn are
+  equivalent user story from RELEASE-SCOPE), realign (human-invoked in-flight
+  plan change, D42 above). status/next/todo/learn are
   available at any workflow point (D25). todo records future work without
   auto-adding it to the active plan; promotion requires an explicit decision
   (D26).
@@ -494,6 +658,31 @@ workflow customization, and concurrent ticket implementation.
      todo, not auto-scheduled.
   8. Guardrails: invalid configuration, excluded evidence, or missing review
      evidence must not silently pass; raw traces stay out of version control.
+  9. Approval minimisation (D40, D44, D45): a `proceed` answer within
+     existing authority produces no human ask; `escalate` does; a hard rule
+     (D7 conflict, D16 fallback, D27/D28 gate) asks without consulting Jev.
+     Tests assert routing above and below the threshold, never the
+     threshold's value (D37).
+  10. Testable tickets and validation (D41, D47, D48): `plan` rejects a
+      ticket without acceptance criteria; `validate` receives criteria plus
+      recorded evidence and its `not-met` returns the ticket to fix, all-met
+      admits it to review, `insufficient-evidence` runs the missing check;
+      the per-ticket counter escalates at the limit regardless of which gate
+      caught the failure.
+  11. Realign (D42): a mid-implementation plan change re-scopes affected
+      tickets, re-checks completed work, and re-enters the D27/D28 acceptance
+      gate without losing progress records; the agent never runs it unasked.
+  12. Question-file proposals and replay (D39, D46): a harness observation
+      pattern yields a proposal with linked evidence and a replay report
+      built from stored envelopes only (no chat history, no new live
+      decisions); nothing changes until the human accepts.
+  13. Authority (D43): a binding answer is acted on directly and a recorded
+      evidence-based reason is the only way past it; an advisory answer is
+      recorded and may be set aside with a reason; an undeclared authority
+      fails package validation.
+  14. Model selection and classification (D49, D50): a recommended model
+      outside the configured set is rejected by the workflow, not just
+      ignored; `classify` never receives a review finding.
 - Prior art: none in this repository yet (no implementation exists). The
   installed AI Hero `implement` skill already expects TDD where possible plus
   review-then-commit; the installed `code-review` skill expects a fixed Git
@@ -517,17 +706,24 @@ workflow customization, and concurrent ticket implementation.
   tickets to an external tracker (D14; RELEASE-SCOPE "Specification and
   validation work still needed").
 - Concurrent implementation of separate (non-dependent) tickets (D29).
-- Automatic Jev model/effort selection and Jev completion/correctness scoring
-  (D18).
+- Abstract correctness scoring by Jev, and Jev classification of review
+  finding disposition (D18, D50). Ticket-output validation against stated
+  criteria, model selection from the configured set, and the three D50
+  content kinds are in scope (D47, D49, D50); anything beyond the six
+  declared decisions is not.
+- Binding authority for any decision other than `escalate` and `validate`
+  (D43). Changing a decision's authority goes through the D39/D46 gate.
 - Workflow logic changes driven by compound learning. Narrowed by D35: project
   lessons still never change workflow logic, and harness observations are
   recorded but applied never. Question and policy files change only through a
-  human-accepted proposal replayed against recorded envelopes (D3, D21, D35).
-- Replay and tuning machinery, and any claim that Jev improves routing. The
-  first release demonstrates only that decisions are bounded, recorded in
-  full, and reconstructable from their own records. Whether Jev earns its
-  place is a release-2 question, answered by replaying recorded envelopes
-  (D36).
+  human-accepted, replay-gated proposal (D3, D21, D35, D46); generating such
+  proposals is in scope under D39, applying them without acceptance is not.
+- Tuning machinery beyond minimal replay, and any claim that Jev improves
+  routing. Minimal replay (load envelopes, call Jev, diff answers) is in
+  scope to gate proposals (D46); scoring, optimisation and evaluation of Jev
+  are not. The first release demonstrates only that decisions are bounded,
+  recorded in full, and reconstructable from their own records. Whether Jev
+  earns its place is a release-2 question (D36).
 - Automatic switching of the main conversational model between stages (D19).
 - License, GitHub ownership, and public distribution/packaging decisions
   (deferred until before public publication; not required for this draft

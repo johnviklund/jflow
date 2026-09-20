@@ -1,20 +1,30 @@
 # jflow first release: discovery handoff
 
-Date: 2026-09-18
-Status: accepted decisions consolidated; proposed defaults await confirmation.
+Date: 2026-09-18, updated 2026-09-20
+Status: accepted decisions consolidated; D38-D50 applied; nothing open. The
+specification awaits acceptance under D27.
 
 Read this first when resuming. DISCOVERY.md contains the detailed decision record
-D1-D34 and research sources. CONTEXT.md contains vocabulary. PROJECT-BRIEF.md
+D1-D50 and research sources. CONTEXT.md contains vocabulary. PROJECT-BRIEF.md
 preserves the initial direction; later accepted discovery decisions supersede its
 original release proposals. No implementation has started.
 
 ## Problem and release promise
 
-Developers carrying out long plans struggle to know which skills to invoke next,
-especially when work departs from the expected sequence. jflow lets the user stay
-in one conversation while their primary agent coordinates a packaged workflow,
-uses Jev for bounded judgments, delegates stage work, preserves project learning,
-and keeps recoverable project records.
+Updated 2026-09-20 per D38. jflow is an AI-agent harness built from the
+combination of an LLM and Jev (TypeSafe Server One). LLMs are built to please
+humans and produce human-facing content, not to make precise, repeatable
+decisions at scale; Jev is built for those. Without Jev this is another LLM
+workflow; the combination is the product. Knowing which skill to invoke next,
+especially when work departs from the expected sequence, is one important use
+case within that, not the whole value.
+
+jflow lets the user stay in one conversation while their primary agent
+coordinates a packaged workflow, uses Jev for the bounded, repeatable decisions
+the workflow declares, asks the human only when the rules or Jev's escalation
+signal require it, delegates stage work, preserves project learning, improves
+its own Jev questions through human-accepted proposals, and keeps recoverable
+project records.
 
 Ship one package containing the user's custom development workflow. Other
 workflows are a future enhancement. GPT Desktop is the first intended host;
@@ -24,12 +34,23 @@ not a verified availability list or exclusive support requirement.
 
 ## Accepted release scope
 
-- Actions: brainstorm, plan, implement, troubleshoot, review, and wrap. Status,
-  next, todo, and learn are available throughout. Support conversational requests
-  and explicit action selection. Exact host invocation syntax must be verified.
+- Actions: brainstorm, plan, implement, troubleshoot, review, wrap, and realign
+  (D42). Status, next, todo, and learn are available throughout. Support
+  conversational requests and explicit action selection. Exact host invocation
+  syntax must be verified.
 - Brainstorm produces a specification for human acceptance. Plan produces tickets
   for human acceptance. Acceptance and execution authorization are distinct;
   one instruction can provide both. Honor existing explicit authorization.
+- Every ticket carries acceptance criteria whose outcome Jev can validate from
+  recorded verification evidence; plan does not emit a ticket without them (D41).
+- Realign is human-invoked: when the human changes the plan mid-implementation,
+  it reconciles spec, tickets and progress with the new direction and re-enters
+  the acceptance gate. The agent may recommend it, never run it unasked (D42).
+- Minimise human approvals. Ask the human when Jev's binding `escalate` decision
+  says so, or when a hard rule applies (consequential conflict, continuing
+  without Jev, an acceptance gate); otherwise proceed within existing authority
+  (D40, D43, D44). The first threshold is conservative and lowered only by a
+  replayed proposal (D45, D46).
 - The primary conversational model remains unchanged between stages. Stage
   workers use configurable models. Workflow rules specify required roles and
   delegation limits; the primary agent chooses optional assignments within them.
@@ -45,6 +66,8 @@ not a verified availability list or exclusive support requirement.
   evidence or escalate consequential conflicts to the human.
 - After two unsuccessful fix-and-review attempts on the same blocking finding,
   ask the human with evidence and a recommendation. This default is configurable.
+  A failed validation criterion counts on the same per-ticket counter as a
+  blocking finding, so the limit is per ticket, not per gate (D41, D48).
 - Create a local commit after a ticket passes checks and review, enabled by
   default and configurable. Include only its changes and relevant project records.
   Pushing, publishing, and merging need separate authorization.
@@ -56,7 +79,12 @@ not a verified availability list or exclusive support requirement.
   observations (low-confidence answers, overrides, repeated escalations) are
   also recorded automatically, as a derived view over existing trace records,
   and are applied never. Question and policy files change only through a
-  human-accepted proposal replayed against recorded envelopes.
+  human-accepted proposal. Generating those proposals from harness observations
+  and project lessons is a first-release capability (D39): Jev's output is only
+  as good as its questions, so the questions should improve for this repo, like
+  AGENTS.md does. Minimal replay (re-run the proposal against stored envelopes,
+  report which answers would change) ships in release 1 and gates every
+  proposal before the human sees it (D46).
 - Keep authoritative plans, tickets, progress, and lessons in project files.
   On resume, reconcile them with actual work and relevant verification evidence.
   Preserve partial work and run missing checks rather than restarting by default.
@@ -66,15 +94,25 @@ not a verified availability list or exclusive support requirement.
 
 ## Jev's accepted role and boundaries
 
-Jev recommends eligible actions and supporting skills, assesses proposed agent
-assignments for relevance and overlap, and assesses lessons for retention and
-later relevance. Exact prerequisites and authorization are checked separately.
-Jev scores do not prove correctness or completion.
+The first release declares seven Jev decisions, each with a declared authority
+in the workflow package (D43): `next-action` (advisory), `assignment`
+(advisory, D18), `lesson-retention` (advisory), `escalate` (binding, D44), `validate` (binding, D47),
+`model-selection` (advisory, from the configured set only, D49) and `classify`
+(advisory: discovered-item routing, lesson scope, ticket testability; never
+review finding disposition, D50). Exact prerequisites and authorization are
+checked separately. Jev never grants authorization and its scores do not prove
+correctness in the abstract.
 
-The primary agent may override a Jev-assisted recommendation with a recorded,
-evidence-based reason within the workflow and existing authority. Ask the human
-about consequential conflicts involving requirements, scope, workflow rules, or
-permissions, and consequential choices that evidence cannot settle.
+Binding means the workflow acts on the answer; advisory means the primary agent
+weighs it. In both cases the primary agent may choose a different permitted
+action only with a recorded, evidence-based reason within the workflow and
+existing authority (D6). Hard rules never reach Jev and always ask: consequential
+conflicts involving requirements, scope, workflow rules, or permissions (D7),
+continuing without Jev (D16/D17), and the acceptance gates (D27/D28).
+
+Every threshold and every authority carries a declared basis (D37). The
+`escalate` threshold ships conservative (D45); `validate` is the gate into
+review, never a replacement for it (D47).
 
 After limited retries for temporary Jev failures, ask before continuing without
 Jev. Human fallback approval covers the current ticket or stage unless explicitly
@@ -95,23 +133,35 @@ versioned inputs, failure recording, and appended outcome requirements.
 
 Other workflow packages; general workflow editing and method replacement;
 GitHub/Linear integration; concurrent implementation of separate tickets;
-automatic Jev model/effort selection; Jev completion scoring; workflow changes
-through learning; automatic main-conversation model switching.
+abstract correctness scoring and review-disposition classification by Jev
+(validation against stated criteria, model selection from the configured set,
+and the three D50 content kinds are in scope); binding authority for any
+decision beyond `escalate` and `validate`; tuning or evaluation machinery
+beyond minimal replay; workflow changes through learning; automatic
+main-conversation model switching.
 
 Also deferred, and deliberately left visible rather than closed quietly (D36):
-**whether Jev improves routing at all.** Jev stays advisory for the whole first
-release, which therefore makes no routing-improvement claim. What the release
-demonstrates is that decisions are bounded, recorded in full, and
-reconstructable from their own records. Whether Jev earns its place is a
-release-2 question, answered by replaying recorded envelopes against the corpus
-the first release builds. Replay and tuning machinery are themselves deferred.
-No first-release demonstration may be presented as evidence that Jev routes
-better than the stated rules or ordinary primary-agent judgment.
+**whether Jev improves routing at all.** The first release makes no
+routing-improvement claim. What it demonstrates is that decisions are bounded,
+recorded in full, and reconstructable from their own records. Whether Jev earns
+its place is a release-2 question, answered by replaying recorded envelopes
+against the corpus the first release builds. Replay and tuning machinery are
+themselves deferred. No first-release demonstration may be presented as
+evidence that Jev routes better than the stated rules or ordinary primary-agent
+judgment. D43 (2026-09-20) supersedes D36's "advisory throughout" wording with
+a per-decision authority field; D36's improvement stance is untouched, because
+a binding decision is not evidence that it is a good one.
 
-Compound learning is narrowed rather than simply deferred (D35): project
-lessons still never change workflow logic, harness observations are recorded
-but applied never, and question and policy files change only through a
-human-accepted proposal replayed against recorded envelopes.
+Compound learning is narrowed rather than simply deferred (D35, D39, D46):
+project lessons still never change workflow logic, harness observations are
+recorded but applied never, and question and policy files change only through a
+human-accepted proposal gated by minimal replay. Generating those proposals and
+replaying them are in scope; evaluating Jev with them is not.
+
+## Grill of 2026-09-20
+
+D38-D42 reopened four 2026-09-19 decisions; D43-D50 settled all of them the
+same day. See DISCOVERY.md. Nothing is open.
 
 ## Proposed defaults, not yet accepted
 
@@ -170,6 +220,21 @@ Proposed release demonstrations and tests:
    workflow logic; an unrelated discovery remains a todo item.
 8. Invalid configuration, excluded evidence, and missing review evidence cannot
    silently pass. Raw traces remain outside version control.
+9. A `proceed` answer within authority asks nothing; `escalate` asks; a hard
+   rule asks without consulting Jev (D40, D44).
+10. Plan rejects a ticket without acceptance criteria; `validate` returns a
+    not-met ticket to fix and admits an all-met ticket to review; the per-ticket
+    counter escalates at the limit whichever gate caught the failure (D41, D47,
+    D48).
+11. A mid-implementation realign re-scopes affected tickets, re-checks completed
+    work, and re-enters acceptance without losing records (D42).
+12. A harness-observation pattern yields a question-file proposal with linked
+    evidence and a replay report from stored envelopes; nothing changes until
+    the human accepts (D39, D46).
+13. A binding answer is acted on directly and only a recorded reason gets past
+    it; an undeclared authority fails validation (D43).
+14. A model recommendation outside the configured set is rejected; `classify`
+    never receives a review finding (D49, D50).
 
 Measure Jev-assisted choices against rules and ordinary primary-agent judgment
 before making improvement claims. Do not claim universal host/model support,
