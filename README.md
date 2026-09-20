@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice only (TICKETS.md T1–T5):
+Foundation slice only (issues #1 and #2; TICKETS.md T1–T5 decompose them):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package: the
   action set, per-action roles, delegation limits, Git and code-edit rules,
@@ -17,9 +17,16 @@ Foundation slice only (TICKETS.md T1–T5):
 - `src/config/` — configuration validation, defaults, and Jev API key
   resolution.
 - `src/actions/` — workflow-action-contract resolution: workflow state in,
-  eligible/blocked decision out.
+  eligible/blocked decision out. `status` is the first action that runs end
+  to end, reading the state from project files.
+- `src/project/` — walking-skeleton persistence of the workflow state in
+  `jflow/state.json` (Git presence is observed from `.git`, never recorded).
+  The full record store (plans, tickets, progress, lessons) is issue #3.
+- `src/testing/` — the project-directory test harness: set up a directory in
+  a known workflow state, run an action, assert the resulting files and the
+  human-ask events raised. Test scaffolding, not library API.
 
-The workflow actions themselves, the Jev client, project-record persistence,
+The other workflow actions, the Jev client, the full project-record store,
 Git/commit behaviour, and compound learning are not implemented yet.
 
 ## Invariants enforced in code

@@ -1,6 +1,8 @@
 /**
  * jflow foundation: the shipped workflow package, its validation, the
- * configuration surface, and the workflow-action-contract resolver.
+ * configuration surface, the workflow-action-contract resolver, the `status`
+ * action and the walking-skeleton project state it reads. The test harness in
+ * `src/testing/` is scaffolding and is deliberately not exported here.
  */
 
 export {
@@ -46,3 +48,13 @@ export {
   type UnmetPrerequisite,
   type WorkflowState,
 } from "./actions/resolve.js";
+
+export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
+
+export {
+  PROJECT_RECORD_DIRECTORY,
+  PROJECT_STATE_FILE,
+  projectStatePath,
+  readProjectState,
+  type ProjectStateResult,
+} from "./project/state.js";
