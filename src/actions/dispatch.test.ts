@@ -21,7 +21,7 @@ describe("dispatch", () => {
     const named = h.runAction("plan");
     const spoken = h.request("break the spec into tickets");
 
-    expect(named.kind).toBe("not-implemented");
+    expect(named.kind).toBe("ready");
     expect(spoken).toEqual(named);
   });
 

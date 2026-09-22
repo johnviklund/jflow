@@ -64,7 +64,7 @@ describe("jflow helper CLI", () => {
 
     expect(named.code).toBe(EXIT_OK);
     expect(named.json()["outcome"]).toEqual(spoken.json()["outcome"]);
-    expect((named.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("not-implemented");
+    expect((named.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("ready");
   });
 
   it("returns the clarifying question and a needs-human exit for an ambiguous request", () => {
@@ -137,5 +137,47 @@ describe("jflow helper CLI", () => {
     const unknown = run(["status", "--verbose", "yes"], h.root);
     expect(unknown.code).toBe(EXIT_NEEDS_HUMAN);
     expect(unknown.stderr).toContain("--verbose");
+  });
+
+  it("takes a specification from draft to acceptance, after which plan is ready", () => {
+    const h = harness();
+    writeFileSync(
+      join(h.root, "draft.json"),
+      JSON.stringify({
+        title: "CSV export",
+        problem: "Users cannot get their data out.",
+        scenarios: ["A user exports the current list"],
+        acceptanceCriteria: ["The file opens in a spreadsheet"],
+        constraints: [],
+        exclusions: ["Scheduled exports"],
+        decisions: [{ id: "D1", statement: "UTF-8 with BOM" }],
+      }),
+    );
+
+    const written = run(["specification", "write", "draft.json"], h.root);
+    const planBefore = run(["run", "plan"], h.root);
+    const tooEarly = run(["specification", "accept"], h.root);
+    const noBasis = run(["specification", "confirm", "D1"], h.root);
+    const confirmed = run(["specification", "confirm", "D1", "--basis", "developer said yes"], h.root);
+    const accepted = run(["specification", "accept", "--note", "yes, exactly that"], h.root);
+    const planAfter = run(["run", "plan"], h.root);
+
+    expect(written.code).toBe(EXIT_OK);
+    expect((planBefore.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("blocked");
+    expect(tooEarly.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(tooEarly.json()["reason"]).toContain("D1");
+    expect(noBasis.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(confirmed.code).toBe(EXIT_OK);
+    expect(accepted.code).toBe(EXIT_OK);
+    expect((accepted.json()["record"] as Record<string, unknown>)["acceptanceNote"]).toBe("yes, exactly that");
+    expect((planAfter.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("ready");
+  });
+
+  it("reports a missing draft file as unreadable and a bad subcommand as needing the developer", () => {
+    const h = harness();
+
+    expect(run(["specification", "write", "none.json"], h.root).code).toBe(EXIT_UNREADABLE);
+    expect(run(["specification", "frobnicate"], h.root).code).toBe(EXIT_NEEDS_HUMAN);
+    expect(run(["specification", "confirm"], h.root).code).toBe(EXIT_NEEDS_HUMAN);
   });
 });

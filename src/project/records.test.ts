@@ -15,6 +15,7 @@ import {
   type ProgressRecord,
   type ProjectRecords,
   type ResumeRecord,
+  type SpecificationRecord,
   type TicketsRecord,
 } from "./records.js";
 
@@ -32,6 +33,22 @@ afterEach(() => {
 
 /** One fully populated example of every record kind, for round-trip checks. */
 const examples: ProjectRecords = {
+  specification: {
+    title: "Export to CSV",
+    problem: "Users cannot get their data out.",
+    scenarios: ["A user exports a filtered list", "An empty list exports a header only"],
+    acceptanceCriteria: ["The file opens in a spreadsheet", "Filters apply to the export"],
+    constraints: ["No new runtime dependency"],
+    exclusions: ["Scheduled exports"],
+    decisions: [
+      { id: "D1", statement: "UTF-8 with BOM", status: "confirmed", basis: "Excel default" },
+      { id: "D2", statement: "Semicolon separator in sv-SE", status: "rejected" },
+    ],
+    status: "accepted",
+    writtenAt: "2026-09-22T09:00:00Z",
+    acceptedAt: "2026-09-22T10:00:00Z",
+    acceptanceNote: "yes, that is what I want",
+  },
   plan: {
     title: "Foundation slice",
     summary: "Workflow package, records and the action seam.",
@@ -58,7 +75,6 @@ const examples: ProjectRecords = {
     ],
   },
   progress: {
-    specificationAccepted: true,
     planAccepted: true,
     executionAuthorized: true,
     authorizationScope: "ticket",
@@ -181,7 +197,6 @@ describe("readRecord", () => {
     );
     expect(() =>
       writeRecord(root, "progress", {
-        specificationAccepted: true,
         planAccepted: true,
         executionAuthorized: true,
         ticketChangesPresent: false,
@@ -247,6 +262,34 @@ describe("readRecord", () => {
       path: "tickets[0].dependsOn[0]",
       message: 'depends on unknown ticket "T9"',
     });
+  });
+
+  it("rejects an accepted specification that still carries a proposal or lacks its acceptance time", () => {
+    const root = makeRoot();
+    const base = examples.specification;
+
+    expect(() =>
+      writeRecord(root, "specification", {
+        ...base,
+        decisions: [{ id: "D9", statement: "maybe", status: "proposed" }],
+      }),
+    ).toThrow(/D9.*still a proposal/);
+    const { acceptedAt: _at, ...withoutTime } = base;
+    expect(() => writeRecord(root, "specification", withoutTime)).toThrow(/acceptedAt/);
+    expect(() =>
+      writeRecord(root, "specification", { ...base, status: "awaiting-acceptance" }),
+    ).toThrow(/acceptedAt/);
+  });
+
+  it("requires a specification to carry scenarios and acceptance criteria", () => {
+    const root = makeRoot();
+
+    expect(() =>
+      writeRecord(root, "specification", { ...examples.specification, scenarios: [] }),
+    ).toThrow(/scenarios/);
+    expect(() =>
+      writeRecord(root, "specification", { ...examples.specification, acceptanceCriteria: [] }),
+    ).toThrow(/acceptanceCriteria/);
   });
 
   it("rejects a superseded lesson that names no successor or evidence", () => {
@@ -406,10 +449,20 @@ describe("record types", () => {
   it("accept the minimal shape of each record", () => {
     const root = makeRoot();
     const minimal: ProjectRecords = {
+      specification: {
+        title: "t",
+        problem: "p",
+        scenarios: ["s"],
+        acceptanceCriteria: ["a"],
+        constraints: [],
+        exclusions: [],
+        decisions: [],
+        status: "awaiting-acceptance",
+        writtenAt: "2026-09-22T09:00:00Z",
+      },
       plan: { title: "t", summary: "s" },
       tickets: { tickets: [] },
       progress: {
-        specificationAccepted: false,
         planAccepted: false,
         executionAuthorized: false,
         ticketChangesPresent: false,
@@ -427,7 +480,16 @@ describe("record types", () => {
       expect(result.record, kind).toEqual(minimal[kind]);
     }
 
-    const _typed: [PlanRecord, TicketsRecord, ProgressRecord, LessonsRecord, JevRecord, ResumeRecord] = [
+    const _typed: [
+      SpecificationRecord,
+      PlanRecord,
+      TicketsRecord,
+      ProgressRecord,
+      LessonsRecord,
+      JevRecord,
+      ResumeRecord,
+    ] = [
+      minimal.specification,
       minimal.plan,
       minimal.tickets,
       minimal.progress,
@@ -435,6 +497,6 @@ describe("record types", () => {
       minimal.jev,
       minimal.resume,
     ];
-    expect(_typed).toHaveLength(6);
+    expect(_typed).toHaveLength(7);
   });
 });

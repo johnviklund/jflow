@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#4; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#5; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -28,7 +28,8 @@ Foundation slice (issues #1–#4; TICKETS.md T1–T5 decompose #1 and #2):
   eligible/blocked decision out. `status` is the first action that runs end
   to end, reading the state from project files.
 - `src/project/` — the authoritative record store (issue #3): one JSON file
-  per record kind under `jflow/` — `plan`, `tickets`, `progress`, `lessons`,
+  per record kind under `jflow/` — `specification` (owns the acceptance
+  gate), `plan`, `tickets`, `progress`, `lessons`,
   `jev` (fallback status: off, awaiting approval with the pending decision
   kept, or approved for a recorded scope) and `resume` — read and written
   through `readRecord`/`writeRecord`. Schemas are closed, so a raw Jev trace
@@ -42,15 +43,22 @@ Foundation slice (issues #1–#4; TICKETS.md T1–T5 decompose #1 and #2):
   used by the package loader, configuration and the record store.
 - `src/actions/request.ts` and `dispatch.ts` — a request (an action name or
   a sentence) resolves to exactly one action or to a clarifying question;
-  dispatch checks its prerequisites against the records and runs it when an
-  executor exists (issue #4).
+  dispatch checks its prerequisites against the records and reports the
+  action `ready` for the skill's method, or runs it when the helper owns it
+  (issue #4).
+- `src/actions/specification.ts` — the helper side of `brainstorm` (issue
+  #5): write a specification as awaiting acceptance, record the developer's
+  decision on each proposal, record explicit acceptance; `plan` stays
+  refused until then, and an accepted specification is never rewritten
+  (that is `realign`).
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
-  `SKILL.md`, `actions/<action>.md` method files (only `status.md` so far),
+  `SKILL.md`, `actions/<action>.md` method files (`status.md` and
+  `brainstorm.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in

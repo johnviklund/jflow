@@ -37,9 +37,55 @@ import type { ValidationIssue } from "../workflow/types.js";
  */
 export const PROJECT_RECORD_DIRECTORY = "jflow";
 
-export const RECORD_KINDS = ["plan", "tickets", "progress", "lessons", "jev", "resume"] as const;
+export const RECORD_KINDS = [
+  "specification",
+  "plan",
+  "tickets",
+  "progress",
+  "lessons",
+  "jev",
+  "resume",
+] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
+
+/** A decision is a proposal until the developer confirms or rejects it in their own words. */
+export const DECISION_STATUSES = ["proposed", "confirmed", "rejected"] as const;
+
+export type DecisionStatus = (typeof DECISION_STATUSES)[number];
+
+/** A decision the specification rests on. */
+export interface SpecificationDecision {
+  readonly id: string;
+  readonly statement: string;
+  readonly status: DecisionStatus;
+  /** Where the decision came from; for a confirmed or rejected one, what the developer said. */
+  readonly basis?: string;
+}
+
+export const SPECIFICATION_STATUSES = ["awaiting-acceptance", "accepted"] as const;
+
+export type SpecificationStatus = (typeof SPECIFICATION_STATUSES)[number];
+
+/**
+ * What `brainstorm` produces and the developer accepts before `plan` may
+ * run (D27). Owns the specification acceptance gate: the resolver's
+ * `specificationAccepted` is derived from `status`, nowhere else.
+ */
+export interface SpecificationRecord {
+  readonly title: string;
+  readonly problem: string;
+  readonly scenarios: readonly string[];
+  readonly acceptanceCriteria: readonly string[];
+  readonly constraints: readonly string[];
+  readonly exclusions: readonly string[];
+  readonly decisions: readonly SpecificationDecision[];
+  readonly status: SpecificationStatus;
+  readonly writtenAt: string;
+  readonly acceptedAt?: string;
+  /** The developer's words of acceptance, recorded as said (D27). */
+  readonly acceptanceNote?: string;
+}
 
 /** The plan's content; whether it has been accepted is progress state, not plan content. */
 export interface PlanRecord {
@@ -87,8 +133,6 @@ export interface ReconciliationDiscrepancy {
  * the action resolver's `WorkflowState` is derived from.
  */
 export interface ProgressRecord {
-  /** The human explicitly accepted the specification (D27). */
-  readonly specificationAccepted: boolean;
   /** The human explicitly accepted the ticket breakdown (D28); never authorization. */
   readonly planAccepted: boolean;
   /** The human authorized execution; distinct from plan acceptance (user stories 7, 8). */
@@ -172,6 +216,7 @@ export interface ResumeRecord {
 }
 
 export interface ProjectRecords {
+  readonly specification: SpecificationRecord;
   readonly plan: PlanRecord;
   readonly tickets: TicketsRecord;
   readonly progress: ProgressRecord;
@@ -226,6 +271,118 @@ function withOptional<T extends object>(
   }
   return result as T;
 }
+
+const validateSpecification: Validator<SpecificationRecord> = (value, issues) => {
+  const doc = requireObject(
+    value,
+    "",
+    [
+      "title",
+      "problem",
+      "scenarios",
+      "acceptanceCriteria",
+      "constraints",
+      "exclusions",
+      "decisions",
+      "status",
+      "writtenAt",
+      "acceptedAt",
+      "acceptanceNote",
+    ],
+    issues,
+  );
+  if (!doc) return undefined;
+
+  const decisions: SpecificationDecision[] = [];
+  const ids = new Set<string>();
+  if (!Array.isArray(doc["decisions"])) {
+    issues.add("decisions", "must be an array of decisions");
+  } else {
+    doc["decisions"].forEach((entry, index) => {
+      const path = `decisions[${index}]`;
+      const decision = requireObject(entry, path, ["id", "statement", "status", "basis"], issues);
+      if (!decision) return;
+      const id = requireNonEmptyString(decision["id"], `${path}.id`, issues);
+      if (ids.has(id)) issues.add(`${path}.id`, `duplicate decision id "${id}"`);
+      ids.add(id);
+      decisions.push(
+        withOptional<SpecificationDecision>(
+          {
+            id,
+            statement: requireNonEmptyString(decision["statement"], `${path}.statement`, issues),
+            status:
+              validateEnumValue<DecisionStatus>(
+                decision["status"],
+                `${path}.status`,
+                DECISION_STATUSES,
+                issues,
+              ) ?? "proposed",
+          },
+          { basis: optionalString(decision["basis"], `${path}.basis`, issues) },
+        ),
+      );
+    });
+  }
+
+  const status = validateEnumValue<SpecificationStatus>(
+    doc["status"],
+    "status",
+    SPECIFICATION_STATUSES,
+    issues,
+  );
+  const acceptedAt = optionalTimestamp(doc["acceptedAt"], "acceptedAt", issues);
+  // Acceptance is a recorded event (D27): an accepted specification says
+  // when, and one still awaiting acceptance cannot carry that record.
+  if (status === "accepted" && acceptedAt === undefined) {
+    issues.add("acceptedAt", "an accepted specification must record when it was accepted");
+  }
+  if (status === "awaiting-acceptance" && acceptedAt !== undefined) {
+    issues.add("acceptedAt", "must be absent while the specification awaits acceptance");
+  }
+  // What was accepted must be settled: a proposal still awaiting the
+  // developer's confirmation cannot be part of an accepted specification.
+  if (status === "accepted") {
+    decisions.forEach((decision, index) => {
+      if (decision.status === "proposed") {
+        issues.add(
+          `decisions[${index}].status`,
+          `decision "${decision.id}" is still a proposal; confirm or reject it before accepting the specification`,
+        );
+      }
+    });
+  }
+
+  const scenarios = validateStringArray(doc["scenarios"], "scenarios", issues);
+  const acceptanceCriteria = validateStringArray(
+    doc["acceptanceCriteria"],
+    "acceptanceCriteria",
+    issues,
+  );
+  if (Array.isArray(doc["scenarios"]) && scenarios.length === 0) {
+    issues.add("scenarios", "a specification must describe at least one scenario");
+  }
+  if (Array.isArray(doc["acceptanceCriteria"]) && acceptanceCriteria.length === 0) {
+    issues.add("acceptanceCriteria", "a specification must state at least one acceptance criterion");
+  }
+
+  return withOptional<SpecificationRecord>(
+    {
+      title: requireNonEmptyString(doc["title"], "title", issues),
+      problem: requireNonEmptyString(doc["problem"], "problem", issues),
+      scenarios,
+      acceptanceCriteria,
+      constraints: validateStringArray(doc["constraints"], "constraints", issues),
+      exclusions: validateStringArray(doc["exclusions"], "exclusions", issues),
+      decisions,
+      status: status ?? "awaiting-acceptance",
+      writtenAt: requireTimestamp(doc["writtenAt"], "writtenAt", issues),
+    },
+    {
+      acceptedAt,
+      acceptanceNote: optionalString(doc["acceptanceNote"], "acceptanceNote", issues),
+    },
+  );
+};
 
 const validatePlan: Validator<PlanRecord> = (value, issues) => {
   const doc = requireObject(value, "", ["title", "summary", "source"], issues);
@@ -312,7 +469,6 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
     value,
     "",
     [
-      "specificationAccepted",
       "planAccepted",
       "executionAuthorized",
       "authorizationScope",
@@ -412,11 +568,6 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
 
   return withOptional<ProgressRecord>(
     {
-      specificationAccepted: requireBoolean(
-        doc["specificationAccepted"],
-        "specificationAccepted",
-        issues,
-      ),
       planAccepted: requireBoolean(doc["planAccepted"], "planAccepted", issues),
       executionAuthorized,
       ticketChangesPresent: requireBoolean(
@@ -596,6 +747,7 @@ const validateResume: Validator<ResumeRecord> = (value, issues) => {
 };
 
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
+  specification: validateSpecification,
   plan: validatePlan,
   tickets: validateTickets,
   progress: validateProgress,

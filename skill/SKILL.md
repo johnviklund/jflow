@@ -24,9 +24,10 @@ records or the workflow package cannot be read; stop and report the problem.
 | Command | Use |
 | --- | --- |
 | `scripts/jflow status` | Where the project stands and which actions could run now. Always safe. |
-| `scripts/jflow run <request…>` | Resolve a request to one action, check its prerequisites, run it if an executor exists. |
+| `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` runs, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
+| `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 
 Pass `--root <dir>` when the project is not the current directory.
 
@@ -41,9 +42,9 @@ Pass `--root <dir>` when the project is not the current directory.
    to exactly one action or returns a question; it never guesses.
 3. Read `outcome.kind`:
    - `completed`: report the result from the method file for that action.
-   - `not-implemented`: the action is eligible; follow `actions/<action>.md`
-     for the method. (Until an action's method file exists, tell the
-     developer the action is eligible but not yet available.)
+   - `ready`: the action is eligible; follow `actions/<action>.md` for
+     the method. (Until an action's method file exists, tell the developer
+     the action is eligible but not yet available.)
    - `clarify`: the request fits more than one action. Ask the developer
      the `question` verbatim. Never pick one for them.
    - `blocked`: refuse, quoting each `unmet` prerequisite's `reason`. Where
@@ -70,8 +71,8 @@ parts only the agent can honour.
 
 ## Layout
 
-- `actions/` — one method file per action. `status.md` exists; the others
-  are filled in by the issue that owns each action.
+- `actions/` — one method file per action. `status.md` and `brainstorm.md`
+  exist; the others are filled in by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
 - `scripts/jflow` — the helper.

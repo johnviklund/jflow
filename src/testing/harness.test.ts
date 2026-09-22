@@ -48,12 +48,12 @@ describe("createProjectHarness", () => {
     }
   });
 
-  it("reports an eligible action without an executor as not implemented, and records no ask", () => {
+  it("reports an eligible action whose method the skill carries as ready, and records no ask", () => {
     const harness = createProjectHarness({ state: { specificationAccepted: true } });
     try {
       const outcome = harness.runAction("plan");
 
-      expect(outcome.kind).toBe("not-implemented");
+      expect(outcome.kind).toBe("ready");
       expect(harness.events).toEqual([]);
     } finally {
       harness.cleanup();

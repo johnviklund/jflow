@@ -64,6 +64,14 @@ export {
 
 export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
 
+export {
+  acceptSpecification,
+  decideSpecification,
+  writeSpecification,
+  type SpecificationDraft,
+  type SpecificationResult,
+} from "./actions/specification.js";
+
 export { resolveRequest, type RequestResolution } from "./actions/request.js";
 
 export {
@@ -84,17 +92,20 @@ export {
 
 export {
   AUTHORIZATION_SCOPES,
+  DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
   LESSON_STATUSES,
   PROJECT_RECORD_DIRECTORY,
   RECORD_KINDS,
   RecordValidationError,
+  SPECIFICATION_STATUSES,
   TICKET_STATUSES,
   readRecord,
   recordPath,
   writeRecord,
   type AuthorizationScope,
+  type DecisionStatus,
   type FallbackScope,
   type FallbackStatus,
   type JevRecord,
@@ -109,13 +120,12 @@ export {
   type RecordKind,
   type RecordReadResult,
   type ResumeRecord,
+  type SpecificationDecision,
+  type SpecificationRecord,
+  type SpecificationStatus,
   type TicketRecord,
   type TicketStatus,
   type TicketsRecord,
 } from "./project/records.js";
 
-export {
-  readProjectState,
-  writeProjectState,
-  type ProjectStateResult,
-} from "./project/state.js";
+export { readProjectState, type ProjectStateResult } from "./project/state.js";

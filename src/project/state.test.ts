@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createWorkflowState } from "../actions/resolve.js";
-import { readRecord, writeRecord } from "./records.js";
-import { readProjectState, writeProjectState } from "./state.js";
+import { writeRecord, type SpecificationRecord } from "./records.js";
+import { readProjectState } from "./state.js";
 
 const roots: string[] = [];
 
@@ -19,6 +19,24 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+const specification: SpecificationRecord = {
+  title: "t",
+  problem: "p",
+  scenarios: ["s"],
+  acceptanceCriteria: ["a"],
+  constraints: [],
+  exclusions: [],
+  decisions: [],
+  status: "awaiting-acceptance",
+  writtenAt: "2026-09-22T09:00:00Z",
+};
+
+const acceptedSpecification: SpecificationRecord = {
+  ...specification,
+  status: "accepted",
+  acceptedAt: "2026-09-22T10:00:00Z",
+};
+
 describe("readProjectState", () => {
   it("reports an empty directory as uninitialized with a default state", () => {
     const result = readProjectState(makeRoot());
@@ -28,46 +46,61 @@ describe("readProjectState", () => {
     expect(result.state).toEqual(createWorkflowState());
   });
 
-  it("round-trips a written state losslessly", () => {
+  it("derives the state from the specification and progress records", () => {
     const root = makeRoot();
-    const state = createWorkflowState({
-      specificationAccepted: true,
+    writeRecord(root, "specification", acceptedSpecification);
+    writeRecord(root, "progress", {
       planAccepted: true,
+      executionAuthorized: false,
+      ticketChangesPresent: false,
       assignedTicketId: "T3",
     });
 
-    writeProjectState(root, state);
     const result = readProjectState(root);
 
     expect(result.kind).toBe("initialized");
     if (result.kind !== "initialized") return;
-    expect(result.state).toEqual(state);
+    expect(result.state).toEqual(
+      createWorkflowState({ specificationAccepted: true, planAccepted: true, assignedTicketId: "T3" }),
+    );
   });
 
-  it("detects a Git repository from the directory, not from the record", () => {
+  it("takes the specification gate from the specification's status, not from progress", () => {
     const root = makeRoot();
-    writeProjectState(root, createWorkflowState({ gitRepositoryPresent: true }));
+    writeRecord(root, "specification", specification);
+    writeRecord(root, "progress", {
+      planAccepted: true,
+      executionAuthorized: false,
+      ticketChangesPresent: false,
+    });
+
+    const result = readProjectState(root);
+
+    expect(result.kind).toBe("initialized");
+    if (result.kind !== "initialized") return;
+    expect(result.state.specificationAccepted).toBe(false);
+    expect(result.state.planAccepted).toBe(true);
+    expect(() =>
+      writeRecord(root, "progress", {
+        specificationAccepted: true,
+        planAccepted: true,
+        executionAuthorized: false,
+        ticketChangesPresent: false,
+      } as never),
+    ).toThrow(/specificationAccepted/);
+  });
+
+  it("detects a Git repository from the directory, never from a record", () => {
+    const root = makeRoot();
+    writeRecord(root, "specification", specification);
+    expect(readProjectState(root)).toMatchObject({ state: { gitRepositoryPresent: false } });
+
     mkdirSync(join(root, ".git"));
 
-    const result = readProjectState(root);
-
-    expect(result.kind).toBe("initialized");
-    if (result.kind !== "initialized") return;
-    expect(result.state.gitRepositoryPresent).toBe(true);
+    expect(readProjectState(root)).toMatchObject({ state: { gitRepositoryPresent: true } });
   });
 
-  it("does not report a Git repository the directory lacks, whatever the record says", () => {
-    const root = makeRoot();
-    writeProjectState(root, createWorkflowState({ gitRepositoryPresent: true }));
-
-    const result = readProjectState(root);
-
-    expect(result.kind).toBe("initialized");
-    if (result.kind !== "initialized") return;
-    expect(result.state.gitRepositoryPresent).toBe(false);
-  });
-
-  it("reports a malformed record as a recoverable error naming the file", () => {
+  it("reports a malformed record as a recoverable error naming the file and issues", () => {
     const root = makeRoot();
     mkdirSync(join(root, "jflow"));
     writeFileSync(join(root, "jflow", "progress.json"), "{ not json");
@@ -77,65 +110,19 @@ describe("readProjectState", () => {
     expect(result.kind).toBe("malformed");
     if (result.kind !== "malformed") return;
     expect(result.path).toContain("progress.json");
+    expect(result.issues.length).toBeGreaterThan(0);
     expect(result.message.length).toBeGreaterThan(0);
   });
 
   it("reports a record with the wrong shape as malformed rather than defaulting it", () => {
     const root = makeRoot();
     mkdirSync(join(root, "jflow"));
-    writeFileSync(
-      join(root, "jflow", "progress.json"),
-      JSON.stringify({ specificationAccepted: "yes" }),
-    );
+    writeFileSync(join(root, "jflow", "specification.json"), JSON.stringify({ title: "x" }));
 
     const result = readProjectState(root);
 
     expect(result.kind).toBe("malformed");
     if (result.kind !== "malformed") return;
-    expect(result.message).toContain("specificationAccepted");
-  });
-
-  it("keeps the rest of the progress record when the flags are updated", () => {
-    const root = makeRoot();
-    writeRecord(root, "progress", {
-      specificationAccepted: true,
-      planAccepted: true,
-      executionAuthorized: true,
-      authorizationScope: "plan",
-      ticketChangesPresent: false,
-      fixAttempts: { T1: 2 },
-    });
-
-    writeProjectState(root, createWorkflowState({ specificationAccepted: true, planAccepted: true }));
-    const result = readRecord(root, "progress");
-
-    expect(result.kind).toBe("present");
-    if (result.kind !== "present") return;
-    expect(result.record.fixAttempts).toEqual({ T1: 2 });
-    expect(result.record.executionAuthorized).toBe(false);
-    expect(result.record).not.toHaveProperty("authorizationScope");
-  });
-
-  it("refuses to overwrite a malformed progress record from a flag update", () => {
-    const root = makeRoot();
-    mkdirSync(join(root, "jflow"));
-    writeFileSync(join(root, "jflow", "progress.json"), "{ broken");
-
-    expect(() => writeProjectState(root, createWorkflowState())).toThrow(/malformed/);
-    expect(readProjectState(root).kind).toBe("malformed");
-  });
-
-  it("records a fresh authorization at ticket scope, never silently whole-plan", () => {
-    const root = makeRoot();
-
-    writeProjectState(
-      root,
-      createWorkflowState({ specificationAccepted: true, planAccepted: true, executionAuthorized: true }),
-    );
-    const result = readRecord(root, "progress");
-
-    expect(result.kind).toBe("present");
-    if (result.kind !== "present") return;
-    expect(result.record.authorizationScope).toBe("ticket");
+    expect(result.message).toContain("problem");
   });
 });

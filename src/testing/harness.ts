@@ -5,7 +5,8 @@ import { dirname, join, relative } from "node:path";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "../actions/dispatch.js";
 import { createWorkflowState, type ResolutionContext, type WorkflowState } from "../actions/resolve.js";
 import { resolveConfiguration } from "../config/configuration.js";
-import { readProjectState, writeProjectState, type ProjectStateResult } from "../project/state.js";
+import { writeRecord, type SpecificationRecord } from "../project/records.js";
+import { readProjectState, type ProjectStateResult } from "../project/state.js";
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
 
 /**
@@ -43,6 +44,41 @@ export interface ProjectHarness {
   cleanup(): void;
 }
 
+/** A placeholder specification, present only so the seeded gate has a record to live in. */
+const SEED_SPECIFICATION: SpecificationRecord = {
+  title: "Seeded specification",
+  problem: "Seeded by the test harness.",
+  scenarios: ["seeded"],
+  acceptanceCriteria: ["seeded"],
+  constraints: [],
+  exclusions: [],
+  decisions: [],
+  status: "awaiting-acceptance",
+  writtenAt: "2026-01-01T00:00:00Z",
+};
+
+/**
+ * Writes the records a `WorkflowState` is derived from: the specification's
+ * status carries the specification gate, the progress record the rest. A
+ * fresh authorization is seeded at ticket scope; Git presence is never written.
+ */
+function seedRecords(root: string, state: WorkflowState): void {
+  const { gitRepositoryPresent: _observed, specificationAccepted, assignedTicketId, ...flags } =
+    state;
+  writeRecord(
+    root,
+    "specification",
+    specificationAccepted
+      ? { ...SEED_SPECIFICATION, status: "accepted", acceptedAt: "2026-01-01T00:00:00Z" }
+      : SEED_SPECIFICATION,
+  );
+  writeRecord(root, "progress", {
+    ...flags,
+    ...(flags.executionAuthorized ? { authorizationScope: "ticket" } : {}),
+    ...(assignedTicketId === undefined ? {} : { assignedTicketId }),
+  });
+}
+
 function listFiles(root: string, directory = root): Record<string, string> {
   const files: Record<string, string> = {};
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -63,7 +99,7 @@ export function createProjectHarness(options: HarnessOptions = {}): ProjectHarne
 
   const root = mkdtempSync(join(tmpdir(), "jflow-project-"));
   if (options.gitRepository) mkdirSync(join(root, ".git"));
-  if (options.state) writeProjectState(root, createWorkflowState(options.state));
+  if (options.state) seedRecords(root, createWorkflowState(options.state));
 
   const events: HumanAskEvent[] = [];
   const request = (text: string) =>

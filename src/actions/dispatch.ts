@@ -39,8 +39,12 @@ export type DispatchOutcome =
     }
   | { readonly kind: "completed"; readonly action: "status"; readonly report: StatusReport }
   | {
-      /** Eligible, but no executor exists yet for this action. */
-      readonly kind: "not-implemented";
+      /**
+       * Eligible. The skill's method file for the action carries out the
+       * work and calls the helper for the exact parts (D51); nothing runs
+       * here.
+       */
+      readonly kind: "ready";
       readonly action: string;
       readonly resolution: Extract<ActionResolution, { status: "eligible" }>;
     };
@@ -98,5 +102,5 @@ export function dispatch(
     }
     return { kind: "blocked", action, resolution };
   }
-  return { kind: "not-implemented", action, resolution };
+  return { kind: "ready", action, resolution };
 }
