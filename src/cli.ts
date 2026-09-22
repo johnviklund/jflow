@@ -2,6 +2,14 @@ import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
+import {
+  acceptPlan,
+  authorizeExecution,
+  writePlan,
+  type Authorization,
+  type PlanDraft,
+  type PlanResult,
+} from "./actions/plan.js";
 import type { ResolutionContext } from "./actions/resolve.js";
 import {
   acceptSpecification,
@@ -47,13 +55,20 @@ Usage:
   jflow specification confirm <decision> --basis <what the developer said> [--root <dir>]
   jflow specification reject  <decision> --basis <what the developer said> [--root <dir>]
   jflow specification accept  [--note <the developer's words>] [--root <dir>]
+  jflow plan write <draft.json>                                   [--root <dir>]
+  jflow plan accept [--note <words>] [--authorize plan|ticket --ticket <id>] [--root <dir>]
+  jflow plan authorize --scope plan|ticket [--ticket <id>] --note <words> [--root <dir>]
   jflow help
 
 Every command prints one JSON object. <request> is an action name or a
 sentence; an ambiguous request returns a question rather than a guess.
-<draft.json> holds title, problem, scenarios, acceptanceCriteria,
+A specification draft holds title, problem, scenarios, acceptanceCriteria,
 constraints, exclusions and decisions (id, statement, basis); every
 decision is recorded as a proposal until the developer confirms it.
+A plan draft holds title, summary, source and tickets (id, title,
+acceptanceCriteria, dependsOn); a ticket without criteria is refused.
+"plan accept" alone accepts without authorizing; add --authorize when the
+developer's instruction also authorized execution.
 `;
 
 interface ParsedArgs {
@@ -62,7 +77,7 @@ interface ParsedArgs {
   readonly options: Readonly<Record<string, string>>;
 }
 
-const KNOWN_OPTIONS = ["root", "config", "basis", "note"];
+const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket"];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
@@ -91,6 +106,25 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
 type ContextResult =
   | { readonly ok: true; readonly context: ResolutionContext }
   | { readonly ok: false; readonly exit: number; readonly output: unknown };
+
+type DraftRead<T> =
+  | { readonly ok: true; readonly draft: T }
+  | { readonly ok: false; readonly exit: number };
+
+/** Reads a draft JSON file the skill wrote; the record validators judge its shape. */
+function readDraft<T>(target: string | undefined, what: string, io: CliIo): DraftRead<T> {
+  if (target === undefined) {
+    io.stderr(`${what} needs the path of a draft JSON file\n${USAGE}`);
+    return { ok: false, exit: EXIT_NEEDS_HUMAN };
+  }
+  try {
+    return { ok: true, draft: JSON.parse(readFileSync(resolvePath(io.cwd, target), "utf8")) as T };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    io.stdout(`${JSON.stringify({ ok: false, reason: `cannot read the draft: ${message}` }, null, 2)}\n`);
+    return { ok: false, exit: EXIT_UNREADABLE };
+  }
+}
 
 function readConfigurationDocument(path: string | undefined, cwd: string): unknown {
   if (path === undefined) return {};
@@ -167,20 +201,10 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
 
   switch (subcommand) {
     case "write": {
-      if (target === undefined) {
-        io.stderr(`specification write needs the path of a draft JSON file\n${USAGE}`);
-        return EXIT_NEEDS_HUMAN;
-      }
-      let draft: SpecificationDraft;
-      try {
-        draft = JSON.parse(readFileSync(resolvePath(io.cwd, target), "utf8")) as SpecificationDraft;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        io.stdout(`${JSON.stringify({ ok: false, reason: `cannot read the draft: ${message}` }, null, 2)}\n`);
-        return EXIT_UNREADABLE;
-      }
+      const read = readDraft<SpecificationDraft>(target, "specification write", io);
+      if (!read.ok) return read.exit;
       return reportSpecification(
-        writeSpecification(root, draft, { now: new Date().toISOString() }),
+        writeSpecification(root, read.draft, { now: new Date().toISOString() }),
         io,
       );
     }
@@ -206,6 +230,74 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
     }
     default:
       io.stderr(`specification needs one of write, confirm, reject, accept\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
+function reportPlan(result: PlanResult, io: CliIo): number {
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
+type AuthorizationParse =
+  | { readonly ok: true; readonly authorization: Authorization | undefined }
+  | { readonly ok: false; readonly message: string };
+
+/** An authorization needs a scope and the developer's words; a ticket id is optional here. */
+function parseAuthorization(
+  scope: string | undefined,
+  ticket: string | undefined,
+  note: string | undefined,
+): AuthorizationParse {
+  if (scope === undefined) return { ok: true, authorization: undefined };
+  if (scope !== "plan" && scope !== "ticket") {
+    return { ok: false, message: `authorization scope must be plan or ticket, not "${scope}"` };
+  }
+  if (note === undefined || note.trim() === "") {
+    return { ok: false, message: "authorization is recorded in the developer's words; pass --note" };
+  }
+  return {
+    ok: true,
+    authorization: { scope, note, ...(ticket === undefined ? {} : { ticketId: ticket }) },
+  };
+}
+
+function runPlan(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const note = args.options["note"];
+
+  switch (subcommand) {
+    case "write": {
+      const read = readDraft<PlanDraft>(target, "plan write", io);
+      if (!read.ok) return read.exit;
+      return reportPlan(writePlan(root, read.draft, { now: new Date().toISOString() }), io);
+    }
+    case "accept": {
+      const parsed = parseAuthorization(args.options["authorize"], args.options["ticket"], note);
+      if (!parsed.ok) {
+        io.stderr(`${parsed.message}\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return reportPlan(
+        acceptPlan(root, {
+          now: new Date().toISOString(),
+          ...(note === undefined ? {} : { note }),
+          ...(parsed.authorization === undefined ? {} : { authorize: parsed.authorization }),
+        }),
+        io,
+      );
+    }
+    case "authorize": {
+      const parsed = parseAuthorization(args.options["scope"], args.options["ticket"], note);
+      if (!parsed.ok || parsed.authorization === undefined) {
+        io.stderr(`${parsed.ok ? "plan authorize needs --scope plan|ticket" : parsed.message}\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return reportPlan(authorizeExecution(root, parsed.authorization), io);
+    }
+    default:
+      io.stderr(`plan needs one of write, accept, authorize\n${USAGE}`);
       return EXIT_NEEDS_HUMAN;
   }
 }
@@ -253,6 +345,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
 
     case "specification":
       return runSpecification(args, io);
+
+    case "plan":
+      return runPlan(args, io);
 
     case "check-host": {
       const root = resolvePath(io.cwd, args.options["root"] ?? ".");

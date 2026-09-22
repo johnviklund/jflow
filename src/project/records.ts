@@ -87,12 +87,26 @@ export interface SpecificationRecord {
   readonly acceptanceNote?: string;
 }
 
-/** The plan's content; whether it has been accepted is progress state, not plan content. */
+export const PLAN_STATUSES = ["awaiting-acceptance", "accepted"] as const;
+
+export type PlanStatus = (typeof PLAN_STATUSES)[number];
+
+/**
+ * The ticket breakdown's header, written by `plan` and accepted by the
+ * developer before implementation (D28). Owns the plan acceptance gate: the
+ * resolver's `planAccepted` is derived from `status`, nowhere else.
+ * Acceptance is never authorization; that is progress state.
+ */
 export interface PlanRecord {
   readonly title: string;
   readonly summary: string;
   /** Where the plan came from, e.g. a spec path or tracker reference. */
   readonly source?: string;
+  readonly status: PlanStatus;
+  readonly writtenAt: string;
+  readonly acceptedAt?: string;
+  /** The developer's words of acceptance, recorded as said (D28). */
+  readonly acceptanceNote?: string;
 }
 
 export const TICKET_STATUSES = ["ready", "in-progress", "parked", "done", "withdrawn"] as const;
@@ -133,12 +147,12 @@ export interface ReconciliationDiscrepancy {
  * the action resolver's `WorkflowState` is derived from.
  */
 export interface ProgressRecord {
-  /** The human explicitly accepted the ticket breakdown (D28); never authorization. */
-  readonly planAccepted: boolean;
   /** The human authorized execution; distinct from plan acceptance (user stories 7, 8). */
   readonly executionAuthorized: boolean;
   /** One ticket or the whole plan (D28, D29); present exactly when authorized. */
   readonly authorizationScope?: AuthorizationScope;
+  /** The developer's words of authorization, recorded as said (D28). */
+  readonly authorizationNote?: string;
   readonly assignedTicketId?: string;
   /** The assigned ticket has changes available to assess. */
   readonly ticketChangesPresent: boolean;
@@ -385,14 +399,33 @@ const validateSpecification: Validator<SpecificationRecord> = (value, issues) =>
 };
 
 const validatePlan: Validator<PlanRecord> = (value, issues) => {
-  const doc = requireObject(value, "", ["title", "summary", "source"], issues);
+  const doc = requireObject(
+    value,
+    "",
+    ["title", "summary", "source", "status", "writtenAt", "acceptedAt", "acceptanceNote"],
+    issues,
+  );
   if (!doc) return undefined;
+  const status = validateEnumValue<PlanStatus>(doc["status"], "status", PLAN_STATUSES, issues);
+  const acceptedAt = optionalTimestamp(doc["acceptedAt"], "acceptedAt", issues);
+  if (status === "accepted" && acceptedAt === undefined) {
+    issues.add("acceptedAt", "an accepted plan must record when it was accepted");
+  }
+  if (status === "awaiting-acceptance" && acceptedAt !== undefined) {
+    issues.add("acceptedAt", "must be absent while the plan awaits acceptance");
+  }
   return withOptional<PlanRecord>(
     {
       title: requireNonEmptyString(doc["title"], "title", issues),
       summary: requireNonEmptyString(doc["summary"], "summary", issues),
+      status: status ?? "awaiting-acceptance",
+      writtenAt: requireTimestamp(doc["writtenAt"], "writtenAt", issues),
     },
-    { source: optionalString(doc["source"], "source", issues) },
+    {
+      source: optionalString(doc["source"], "source", issues),
+      acceptedAt,
+      acceptanceNote: optionalString(doc["acceptanceNote"], "acceptanceNote", issues),
+    },
   );
 };
 
@@ -424,6 +457,13 @@ const validateTickets: Validator<TicketsRecord> = (value, issues) => {
     const parkedReason = optionalString(ticket["parkedReason"], `${path}.parkedReason`, issues);
     if (status === "parked" && parkedReason === undefined) {
       issues.add(`${path}.parkedReason`, "a parked ticket must record why it is parked");
+    }
+    // A ticket without acceptance criteria is not a valid ticket (D41).
+    if (Array.isArray(ticket["acceptanceCriteria"]) && ticket["acceptanceCriteria"].length === 0) {
+      issues.add(
+        `${path}.acceptanceCriteria`,
+        "a ticket must carry at least one acceptance criterion that validate can judge",
+      );
     }
     tickets.push(
       withOptional<TicketRecord>(
@@ -469,9 +509,9 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
     value,
     "",
     [
-      "planAccepted",
       "executionAuthorized",
       "authorizationScope",
+      "authorizationNote",
       "assignedTicketId",
       "ticketChangesPresent",
       "fixAttempts",
@@ -502,6 +542,10 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
   }
   if (executionAuthorized && doc["authorizationScope"] === undefined) {
     issues.add("authorizationScope", "an authorized execution must record its scope");
+  }
+  const authorizationNote = optionalString(doc["authorizationNote"], "authorizationNote", issues);
+  if (!executionAuthorized && authorizationNote !== undefined) {
+    issues.add("authorizationNote", "must be absent when execution is not authorized");
   }
 
   let fixAttempts: Record<string, number> | undefined;
@@ -568,7 +612,6 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
 
   return withOptional<ProgressRecord>(
     {
-      planAccepted: requireBoolean(doc["planAccepted"], "planAccepted", issues),
       executionAuthorized,
       ticketChangesPresent: requireBoolean(
         doc["ticketChangesPresent"],
@@ -578,6 +621,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
     },
     {
       authorizationScope,
+      authorizationNote,
       assignedTicketId: optionalString(doc["assignedTicketId"], "assignedTicketId", issues),
       fixAttempts,
       reconciliation,
@@ -779,14 +823,18 @@ function scanForCredentials(value: unknown, path: string, issues: IssueCollector
   }
 }
 
-type RecordValidation<K extends RecordKind> =
+export type RecordValidation<K extends RecordKind> =
   | { readonly ok: true; readonly record: ProjectRecords[K] }
   | { readonly ok: false; readonly issues: readonly ValidationIssue[] };
 
-function validateRecord<K extends RecordKind>(
+/**
+ * Validates a record as `writeRecord` would, without writing. For callers
+ * that must validate several records before committing any of them.
+ */
+export function validateRecord<K extends RecordKind>(
   kind: K,
   document: unknown,
-  options: { readonly scanForCredentials: boolean },
+  options: { readonly scanForCredentials: boolean } = { scanForCredentials: true },
 ): RecordValidation<K> {
   const issues = new IssueCollector();
   if (options.scanForCredentials) scanForCredentials(document, "", issues);

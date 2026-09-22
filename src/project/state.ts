@@ -7,9 +7,9 @@ import { readRecord } from "./records.js";
 
 /**
  * The action resolver's view of the project: the `WorkflowState` derived from
- * the authoritative records (issue #3) — the specification for its acceptance
- * gate (D27), the progress record for the rest — plus Git presence, which is
- * observed from the directory and never recorded.
+ * the authoritative records (issue #3) — the specification and the plan for
+ * their acceptance gates (D27, D28), the progress record for the rest — plus
+ * Git presence, which is observed from the directory and never recorded.
  */
 
 export type ProjectStateResult =
@@ -46,21 +46,24 @@ export function readProjectState(root: string): ProjectStateResult {
   const git = gitRepositoryPresent(root);
   const specification = readRecord(root, "specification");
   if (specification.kind === "malformed") return malformed(specification.path, specification.issues);
+  const plan = readRecord(root, "plan");
+  if (plan.kind === "malformed") return malformed(plan.path, plan.issues);
   const progress = readRecord(root, "progress");
   if (progress.kind === "malformed") return malformed(progress.path, progress.issues);
 
-  if (specification.kind === "absent" && progress.kind === "absent") {
+  if (specification.kind === "absent" && plan.kind === "absent" && progress.kind === "absent") {
     return { kind: "uninitialized", state: createWorkflowState({ gitRepositoryPresent: git }) };
   }
 
   const specificationAccepted =
     specification.kind === "present" && specification.record.status === "accepted";
+  const planAccepted = plan.kind === "present" && plan.record.status === "accepted";
   const recorded = progress.kind === "present" ? progress.record : undefined;
   return {
     kind: "initialized",
     state: {
       specificationAccepted,
-      planAccepted: recorded?.planAccepted ?? false,
+      planAccepted,
       executionAuthorized: recorded?.executionAuthorized ?? false,
       ticketChangesPresent: recorded?.ticketChangesPresent ?? false,
       ...(recorded?.assignedTicketId === undefined

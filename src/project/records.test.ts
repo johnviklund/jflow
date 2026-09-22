@@ -53,6 +53,10 @@ const examples: ProjectRecords = {
     title: "Foundation slice",
     summary: "Workflow package, records and the action seam.",
     source: "SPEC.md",
+    status: "accepted",
+    writtenAt: "2026-09-22T09:00:00Z",
+    acceptedAt: "2026-09-22T10:00:00Z",
+    acceptanceNote: "looks good",
   },
   tickets: {
     tickets: [
@@ -75,9 +79,9 @@ const examples: ProjectRecords = {
     ],
   },
   progress: {
-    planAccepted: true,
     executionAuthorized: true,
     authorizationScope: "ticket",
+    authorizationNote: "approved, implement ticket 2",
     assignedTicketId: "T2",
     ticketChangesPresent: true,
     fixAttempts: { T2: 1 },
@@ -196,11 +200,7 @@ describe("readRecord", () => {
       /fallback\.scope/,
     );
     expect(() =>
-      writeRecord(root, "progress", {
-        planAccepted: true,
-        executionAuthorized: true,
-        ticketChangesPresent: false,
-      }),
+      writeRecord(root, "progress", { executionAuthorized: true, ticketChangesPresent: false }),
     ).toThrow(/authorizationScope/);
   });
 
@@ -230,7 +230,9 @@ describe("readRecord", () => {
     mkdirSync(join(root, "jflow"));
     writeFileSync(
       recordPath(root, "tickets"),
-      JSON.stringify({ tickets: [{ id: "T1", title: "x", status: "finished" }] }),
+      JSON.stringify({
+        tickets: [{ id: "T1", title: "x", status: "finished", acceptanceCriteria: [], dependsOn: [] }],
+      }),
     );
 
     const result = readRecord(root, "tickets");
@@ -290,6 +292,13 @@ describe("readRecord", () => {
     expect(() =>
       writeRecord(root, "specification", { ...examples.specification, acceptanceCriteria: [] }),
     ).toThrow(/acceptanceCriteria/);
+  });
+
+  it("rejects an accepted plan without its acceptance time", () => {
+    const root = makeRoot();
+    const { acceptedAt: _at, ...withoutTime } = examples.plan;
+
+    expect(() => writeRecord(root, "plan", withoutTime)).toThrow(/acceptedAt/);
   });
 
   it("rejects a superseded lesson that names no successor or evidence", () => {
@@ -460,10 +469,9 @@ describe("record types", () => {
         status: "awaiting-acceptance",
         writtenAt: "2026-09-22T09:00:00Z",
       },
-      plan: { title: "t", summary: "s" },
+      plan: { title: "t", summary: "s", status: "awaiting-acceptance", writtenAt: "2026-09-22T09:00:00Z" },
       tickets: { tickets: [] },
       progress: {
-        planAccepted: false,
         executionAuthorized: false,
         ticketChangesPresent: false,
       },

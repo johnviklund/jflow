@@ -28,6 +28,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
+| `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
 
 Pass `--root <dir>` when the project is not the current directory.
 
@@ -71,8 +72,9 @@ parts only the agent can honour.
 
 ## Layout
 
-- `actions/` — one method file per action. `status.md` and `brainstorm.md`
-  exist; the others are filled in by the issue that owns each action.
+- `actions/` — one method file per action. `status.md`, `brainstorm.md`
+  and `plan.md` exist; the others are filled in by the issue that owns
+  each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
 - `scripts/jflow` — the helper.

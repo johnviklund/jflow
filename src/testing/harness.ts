@@ -5,7 +5,7 @@ import { dirname, join, relative } from "node:path";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "../actions/dispatch.js";
 import { createWorkflowState, type ResolutionContext, type WorkflowState } from "../actions/resolve.js";
 import { resolveConfiguration } from "../config/configuration.js";
-import { writeRecord, type SpecificationRecord } from "../project/records.js";
+import { writeRecord, type PlanRecord, type SpecificationRecord } from "../project/records.js";
 import { readProjectState, type ProjectStateResult } from "../project/state.js";
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
 
@@ -44,7 +44,7 @@ export interface ProjectHarness {
   cleanup(): void;
 }
 
-/** A placeholder specification, present only so the seeded gate has a record to live in. */
+/** Placeholder records, present only so a seeded open gate has a record to live in. */
 const SEED_SPECIFICATION: SpecificationRecord = {
   title: "Seeded specification",
   problem: "Seeded by the test harness.",
@@ -57,21 +57,37 @@ const SEED_SPECIFICATION: SpecificationRecord = {
   writtenAt: "2026-01-01T00:00:00Z",
 };
 
+const SEED_PLAN: PlanRecord = {
+  title: "Seeded plan",
+  summary: "Seeded by the test harness.",
+  status: "awaiting-acceptance",
+  writtenAt: "2026-01-01T00:00:00Z",
+};
+
 /**
- * Writes the records a `WorkflowState` is derived from: the specification's
- * status carries the specification gate, the progress record the rest. A
+ * Writes the records a `WorkflowState` is derived from: the specification
+ * and plan statuses carry their gates, the progress record the rest. A
  * fresh authorization is seeded at ticket scope; Git presence is never written.
  */
 function seedRecords(root: string, state: WorkflowState): void {
-  const { gitRepositoryPresent: _observed, specificationAccepted, assignedTicketId, ...flags } =
-    state;
-  writeRecord(
-    root,
-    "specification",
-    specificationAccepted
-      ? { ...SEED_SPECIFICATION, status: "accepted", acceptedAt: "2026-01-01T00:00:00Z" }
-      : SEED_SPECIFICATION,
-  );
+  const {
+    gitRepositoryPresent: _observed,
+    specificationAccepted,
+    planAccepted,
+    assignedTicketId,
+    ...flags
+  } = state;
+  // Only an accepted gate needs its record; an absent record is the closed gate.
+  if (specificationAccepted) {
+    writeRecord(root, "specification", {
+      ...SEED_SPECIFICATION,
+      status: "accepted",
+      acceptedAt: "2026-01-01T00:00:00Z",
+    });
+  }
+  if (planAccepted) {
+    writeRecord(root, "plan", { ...SEED_PLAN, status: "accepted", acceptedAt: "2026-01-01T00:00:00Z" });
+  }
   writeRecord(root, "progress", {
     ...flags,
     ...(flags.executionAuthorized ? { authorizationScope: "ticket" } : {}),

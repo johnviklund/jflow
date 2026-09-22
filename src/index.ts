@@ -65,6 +65,19 @@ export {
 export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
 
 export {
+  acceptPlan,
+  authorizeExecution,
+  writePlan,
+  type Authorization,
+  type PlanDraft,
+  type PlanOutcome,
+  type PlanResult,
+  type TicketDraft,
+} from "./actions/plan.js";
+
+export { refuse, unreadable, type Refusal } from "./actions/refusal.js";
+
+export {
   acceptSpecification,
   decideSpecification,
   writeSpecification,
@@ -96,6 +109,7 @@ export {
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
   LESSON_STATUSES,
+  PLAN_STATUSES,
   PROJECT_RECORD_DIRECTORY,
   RECORD_KINDS,
   RecordValidationError,
@@ -103,6 +117,7 @@ export {
   TICKET_STATUSES,
   readRecord,
   recordPath,
+  validateRecord,
   writeRecord,
   type AuthorizationScope,
   type DecisionStatus,
@@ -114,11 +129,13 @@ export {
   type LessonStatus,
   type LessonsRecord,
   type PlanRecord,
+  type PlanStatus,
   type ProgressRecord,
   type ProjectRecords,
   type ReconciliationDiscrepancy,
   type RecordKind,
   type RecordReadResult,
+  type RecordValidation,
   type ResumeRecord,
   type SpecificationDecision,
   type SpecificationRecord,

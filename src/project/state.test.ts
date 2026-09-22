@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createWorkflowState } from "../actions/resolve.js";
-import { writeRecord, type SpecificationRecord } from "./records.js";
+import { writeRecord, type PlanRecord, type SpecificationRecord } from "./records.js";
 import { readProjectState } from "./state.js";
 
 const roots: string[] = [];
@@ -37,6 +37,14 @@ const acceptedSpecification: SpecificationRecord = {
   acceptedAt: "2026-09-22T10:00:00Z",
 };
 
+const acceptedPlan: PlanRecord = {
+  title: "t",
+  summary: "s",
+  status: "accepted",
+  writtenAt: "2026-09-22T10:00:00Z",
+  acceptedAt: "2026-09-22T11:00:00Z",
+};
+
 describe("readProjectState", () => {
   it("reports an empty directory as uninitialized with a default state", () => {
     const result = readProjectState(makeRoot());
@@ -49,8 +57,8 @@ describe("readProjectState", () => {
   it("derives the state from the specification and progress records", () => {
     const root = makeRoot();
     writeRecord(root, "specification", acceptedSpecification);
+    writeRecord(root, "plan", acceptedPlan);
     writeRecord(root, "progress", {
-      planAccepted: true,
       executionAuthorized: false,
       ticketChangesPresent: false,
       assignedTicketId: "T3",
@@ -65,29 +73,28 @@ describe("readProjectState", () => {
     );
   });
 
-  it("takes the specification gate from the specification's status, not from progress", () => {
+  it("takes each acceptance gate from its own record, never from progress", () => {
     const root = makeRoot();
     writeRecord(root, "specification", specification);
-    writeRecord(root, "progress", {
-      planAccepted: true,
-      executionAuthorized: false,
-      ticketChangesPresent: false,
-    });
+    const { acceptedAt: _at, ...openPlan } = acceptedPlan;
+    writeRecord(root, "plan", { ...openPlan, status: "awaiting-acceptance" });
+    writeRecord(root, "progress", { executionAuthorized: false, ticketChangesPresent: false });
 
     const result = readProjectState(root);
 
     expect(result.kind).toBe("initialized");
     if (result.kind !== "initialized") return;
     expect(result.state.specificationAccepted).toBe(false);
-    expect(result.state.planAccepted).toBe(true);
-    expect(() =>
-      writeRecord(root, "progress", {
-        specificationAccepted: true,
-        planAccepted: true,
-        executionAuthorized: false,
-        ticketChangesPresent: false,
-      } as never),
-    ).toThrow(/specificationAccepted/);
+    expect(result.state.planAccepted).toBe(false);
+    for (const key of ["specificationAccepted", "planAccepted"]) {
+      expect(() =>
+        writeRecord(root, "progress", {
+          [key]: true,
+          executionAuthorized: false,
+          ticketChangesPresent: false,
+        } as never),
+      ).toThrow(new RegExp(key));
+    }
   });
 
   it("detects a Git repository from the directory, never from a record", () => {

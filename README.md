@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#5; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#6; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -28,8 +28,8 @@ Foundation slice (issues #1–#5; TICKETS.md T1–T5 decompose #1 and #2):
   eligible/blocked decision out. `status` is the first action that runs end
   to end, reading the state from project files.
 - `src/project/` — the authoritative record store (issue #3): one JSON file
-  per record kind under `jflow/` — `specification` (owns the acceptance
-  gate), `plan`, `tickets`, `progress`, `lessons`,
+  per record kind under `jflow/` — `specification` and `plan` (each owns
+  its acceptance gate), `tickets`, `progress` (authorization), `lessons`,
   `jev` (fallback status: off, awaiting approval with the pending decision
   kept, or approved for a recorded scope) and `resume` — read and written
   through `readRecord`/`writeRecord`. Schemas are closed, so a raw Jev trace
@@ -51,14 +51,19 @@ Foundation slice (issues #1–#5; TICKETS.md T1–T5 decompose #1 and #2):
   decision on each proposal, record explicit acceptance; `plan` stays
   refused until then, and an accepted specification is never rewritten
   (that is `realign`).
+- `src/actions/plan.ts` — the helper side of `plan` (issue #6): write the
+  ticket breakdown (refused without an accepted specification, for a
+  ticket without acceptance criteria, or for a dependency cycle), record
+  plan acceptance, and record execution authorization as a separate fact
+  that the same instruction may grant — "looks good" accepts only.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
-  `SKILL.md`, `actions/<action>.md` method files (`status.md` and
-  `brainstorm.md` so far),
+  `SKILL.md`, `actions/<action>.md` method files (`status.md`,
+  `brainstorm.md` and `plan.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in

@@ -3,11 +3,10 @@ import {
   readRecord,
   writeRecord,
   type DecisionStatus,
-  type RecordReadResult,
   type SpecificationDecision,
   type SpecificationRecord,
 } from "../project/records.js";
-import type { ValidationIssue } from "../workflow/types.js";
+import { refuse, unreadable, type Refusal } from "./refusal.js";
 
 /**
  * The helper's part of `brainstorm` (issue #5, D27, D51): writing the
@@ -31,23 +30,7 @@ export interface SpecificationDraft {
   readonly decisions: readonly Omit<SpecificationDecision, "status">[];
 }
 
-export type SpecificationResult =
-  | { readonly ok: true; readonly record: SpecificationRecord }
-  | {
-      readonly ok: false;
-      /** Why the operation was refused, for the developer. */
-      readonly reason: string;
-      /** Present when the refusal is a validation failure. */
-      readonly issues?: readonly ValidationIssue[];
-    };
-
-function refuse(reason: string, issues?: readonly ValidationIssue[]): SpecificationResult {
-  return issues === undefined ? { ok: false, reason } : { ok: false, reason, issues };
-}
-
-function unreadable(read: Extract<RecordReadResult<"specification">, { kind: "malformed" }>) {
-  return refuse(`the specification record at ${read.path} cannot be read`, read.issues);
-}
+export type SpecificationResult = { readonly ok: true; readonly record: SpecificationRecord } | Refusal;
 
 function store(root: string, record: SpecificationRecord): SpecificationResult {
   try {
@@ -74,7 +57,7 @@ export function writeSpecification(
   options: { readonly now: string },
 ): SpecificationResult {
   const existing = readRecord(root, "specification");
-  if (existing.kind === "malformed") return unreadable(existing);
+  if (existing.kind === "malformed") return unreadable("specification", existing);
   if (existing.kind === "present" && existing.record.status === "accepted") {
     return refuse(
       "the specification has been accepted; changing it is a plan change, so invoke realign rather than brainstorm again",
@@ -119,7 +102,7 @@ export function decideSpecification(
   }
   const read = readRecord(root, "specification");
   if (read.kind === "absent") return refuse("no specification has been written; run brainstorm first");
-  if (read.kind === "malformed") return unreadable(read);
+  if (read.kind === "malformed") return unreadable("specification", read);
   const { record } = read;
 
   if (record.status === "accepted") {
@@ -150,7 +133,7 @@ export function acceptSpecification(
 ): SpecificationResult {
   const read = readRecord(root, "specification");
   if (read.kind === "absent") return refuse("no specification has been written; run brainstorm first");
-  if (read.kind === "malformed") return unreadable(read);
+  if (read.kind === "malformed") return unreadable("specification", read);
   const { record } = read;
 
   if (record.status === "accepted") {
