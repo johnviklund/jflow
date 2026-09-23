@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#7; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#7 and #14; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -31,7 +31,7 @@ Foundation slice (issues #1–#7; TICKETS.md T1–T5 decompose #1 and #2):
   per record kind under `jflow/` — `specification` and `plan` (each owns
   its acceptance gate), `tickets`, `progress` (authorization), `lessons`,
   `jev` (fallback status: off, awaiting approval with the pending decision
-  kept, or approved for a recorded scope) and `resume` — read and written
+  kept, or approved for a recorded scope), `resume` and `todos` — read and written
   through `readRecord`/`writeRecord`. Schemas are closed, so a raw Jev trace
   has no field of its own; a credential-looking key or value is refused on
   write; each write goes through a temporary file and rename; a malformed
@@ -67,15 +67,22 @@ Foundation slice (issues #1–#7; TICKETS.md T1–T5 decompose #1 and #2):
   ticket is assigned). Once the ticket's work has begun, new changes are
   presumed the ticket's. Telling them apart from the developer's own
   mid-ticket edits is left to #10 and #22.
+- `src/actions/todo.ts` and `next.ts` — `todo` records future work in
+  `jflow/todos.json`, outside the plan, at any point, and authorizes
+  nothing. Promotion records the developer's decision in their words and
+  says whether `plan` or `realign` adds the ticket. It never adds the
+  ticket itself. `next` reports each action's eligibility with its reasons
+  and one recommendation, including what only the developer can grant. It
+  writes nothing (issue #14).
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
-  `validate`, `check-host`, `specification`, `plan`, `changes`); one JSON
-  object per command. `npm run build`
+  `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
+  `todo`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
-  `SKILL.md`, `actions/<action>.md` method files (`status.md`,
-  `brainstorm.md` and `plan.md` so far),
+  `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
+  `todo.md`, `brainstorm.md` and `plan.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in

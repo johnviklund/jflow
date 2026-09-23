@@ -1,6 +1,7 @@
 import { readProjectState } from "../project/state.js";
 import { resolveRequest } from "./request.js";
 import { resolveAction, type ActionResolution, type ResolutionContext } from "./resolve.js";
+import { runNext, type NextReport } from "./next.js";
 import { runStatus, type StatusReport } from "./status.js";
 
 /**
@@ -27,7 +28,7 @@ export type DispatchOutcome =
     }
   | { readonly kind: "unknown-action"; readonly message: string }
   | {
-      /** The progress record is unreadable, so nothing but `status` may run. */
+      /** A record is unreadable, so nothing but `status` and `next` may run. */
       readonly kind: "malformed-record";
       readonly path: string;
       readonly message: string;
@@ -38,6 +39,7 @@ export type DispatchOutcome =
       readonly resolution: Extract<ActionResolution, { status: "blocked" }>;
     }
   | { readonly kind: "completed"; readonly action: "status"; readonly report: StatusReport }
+  | { readonly kind: "completed"; readonly action: "next"; readonly report: NextReport }
   | {
       /**
        * Eligible. The skill's method file for the action carries out the
@@ -77,10 +79,13 @@ export function dispatch(
   }
   const action = resolved.action;
 
-  // `status` is the one action that may run against an unreadable record,
-  // because reporting the problem is its job.
+  // `status` and `next` may run against an unreadable record, because
+  // reporting the problem is part of their job. Both only read.
   if (action === "status") {
     return { kind: "completed", action, report: runStatus(root, context) };
+  }
+  if (action === "next") {
+    return { kind: "completed", action, report: runNext(root, context) };
   }
 
   const read = readProjectState(root);

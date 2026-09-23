@@ -17,6 +17,7 @@ import {
   type ResumeRecord,
   type SpecificationRecord,
   type TicketsRecord,
+  type TodosRecord,
 } from "./records.js";
 
 const roots: string[] = [];
@@ -141,6 +142,25 @@ const examples: ProjectRecords = {
     unresolvedTodos: ["split classify by kind"],
     nextSteps: ["resolve the lesson-scope decision, then resume T2"],
   },
+  todos: {
+    items: [
+      {
+        id: "TODO-1",
+        summary: "CSV export drops the header row",
+        detail: "seen while testing T2's import path",
+        discoveredDuring: "T2",
+        recordedAt: "2026-09-20T10:00:00Z",
+        status: "open",
+      },
+      {
+        id: "TODO-2",
+        summary: "rename the CLI flag",
+        recordedAt: "2026-09-20T10:05:00Z",
+        status: "promoted",
+        promotion: { decidedAt: "2026-09-20T11:00:00Z", note: "yes, put the rename in this plan" },
+      },
+    ],
+  },
 };
 
 describe("readRecord", () => {
@@ -235,6 +255,23 @@ describe("readRecord", () => {
         { path: "a.ts", owner: "ticket", ticketId: "T1", note: "no, the ticket's" },
       ]),
     ).toThrow(/changeOwnership\[1\]\.path/);
+  });
+
+  it("records a todo's promotion only as the developer's recorded decision", () => {
+    const root = makeRoot();
+    const item = { id: "TODO-1", summary: "s", recordedAt: "2026-09-20T10:00:00Z" };
+    const todos = (items: unknown) => writeRecord(root, "todos", { items } as never);
+
+    expect(() => todos([{ ...item, status: "promoted" }])).toThrow(/items\[0\]\.promotion/);
+    expect(() =>
+      todos([{ ...item, status: "open", promotion: { decidedAt: "2026-09-20T11:00:00Z", note: "go" } }]),
+    ).toThrow(/items\[0\]\.promotion/);
+    expect(() =>
+      todos([{ ...item, status: "promoted", promotion: { decidedAt: "2026-09-20T11:00:00Z", note: "" } }]),
+    ).toThrow(/items\[0\]\.promotion\.note/);
+    expect(() => todos([{ ...item, status: "open" }, { ...item, status: "open" }])).toThrow(
+      /items\[1\]\.id/,
+    );
   });
 
   it("rejects a timestamp that is not ISO 8601", () => {
@@ -511,6 +548,7 @@ describe("record types", () => {
       lessons: { lessons: [] },
       jev: { fallback: { status: "off" } },
       resume: { writtenAt: "2026-09-20T12:00:00Z", summary: "s" },
+      todos: { items: [] },
     };
 
     for (const kind of RECORD_KINDS) {
@@ -529,6 +567,7 @@ describe("record types", () => {
       LessonsRecord,
       JevRecord,
       ResumeRecord,
+      TodosRecord,
     ] = [
       minimal.specification,
       minimal.plan,
@@ -537,7 +576,8 @@ describe("record types", () => {
       minimal.lessons,
       minimal.jev,
       minimal.resume,
+      minimal.todos,
     ];
-    expect(_typed).toHaveLength(7);
+    expect(_typed).toHaveLength(8);
   });
 });

@@ -3,13 +3,14 @@ import { resolve as resolvePath } from "node:path";
 
 import { claimChanges } from "./actions/changes.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
+import { unreadable } from "./actions/refusal.js";
+import { promoteTodo, recordTodo } from "./actions/todo.js";
 import {
   acceptPlan,
   authorizeExecution,
   writePlan,
   type Authorization,
   type PlanDraft,
-  type PlanResult,
 } from "./actions/plan.js";
 import type { ResolutionContext } from "./actions/resolve.js";
 import {
@@ -17,9 +18,9 @@ import {
   decideSpecification,
   writeSpecification,
   type SpecificationDraft,
-  type SpecificationResult,
 } from "./actions/specification.js";
 import { resolveConfiguration } from "./config/configuration.js";
+import { readRecord } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
 import { WorkflowPackageError, type WorkflowPackage } from "./workflow/types.js";
@@ -49,6 +50,7 @@ export const USAGE = `jflow helper
 
 Usage:
   jflow status      [--root <dir>] [--config <file>]
+  jflow next        [--root <dir>] [--config <file>]
   jflow run <request…> [--root <dir>] [--config <file>]
   jflow validate    [--config <file>]
   jflow check-host  [--root <dir>]
@@ -60,6 +62,9 @@ Usage:
   jflow plan accept [--note <words>] [--authorize plan|ticket --ticket <id>] [--root <dir>]
   jflow plan authorize --scope plan|ticket [--ticket <id>] --note <words> [--root <dir>]
   jflow changes claim [<path>…] --owner developer|ticket --note <words> [--root <dir>]
+  jflow todo add <summary…> [--detail <context>] [--root <dir>]
+  jflow todo list                                [--root <dir>]
+  jflow todo promote <id> --note <the developer's words> [--root <dir>]
   jflow help
 
 Every command prints one JSON object. <request> is an action name or a
@@ -74,6 +79,9 @@ developer's instruction also authorized execution.
 "changes claim" records who owns uncommitted changes jflow found and asked
 about: the developer (left out of the ticket) or the assigned ticket. With
 no paths it covers every unclaimed change. It never stages or discards.
+"todo add" records future work outside the plan and authorizes nothing;
+"todo promote" records the developer's decision to bring an item into the
+plan, and says whether plan or realign adds its ticket.
 `;
 
 interface ParsedArgs {
@@ -82,7 +90,7 @@ interface ParsedArgs {
   readonly options: Readonly<Record<string, string>>;
 }
 
-const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket", "owner"];
+const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket", "owner", "detail"];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
@@ -195,7 +203,8 @@ function runRequest(request: string, options: ParsedArgs["options"], io: CliIo):
   return exitCodeFor(outcome);
 }
 
-function reportSpecification(result: SpecificationResult, io: CliIo): number {
+/** Prints a helper result; a refusal needs the developer. */
+function report<T extends { readonly ok: boolean }>(result: T, io: CliIo): number {
   io.stdout(`${JSON.stringify(result, null, 2)}\n`);
   return result.ok ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
@@ -208,7 +217,7 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
     case "write": {
       const read = readDraft<SpecificationDraft>(target, "specification write", io);
       if (!read.ok) return read.exit;
-      return reportSpecification(
+      return report(
         writeSpecification(root, read.draft, { now: new Date().toISOString() }),
         io,
       );
@@ -220,7 +229,7 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
         return EXIT_NEEDS_HUMAN;
       }
       const status = subcommand === "confirm" ? "confirmed" : "rejected";
-      return reportSpecification(
+      return report(
         decideSpecification(root, target, status, { basis: args.options["basis"] ?? "" }),
         io,
       );
@@ -228,7 +237,7 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
     case "accept": {
       const note = args.options["note"];
       const now = new Date().toISOString();
-      return reportSpecification(
+      return report(
         acceptSpecification(root, note === undefined ? { now } : { now, note }),
         io,
       );
@@ -237,11 +246,6 @@ function runSpecification(args: ParsedArgs, io: CliIo): number {
       io.stderr(`specification needs one of write, confirm, reject, accept\n${USAGE}`);
       return EXIT_NEEDS_HUMAN;
   }
-}
-
-function reportPlan(result: PlanResult, io: CliIo): number {
-  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
-  return result.ok ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
 
 type AuthorizationParse =
@@ -276,7 +280,7 @@ function runPlan(args: ParsedArgs, io: CliIo): number {
     case "write": {
       const read = readDraft<PlanDraft>(target, "plan write", io);
       if (!read.ok) return read.exit;
-      return reportPlan(writePlan(root, read.draft, { now: new Date().toISOString() }), io);
+      return report(writePlan(root, read.draft, { now: new Date().toISOString() }), io);
     }
     case "accept": {
       const parsed = parseAuthorization(args.options["authorize"], args.options["ticket"], note);
@@ -284,7 +288,7 @@ function runPlan(args: ParsedArgs, io: CliIo): number {
         io.stderr(`${parsed.message}\n${USAGE}`);
         return EXIT_NEEDS_HUMAN;
       }
-      return reportPlan(
+      return report(
         acceptPlan(root, {
           now: new Date().toISOString(),
           ...(note === undefined ? {} : { note }),
@@ -299,7 +303,7 @@ function runPlan(args: ParsedArgs, io: CliIo): number {
         io.stderr(`${parsed.ok ? "plan authorize needs --scope plan|ticket" : parsed.message}\n${USAGE}`);
         return EXIT_NEEDS_HUMAN;
       }
-      return reportPlan(authorizeExecution(root, parsed.authorization), io);
+      return report(authorizeExecution(root, parsed.authorization), io);
     }
     default:
       io.stderr(`plan needs one of write, accept, authorize\n${USAGE}`);
@@ -324,8 +328,49 @@ function runChanges(args: ParsedArgs, io: CliIo): number {
     note: args.options["note"] ?? "",
     ...(paths.length === 0 ? {} : { paths }),
   });
-  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
-  return result.ok ? EXIT_OK : EXIT_NEEDS_HUMAN;
+  return report(result, io);
+}
+
+function runTodo(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, ...rest] = args.positional;
+
+  switch (subcommand) {
+    case "add": {
+      const summary = rest.join(" ").trim();
+      if (summary === "") {
+        io.stderr(`todo add needs a summary of the item\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const detail = args.options["detail"];
+      return report(
+        recordTodo(root, detail === undefined ? { summary } : { summary, detail }, {
+          now: new Date().toISOString(),
+        }),
+        io,
+      );
+    }
+    case "list": {
+      const read = readRecord(root, "todos");
+      if (read.kind === "malformed") {
+        io.stdout(`${JSON.stringify(unreadable("todos", read), null, 2)}\n`);
+        return EXIT_UNREADABLE;
+      }
+      const todos = read.kind === "present" ? read.record : { items: [] };
+      return report({ ok: true, todos }, io);
+    }
+    case "promote": {
+      const [id] = rest;
+      if (id === undefined) {
+        io.stderr(`todo promote needs a todo id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(promoteTodo(root, id, { note: args.options["note"] ?? "", now: new Date().toISOString() }), io);
+    }
+    default:
+      io.stderr(`todo needs one of add, list, promote\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
 }
 
 export function runCli(argv: readonly string[], io: CliIo): number {
@@ -345,7 +390,8 @@ export function runCli(argv: readonly string[], io: CliIo): number {
       return EXIT_OK;
 
     case "status":
-      return runRequest("status", args.options, io);
+    case "next":
+      return runRequest(args.command, args.options, io);
 
     case "run": {
       const request = args.positional.join(" ").trim();
@@ -377,6 +423,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
 
     case "changes":
       return runChanges(args, io);
+
+    case "todo":
+      return runTodo(args, io);
 
     case "check-host": {
       const root = resolvePath(io.cwd, args.options["root"] ?? ".");

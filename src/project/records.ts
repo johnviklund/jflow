@@ -21,8 +21,9 @@ import type { ValidationIssue } from "../workflow/types.js";
 
 /**
  * The authoritative project record store (SPEC.md D14, issue #3). Plans,
- * tickets, progress, lessons, Jev fallback status and the wrap resume record
- * live as one JSON file each under a version-controlled `jflow/` directory,
+ * tickets, progress, lessons, Jev fallback status, the wrap resume record and
+ * todo items live as one JSON file each under a version-controlled `jflow/`
+ * directory,
  * so a fresh conversation recovers full context from files alone.
  *
  * Records keep summaries and trace references only (D23): every schema is
@@ -45,6 +46,7 @@ export const RECORD_KINDS = [
   "lessons",
   "jev",
   "resume",
+  "todos",
 ] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -253,6 +255,32 @@ export interface ResumeRecord {
   readonly nextSteps?: readonly string[];
 }
 
+export const TODO_STATUSES = ["open", "promoted"] as const;
+
+export type TodoStatus = (typeof TODO_STATUSES)[number];
+
+/**
+ * Future work captured outside the active plan (D26, issue #14). Recording
+ * one authorizes nothing and adds no ticket; `promoted` records only that
+ * the developer decided, in their words, to bring it into the plan, which
+ * `plan` or `realign` then does.
+ */
+export interface TodoItem {
+  readonly id: string;
+  readonly summary: string;
+  /** Context worth keeping with the item: where it was seen, how to reproduce it. */
+  readonly detail?: string;
+  /** The ticket assigned when the item was recorded, if any. */
+  readonly discoveredDuring?: string;
+  readonly recordedAt: string;
+  readonly status: TodoStatus;
+  readonly promotion?: { readonly decidedAt: string; readonly note: string };
+}
+
+export interface TodosRecord {
+  readonly items: readonly TodoItem[];
+}
+
 export interface ProjectRecords {
   readonly specification: SpecificationRecord;
   readonly plan: PlanRecord;
@@ -261,6 +289,7 @@ export interface ProjectRecords {
   readonly lessons: LessonsRecord;
   readonly jev: JevRecord;
   readonly resume: ResumeRecord;
+  readonly todos: TodosRecord;
 }
 
 export type RecordReadResult<K extends RecordKind> =
@@ -852,6 +881,67 @@ const validateResume: Validator<ResumeRecord> = (value, issues) => {
   );
 };
 
+const validateTodos: Validator<TodosRecord> = (value, issues) => {
+  const doc = requireObject(value, "", ["items"], issues);
+  if (!doc) return undefined;
+  const items: TodoItem[] = [];
+  if (!Array.isArray(doc["items"])) {
+    issues.add("items", "must be an array of todo items");
+    return { items };
+  }
+  const ids = new Set<string>();
+  doc["items"].forEach((entry, index) => {
+    const path = `items[${index}]`;
+    const item = requireObject(
+      entry,
+      path,
+      ["id", "summary", "detail", "discoveredDuring", "recordedAt", "status", "promotion"],
+      issues,
+    );
+    if (!item) return;
+    const id = requireNonEmptyString(item["id"], `${path}.id`, issues);
+    if (ids.has(id)) issues.add(`${path}.id`, `duplicate todo id "${id}"`);
+    ids.add(id);
+    const status = validateEnumValue<TodoStatus>(item["status"], `${path}.status`, TODO_STATUSES, issues);
+
+    // Promotion is a recorded decision (D26): a promoted item says when and
+    // in what words, and an open one cannot carry that record.
+    let promotion: TodoItem["promotion"];
+    if (item["promotion"] !== undefined) {
+      const decided = requireObject(item["promotion"], `${path}.promotion`, ["decidedAt", "note"], issues);
+      if (decided) {
+        promotion = {
+          decidedAt: requireTimestamp(decided["decidedAt"], `${path}.promotion.decidedAt`, issues),
+          note: requireNonEmptyString(decided["note"], `${path}.promotion.note`, issues),
+        };
+      }
+    }
+    if (status === "promoted" && item["promotion"] === undefined) {
+      issues.add(`${path}.promotion`, "a promoted todo must record the developer's decision");
+    }
+    if (status === "open" && item["promotion"] !== undefined) {
+      issues.add(`${path}.promotion`, "must be absent while the todo is open");
+    }
+
+    items.push(
+      withOptional<TodoItem>(
+        {
+          id,
+          summary: requireNonEmptyString(item["summary"], `${path}.summary`, issues),
+          recordedAt: requireTimestamp(item["recordedAt"], `${path}.recordedAt`, issues),
+          status: status ?? "open",
+        },
+        {
+          detail: optionalString(item["detail"], `${path}.detail`, issues),
+          discoveredDuring: optionalString(item["discoveredDuring"], `${path}.discoveredDuring`, issues),
+          promotion,
+        },
+      ),
+    );
+  });
+  return { items };
+};
+
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
   specification: validateSpecification,
   plan: validatePlan,
@@ -860,6 +950,7 @@ const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } =
   lessons: validateLessons,
   jev: validateJev,
   resume: validateResume,
+  todos: validateTodos,
 };
 
 /** Walks the whole document so a credential cannot hide in a nested field (D14, D23). */

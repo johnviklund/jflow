@@ -65,6 +65,16 @@ export {
 
 export { runStatus, type ActionStatus, type StatusReport } from "./actions/status.js";
 
+export { runNext, type NextReport, type Recommendation } from "./actions/next.js";
+
+export {
+  promoteTodo,
+  recordTodo,
+  type PromotionResult,
+  type TodoDraft,
+  type TodoResult,
+} from "./actions/todo.js";
+
 export {
   acceptPlan,
   authorizeExecution,
@@ -124,6 +134,7 @@ export {
   RecordValidationError,
   SPECIFICATION_STATUSES,
   TICKET_STATUSES,
+  TODO_STATUSES,
   readRecord,
   recordPath,
   validateRecord,
@@ -154,6 +165,9 @@ export {
   type TicketRecord,
   type TicketStatus,
   type TicketsRecord,
+  type TodoItem,
+  type TodoStatus,
+  type TodosRecord,
 } from "./project/records.js";
 
 export { readProjectState, type ProjectStateResult } from "./project/state.js";

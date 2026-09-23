@@ -24,7 +24,9 @@ records or the workflow package cannot be read; stop and report the problem.
 | Command | Use |
 | --- | --- |
 | `scripts/jflow status` | Where the project stands and which actions could run now. Always safe. |
-| `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` runs, the rest come back `ready` for their method file. |
+| `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant. Writes nothing; see `actions/next.md`. |
+| `scripts/jflow todo add\|list\|promote` | Record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
+| `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
@@ -43,7 +45,8 @@ Pass `--root <dir>` when the project is not the current directory.
 2. Run `scripts/jflow run <name or words>`. The helper resolves the request
    to exactly one action or returns a question; it never guesses.
 3. Read `outcome.kind`:
-   - `completed`: report the result from the method file for that action.
+   - `completed` (`status`, `next`): report the result as that action's
+     method file says.
    - `ready`: the action is eligible; follow `actions/<action>.md` for
      the method. (Until an action's method file exists, tell the developer
      the action is eligible but not yet available.)
@@ -67,6 +70,8 @@ parts only the agent can honour.
   what you inferred.
 - `review` is never done by the agent that implemented the change.
 - `realign` is the developer's to invoke. Recommend it; never run it unasked.
+- A todo item is not work to do now. Recording or listing one never widens
+  the current ticket; only the developer's explicit decision promotes it.
 - Secrets never go into project files or the conversation. If the helper
   reports the Jev API key missing, ask how to configure it rather than
   proceeding without Jev.
@@ -99,9 +104,9 @@ fix. A fix goes through an authorized `implement`.
 
 ## Layout
 
-- `actions/` — one method file per action. `status.md`, `brainstorm.md`
-  and `plan.md` exist; the others are filled in by the issue that owns
-  each action.
+- `actions/` — one method file per action. `status.md`, `next.md`,
+  `todo.md`, `brainstorm.md` and `plan.md` exist; the others are filled in
+  by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
 - `scripts/jflow` — the helper.

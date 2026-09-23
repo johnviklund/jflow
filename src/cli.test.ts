@@ -245,6 +245,33 @@ describe("jflow helper CLI", () => {
     expect((ready.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("ready");
   });
 
+  it("captures a todo mid-implementation, recommends next, and promotes only on the developer's words", () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+
+    const added = run(["todo", "add", "CSV", "export", "drops", "headers", "--detail", "seen in T1"], h.root);
+    const empty = run(["todo", "add"], h.root);
+    const listed = run(["todo", "list"], h.root);
+    const next = run(["next"], h.root);
+    const unworded = run(["todo", "promote", "TODO-1"], h.root);
+    const promoted = run(["todo", "promote", "TODO-1", "--note", "fold it into this plan"], h.root);
+
+    expect(added.code).toBe(EXIT_OK);
+    expect(added.json()).toMatchObject({ ok: true, outcome: { item: { id: "TODO-1", summary: "CSV export drops headers" } } });
+    expect(empty.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(listed.json()).toMatchObject({ ok: true, todos: { items: [{ id: "TODO-1" }] } });
+    expect(next.code).toBe(EXIT_OK);
+    expect(next.json()["outcome"]).toMatchObject({
+      kind: "completed",
+      action: "next",
+      report: { recommendation: { action: "implement" }, openTodos: [{ id: "TODO-1" }] },
+    });
+    expect(unworded.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(promoted.json()).toMatchObject({ ok: true, outcome: { addTicketWith: "realign" } });
+  });
+
   it("records acceptance and whole-plan authorization from one instruction", () => {
     const h = harness({ state: { specificationAccepted: true }, gitRepository: true });
     writeFileSync(

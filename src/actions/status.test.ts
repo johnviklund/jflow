@@ -10,7 +10,7 @@ describe("status", () => {
       const outcome = harness.runAction("status");
 
       expect(outcome.kind).toBe("completed");
-      if (outcome.kind !== "completed") return;
+      if (outcome.kind !== "completed" || outcome.action !== "status") return;
       expect(outcome.report.project).toBe("uninitialized");
       if (outcome.report.project === "malformed") return;
       expect(outcome.report.state).toEqual(createWorkflowState());
@@ -29,7 +29,7 @@ describe("status", () => {
       const outcome = harness.runAction("status");
 
       expect(outcome.kind).toBe("completed");
-      if (outcome.kind !== "completed") return;
+      if (outcome.kind !== "completed" || outcome.action !== "status") return;
       expect(outcome.report.project).toBe("initialized");
       if (outcome.report.project === "malformed") return;
       expect(outcome.report.state.specificationAccepted).toBe(true);
@@ -47,7 +47,7 @@ describe("status", () => {
       const outcome = harness.runAction("status");
 
       expect(outcome.kind).toBe("completed");
-      if (outcome.kind !== "completed") return;
+      if (outcome.kind !== "completed" || outcome.action !== "status") return;
       if (outcome.report.project === "malformed") return;
       const byName = new Map(outcome.report.actions.map((entry) => [entry.name, entry]));
 
@@ -71,7 +71,7 @@ describe("status", () => {
       const outcome = harness.runAction("status");
 
       expect(outcome.kind).toBe("completed");
-      if (outcome.kind !== "completed") return;
+      if (outcome.kind !== "completed" || outcome.action !== "status") return;
       expect(outcome.report.project).toBe("malformed");
       if (outcome.report.project !== "malformed") return;
       expect(outcome.report.path).toContain("progress.json");
