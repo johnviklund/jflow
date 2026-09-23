@@ -26,6 +26,7 @@ describe("resolveConfiguration defaults", () => {
     expect(result.configuration.settings["evidenceSharing.excludeFullRepository"]).toBe(
       true,
     );
+    expect(result.configuration.settings["evidenceSharing.maxPacketChars"]).toBe(20000);
   });
 
   it("keeps the Jev retry count and the review fix-retry limit independent", () => {

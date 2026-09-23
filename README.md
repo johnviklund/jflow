@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#7 and #14; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#7, #14 and #16; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -74,11 +74,25 @@ Foundation slice (issues #1–#7 and #14; TICKETS.md T1–T5 decompose #1 and #2
   ticket itself. `next` reports each action's eligibility with its reasons
   and one recommendation, including what only the developer can grant. It
   writes nothing (issue #14).
+- `src/jev/` — the Jev client (issue #16).
+  - `evidence.ts` builds the bounded packet for one decision: task summary,
+    candidates and selected excerpts. It redacts credentials, including the
+    key itself, and drops full-conversation or full-repository content
+    while `evidenceSharing` excludes it. It cuts to
+    `evidenceSharing.maxPacketChars` and lists every omission.
+  - `client.ts` makes one call to TypeSafe's `POST /v1/systemone`. A
+    missing key returns the question to ask and sends nothing. The exact
+    exchange goes to a trace without the key. The caller gets a portable
+    summary (answer, confidence, trace reference) or a failure marked
+    retryable or not. Retries and fallback are #18's; decision envelopes
+    are #17's.
+  - `traces.ts` keeps traces under `.jflow/traces/` (the directory carries
+    its own `.gitignore`) until `jflow traces clean`.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`); one JSON object per command. `npm run build`
+  `todo`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
@@ -89,7 +103,8 @@ Foundation slice (issues #1–#7 and #14; TICKETS.md T1–T5 decompose #1 and #2
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, the Jev client, the local commit, and
+The other workflow actions, the Jev decisions and their call sites, the
+local commit, and
 compound learning are not implemented yet. Nothing has been run on the
 ChatGPT desktop app; see `skill/references/HOST.md`.
 

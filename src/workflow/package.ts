@@ -724,7 +724,7 @@ const SHIPPED_PACKAGE_DIRECTORY = fileURLToPath(new URL("../../workflow/", impor
 const SHIPPED_PACKAGE_PATH = join(SHIPPED_PACKAGE_DIRECTORY, "jflow.workflow.json");
 
 /** Reads a question file relative to the shipped package; absent files resolve to undefined. */
-function readShippedQuestionFile(relativePath: string): string | undefined {
+export function readShippedQuestionFile(relativePath: string): string | undefined {
   try {
     return readFileSync(join(SHIPPED_PACKAGE_DIRECTORY, relativePath), "utf8");
   } catch (error) {

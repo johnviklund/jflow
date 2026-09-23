@@ -5,6 +5,7 @@ import { claimChanges } from "./actions/changes.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { unreadable } from "./actions/refusal.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
+import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
   authorizeExecution,
@@ -65,6 +66,8 @@ Usage:
   jflow todo add <summary…> [--detail <context>] [--root <dir>]
   jflow todo list                                [--root <dir>]
   jflow todo promote <id> --note <the developer's words> [--root <dir>]
+  jflow traces list  [--root <dir>]
+  jflow traces clean [--root <dir>]
   jflow help
 
 Every command prints one JSON object. <request> is an action name or a
@@ -82,6 +85,8 @@ no paths it covers every unclaimed change. It never stages or discards.
 "todo add" records future work outside the plan and authorizes nothing;
 "todo promote" records the developer's decision to bring an item into the
 plan, and says whether plan or realign adds its ticket.
+"traces clean" deletes the local Jev traces under .jflow/traces; run it only
+when the developer asks. Project records keep their summaries.
 `;
 
 interface ParsedArgs {
@@ -373,6 +378,19 @@ function runTodo(args: ParsedArgs, io: CliIo): number {
   }
 }
 
+function runTraces(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  switch (args.positional[0]) {
+    case "list":
+      return report({ ok: true, traces: listTraces(root) }, io);
+    case "clean":
+      return report({ ok: true, ...cleanTraces(root) }, io);
+    default:
+      io.stderr(`traces needs one of list, clean\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
 export function runCli(argv: readonly string[], io: CliIo): number {
   let args: ParsedArgs;
   try {
@@ -426,6 +444,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
 
     case "todo":
       return runTodo(args, io);
+
+    case "traces":
+      return runTraces(args, io);
 
     case "check-host": {
       const root = resolvePath(io.cwd, args.options["root"] ?? ".");

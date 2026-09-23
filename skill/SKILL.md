@@ -31,6 +31,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 | `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
+| `scripts/jflow traces list\|clean` | The local Jev traces under `.jflow/traces/`. `clean` deletes them; run it only when the developer asks. |
 | `scripts/jflow changes claim [<path>…] --owner developer\|ticket --note "<words>"` | Record who owns uncommitted changes the helper asked about; see "Git" below. |
 
 Pass `--root <dir>` when the project is not the current directory.
@@ -75,6 +76,11 @@ parts only the agent can honour.
 - Secrets never go into project files or the conversation. If the helper
   reports the Jev API key missing, ask how to configure it rather than
   proceeding without Jev.
+- Evidence for Jev is a bounded packet for one decision: a task summary,
+  the candidates and selected excerpts. Never paste a whole conversation or
+  repository into it, or anything secret.
+- Raw Jev traces stay under `.jflow/traces/`, outside version control.
+  Never delete, export or upload them unless the developer asks.
 
 ## Git
 

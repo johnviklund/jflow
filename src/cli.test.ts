@@ -272,6 +272,20 @@ describe("jflow helper CLI", () => {
     expect(promoted.json()).toMatchObject({ ok: true, outcome: { addTicketWith: "realign" } });
   });
 
+  it("lists local traces and deletes them only on an explicit clean", () => {
+    const h = harness();
+    h.writeFile(".jflow/traces/2026-09-23-escalate-abc.json", "{}\n");
+
+    const listed = run(["traces", "list"], h.root);
+    const cleaned = run(["traces", "clean"], h.root);
+    const after = run(["traces", "list"], h.root);
+
+    expect(listed.json()).toEqual({ ok: true, traces: [".jflow/traces/2026-09-23-escalate-abc.json"] });
+    expect(cleaned.json()).toEqual({ ok: true, removed: [".jflow/traces/2026-09-23-escalate-abc.json"] });
+    expect(after.json()).toEqual({ ok: true, traces: [] });
+    expect(run(["traces", "purge"], h.root).code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
   it("records acceptance and whole-plan authorization from one instruction", () => {
     const h = harness({ state: { specificationAccepted: true }, gitRepository: true });
     writeFileSync(

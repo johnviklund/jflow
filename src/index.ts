@@ -173,3 +173,32 @@ export {
 export { readProjectState, type ProjectStateResult } from "./project/state.js";
 
 export { readWorkingTree, type WorkingTree } from "./project/worktree.js";
+
+export {
+  buildEvidencePacket,
+  redact,
+  sharingLimitsFrom,
+  type EvidenceExcerpt,
+  type EvidenceInput,
+  type EvidencePacket,
+  type ExcerptScope,
+  type Omission,
+  type SharingLimits,
+} from "./jev/evidence.js";
+
+export {
+  JEV_ENDPOINT,
+  JEV_MODEL,
+  askJev,
+  fetchTransport,
+  loadDecisionQuestion,
+  type DecisionQuestion,
+  type JevCallResult,
+  type JevCallSummary,
+  type JevClientOptions,
+  type JevFailure,
+  type JevTransport,
+  type TransportRequest,
+} from "./jev/client.js";
+
+export { TRACE_DIRECTORY, cleanTraces, listTraces } from "./jev/traces.js";

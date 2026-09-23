@@ -313,6 +313,14 @@
         "type": "boolean",
         "summary": "Full repository content is excluded from evidence sent to Jev by default.",
         "default": true
+      },
+      {
+        "key": "evidenceSharing.maxPacketChars",
+        "type": "integer",
+        "summary": "Upper bound on the characters of evidence (task summary, candidates and excerpts) in one packet sent to Jev.",
+        "default": 20000,
+        "minimum": 1000,
+        "maximum": 200000
       }
     ]
   }
