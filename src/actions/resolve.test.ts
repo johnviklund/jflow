@@ -177,7 +177,57 @@ describe("resolveAction Git requirements", () => {
     const git = result.unmet.find((entry) => entry.condition === "git.repository");
     expect(git?.reason).toContain("local Git repository");
     expect(git?.reason).toContain("never initializes");
+    expect(git?.reason).toContain("create one yourself");
     expect(result.requiresHumanAsk).toBe(true);
+  });
+
+  it("reports a Git repository it cannot read without offering to repair it", () => {
+    const state = createWorkflowState({
+      specificationAccepted: true,
+      planAccepted: true,
+      executionAuthorized: true,
+      assignedTicketId: "T1",
+      gitRepositoryUnreadable: "fatal: not a git repository",
+    });
+
+    const result = resolve("implement", state);
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") return;
+    const git = result.unmet.find((entry) => entry.condition === "git.repository");
+    expect(git?.reason).toContain("cannot be read");
+    expect(git?.reason).toContain("fatal: not a git repository");
+    expect(git?.needsHuman).toBe(true);
+  });
+
+  it("pauses implement and asks when uncommitted changes have no recorded owner", () => {
+    const state = createWorkflowState({
+      specificationAccepted: true,
+      planAccepted: true,
+      executionAuthorized: true,
+      assignedTicketId: "T1",
+      gitRepositoryPresent: true,
+      unclaimedChanges: ["notes.md", "src/app.ts"],
+    });
+
+    const result = resolve("implement", state);
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") return;
+    expect(result.unmet.map((entry) => entry.condition)).toEqual(["git.changesOwned"]);
+    expect(result.unmet[0]?.reason).toContain("notes.md, src/app.ts");
+    expect(result.requiresHumanAsk).toBe(true);
+  });
+
+  it("does not let unclaimed changes block brainstorm or plan", () => {
+    const state = createWorkflowState({
+      specificationAccepted: true,
+      gitRepositoryPresent: true,
+      unclaimedChanges: ["notes.md"],
+    });
+
+    expect(resolve("brainstorm", state).status).toBe("eligible");
+    expect(resolve("plan", state).status).toBe("eligible");
   });
 
   it("does not require a Git repository for brainstorm or plan", () => {
@@ -331,6 +381,7 @@ describe("createWorkflowState", () => {
       executionAuthorized: false,
       ticketChangesPresent: false,
       gitRepositoryPresent: false,
+      unclaimedChanges: [],
     });
   });
 });

@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#6; TICKETS.md T1–T5 decompose #1 and #2):
+Foundation slice (issues #1–#7; TICKETS.md T1–T5 decompose #1 and #2):
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -56,10 +56,22 @@ Foundation slice (issues #1–#6; TICKETS.md T1–T5 decompose #1 and #2):
   ticket without acceptance criteria, or for a dependency cycle), record
   plan acceptance, and record execution authorization as a separate fact
   that the same instruction may grant — "looks good" accepts only.
+- `src/project/worktree.ts` — the helper's only access to Git (issue #7).
+  It admits read-only subcommands only (`status`, `rev-parse`), so no path
+  initializes a repository, discards a change or stages pre-existing work.
+  It reads the working tree's uncommitted changes, leaving out `jflow/`.
+  `state.ts` reports the changes with no recorded owner, and `implement`
+  and `review` pause on them (`git.changesOwned`) until
+  `jflow changes claim` records the developer's answer: `developer` (kept
+  out of the ticket) or `ticket` (adopted; the claim holds only while that
+  ticket is assigned). Once the ticket's work has begun, new changes are
+  presumed the ticket's. Telling them apart from the developer's own
+  mid-ticket edits is left to #10 and #22.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
-  `validate`, `check-host`); one JSON object per command. `npm run build`
+  `validate`, `check-host`, `specification`, `plan`, `changes`); one JSON
+  object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`,
@@ -70,7 +82,7 @@ Foundation slice (issues #1–#6; TICKETS.md T1–T5 decompose #1 and #2):
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, the Jev client, Git/commit behaviour, and
+The other workflow actions, the Jev client, the local commit, and
 compound learning are not implemented yet. Nothing has been run on the
 ChatGPT desktop app; see `skill/references/HOST.md`.
 
@@ -80,8 +92,11 @@ ChatGPT desktop app; see `skill/references/HOST.md`.
   workflow package or configuration can disable that gate.
 - `troubleshoot` and `review` can never edit code.
 - `implement` and `review` require a local Git repository; `brainstorm` and
-  `plan` do not. jflow never initializes a repository or absorbs pre-existing
-  uncommitted changes.
+  `plan` do not. jflow runs read-only Git commands only. It never
+  initializes a repository or discards changes, and never absorbs
+  pre-existing uncommitted changes. Changes with no recorded owner pause
+  `implement` and `review` until the developer names one, and a workflow
+  package cannot drop that pause.
 - Plan acceptance and execution authorization are distinct state flags.
 - A stage worker model never falls back implicitly — the fallback must name an
   explicit model, otherwise jflow asks.

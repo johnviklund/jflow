@@ -12,6 +12,7 @@ export const WORKFLOW_CONDITIONS = [
   "ticket.assigned",
   "ticket.changesPresent",
   "git.repository",
+  "git.changesOwned",
 ] as const;
 
 export type WorkflowCondition = (typeof WORKFLOW_CONDITIONS)[number];

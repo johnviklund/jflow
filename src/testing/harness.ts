@@ -1,9 +1,15 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "../actions/dispatch.js";
-import { createWorkflowState, type ResolutionContext, type WorkflowState } from "../actions/resolve.js";
+import {
+  createWorkflowState,
+  type ObservedStateField,
+  type ResolutionContext,
+  type WorkflowState,
+} from "../actions/resolve.js";
 import { resolveConfiguration } from "../config/configuration.js";
 import { writeRecord, type PlanRecord, type SpecificationRecord } from "../project/records.js";
 import { readProjectState, type ProjectStateResult } from "../project/state.js";
@@ -19,8 +25,11 @@ import { loadShippedWorkflowPackage } from "../workflow/package.js";
 
 export interface HarnessOptions {
   /** Recorded state to start from; omitted means an uninitialized project. */
-  readonly state?: Partial<Omit<WorkflowState, "gitRepositoryPresent">>;
-  /** Whether the project directory should look like a Git repository. */
+  readonly state?: Partial<Omit<WorkflowState, ObservedStateField>>;
+  /**
+   * Whether the project directory is a Git repository. The harness runs
+   * `git init` itself, as the developer would; jflow never does.
+   */
   readonly gitRepository?: boolean;
 }
 
@@ -37,7 +46,7 @@ export interface ProjectHarness {
   /** Runs an action by name. */
   runAction(action: string): ActionOutcome;
   readState(): ProjectStateResult;
-  /** All files under the root, keyed by relative path, for before/after assertions. */
+  /** All working-tree files under the root (not `.git`), keyed by relative path. */
   snapshot(): Readonly<Record<string, string>>;
   path(relativePath: string): string;
   writeFile(relativePath: string, content: string): void;
@@ -67,11 +76,14 @@ const SEED_PLAN: PlanRecord = {
 /**
  * Writes the records a `WorkflowState` is derived from: the specification
  * and plan statuses carry their gates, the progress record the rest. A
- * fresh authorization is seeded at ticket scope; Git presence is never written.
+ * fresh authorization is seeded at ticket scope; observed working-tree state
+ * is never written.
  */
 function seedRecords(root: string, state: WorkflowState): void {
   const {
-    gitRepositoryPresent: _observed,
+    gitRepositoryPresent: _present,
+    gitRepositoryUnreadable: _unreadable,
+    unclaimedChanges: _unclaimed,
     specificationAccepted,
     planAccepted,
     assignedTicketId,
@@ -99,6 +111,7 @@ function listFiles(root: string, directory = root): Record<string, string> {
   const files: Record<string, string> = {};
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const full = join(directory, entry.name);
+    if (entry.isDirectory() && entry.name === ".git" && directory === root) continue;
     if (entry.isDirectory()) Object.assign(files, listFiles(root, full));
     else files[relative(root, full)] = readFileSync(full, "utf8");
   }
@@ -114,7 +127,7 @@ export function createProjectHarness(options: HarnessOptions = {}): ProjectHarne
   const context: ResolutionContext = { workflowPackage, configuration: configResult.configuration };
 
   const root = mkdtempSync(join(tmpdir(), "jflow-project-"));
-  if (options.gitRepository) mkdirSync(join(root, ".git"));
+  if (options.gitRepository) execFileSync("git", ["init", "--quiet"], { cwd: root });
   if (options.state) seedRecords(root, createWorkflowState(options.state));
 
   const events: HumanAskEvent[] = [];

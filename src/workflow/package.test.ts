@@ -60,7 +60,7 @@ function validPackage(): Record<string, unknown> {
         delegationLimits: { maxParallelWorkers: 2, allowParallelWithinUnit: true },
         canEditCode: true,
         requiresGitRepository: true,
-        prerequisites: ["plan.accepted", "execution.authorized", "git.repository"],
+        prerequisites: ["plan.accepted", "execution.authorized", "git.repository", "git.changesOwned"],
         produces: ["commit"],
       },
       {
@@ -71,7 +71,7 @@ function validPackage(): Record<string, unknown> {
         delegationLimits: { maxParallelWorkers: 1, allowParallelWithinUnit: false },
         canEditCode: false,
         requiresGitRepository: true,
-        prerequisites: ["ticket.changesPresent", "git.repository"],
+        prerequisites: ["ticket.changesPresent", "git.repository", "git.changesOwned"],
         produces: ["review"],
       },
     ],
@@ -516,6 +516,44 @@ describe("validateWorkflowPackage", () => {
     const paths = result.issues.map((issue) => issue.path);
     expect(paths).toContain("actions[2].prerequisites");
     expect(paths).toContain("actions[2].requiresGitRepository");
+  });
+
+  it("rejects a Git-bound action that drops the pause for changes of unclear ownership", () => {
+    const doc = validPackage();
+    const actions = doc["actions"] as Record<string, unknown>[];
+    actions[0]!["prerequisites"] = ["plan.accepted", "execution.authorized", "git.repository"];
+
+    const result = validate(doc);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContainEqual({
+      path: "actions[0].prerequisites",
+      message:
+        'action "implement" requires a Git repository and must list the "git.changesOwned" prerequisite; pre-existing changes are never absorbed silently',
+    });
+  });
+
+  it("rejects a Git ownership prerequisite on an action that does not require Git", () => {
+    const doc = validPackage();
+    const actions = doc["actions"] as Record<string, unknown>[];
+    actions.push({
+      name: "brainstorm",
+      kind: "stage",
+      summary: "Investigate.",
+      requiredRoles: [{ role: "investigator", independentFromImplementer: false }],
+      delegationLimits: { maxParallelWorkers: 1, allowParallelWithinUnit: false },
+      canEditCode: false,
+      requiresGitRepository: false,
+      prerequisites: ["git.changesOwned"],
+      produces: [],
+    });
+
+    const result = validate(doc);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toContain("actions[2].requiresGitRepository");
   });
 
   it("rejects a non-object document", () => {

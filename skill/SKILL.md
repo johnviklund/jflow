@@ -29,6 +29,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 | `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
+| `scripts/jflow changes claim [<path>…] --owner developer\|ticket --note "<words>"` | Record who owns uncommitted changes the helper asked about; see "Git" below. |
 
 Pass `--root <dir>` when the project is not the current directory.
 
@@ -69,6 +70,32 @@ parts only the agent can honour.
 - Secrets never go into project files or the conversation. If the helper
   reports the Jev API key missing, ask how to configure it rather than
   proceeding without Jev.
+
+## Git
+
+`brainstorm` and `plan` need no repository. `implement` and `review` need
+one, and the helper blocks them without it. Never run `git init`,
+`reset`, `checkout`, `restore`, `clean`, `stash` or `rm` on the developer's
+behalf, and never stage or commit their changes. If the developer wants a
+repository or a clean tree, they do it.
+
+When `run implement` is blocked on `git.changesOwned`, the working tree
+already holds uncommitted changes that no one has claimed. Stop, show the
+developer the paths the reason lists, and ask whose they are:
+
+- theirs, left out of the ticket:
+  `scripts/jflow changes claim <paths…> --owner developer --note "<their words>"`;
+- the assigned ticket's, adopted into it:
+  `scripts/jflow changes claim <paths…> --owner ticket --note "<their words>"`;
+- to be committed or set aside first: they do that, then run
+  `implement` again.
+
+Record only what the developer said. Never pick an owner for them. Write
+draft JSON files outside the project, because a draft left in the project is
+itself an unclaimed change.
+
+`troubleshoot` and `review` never edit the working tree, even to try out a
+fix. A fix goes through an authorized `implement`.
 
 ## Layout
 

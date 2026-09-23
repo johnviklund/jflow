@@ -1,4 +1,5 @@
 import type { RecordKind, RecordReadResult } from "../project/records.js";
+import type { ProjectStateResult } from "../project/state.js";
 import type { ValidationIssue } from "../workflow/types.js";
 
 /**
@@ -22,4 +23,9 @@ export function unreadable(
   read: Extract<RecordReadResult<RecordKind>, { kind: "malformed" }>,
 ): Refusal {
   return refuse(`the ${kind} record at ${read.path} cannot be read`, read.issues);
+}
+
+/** The project state cannot be derived because one of its records is unreadable. */
+export function unreadableState(read: Extract<ProjectStateResult, { kind: "malformed" }>): Refusal {
+  return refuse(`the record at ${read.path} cannot be read`, read.issues);
 }

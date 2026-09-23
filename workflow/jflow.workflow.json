@@ -119,7 +119,8 @@
         "plan.accepted",
         "execution.authorized",
         "ticket.assigned",
-        "git.repository"
+        "git.repository",
+        "git.changesOwned"
       ],
       "produces": ["commit"]
     },
@@ -146,7 +147,7 @@
       "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
       "canEditCode": false,
       "requiresGitRepository": true,
-      "prerequisites": ["ticket.changesPresent", "git.repository"],
+      "prerequisites": ["ticket.changesPresent", "git.repository", "git.changesOwned"],
       "produces": ["review"]
     },
     {

@@ -1,15 +1,19 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-
-import { createWorkflowState, type WorkflowState } from "../actions/resolve.js";
+import {
+  createWorkflowState,
+  type ObservedStateField,
+  type WorkflowState,
+} from "../actions/resolve.js";
 import type { ValidationIssue } from "../workflow/types.js";
-import { readRecord } from "./records.js";
+import { readRecord, type ProgressRecord } from "./records.js";
+import { readWorkingTree } from "./worktree.js";
 
 /**
  * The action resolver's view of the project: the `WorkflowState` derived from
  * the authoritative records (issue #3) — the specification and the plan for
  * their acceptance gates (D27, D28), the progress record for the rest — plus
- * Git presence, which is observed from the directory and never recorded.
+ * the working tree, which is observed through Git on every read and never
+ * recorded: whether a repository is present, and which uncommitted changes
+ * have no recorded owner (issue #7).
  */
 
 export type ProjectStateResult =
@@ -24,8 +28,33 @@ export type ProjectStateResult =
       readonly message: string;
     };
 
-function gitRepositoryPresent(root: string): boolean {
-  return existsSync(join(root, ".git"));
+type ObservedState = Pick<WorkflowState, ObservedStateField>;
+
+/**
+ * A change is claimed when the developer kept it, when the assigned ticket
+ * adopted it, or once the assigned ticket's work has begun. `implement`
+ * cannot start while any change is unclaimed, so what appears after that is
+ * presumed the ticket's. Git cannot tell the agent's edits from the
+ * developer's own edits made mid-ticket; the ticket's commit (#10) and
+ * resume reconciliation (#22) own that distinction. Until then this
+ * presumption makes `git.changesOwned` on `review` inert.
+ */
+function observeWorkingTree(root: string, progress: ProgressRecord | undefined): ObservedState {
+  const tree = readWorkingTree(root);
+  if (tree.kind === "absent") return { gitRepositoryPresent: false, unclaimedChanges: [] };
+  if (tree.kind === "unreadable") {
+    return { gitRepositoryPresent: false, gitRepositoryUnreadable: tree.message, unclaimedChanges: [] };
+  }
+  if (progress?.ticketChangesPresent) return { gitRepositoryPresent: true, unclaimedChanges: [] };
+  const claimed = new Set(
+    (progress?.changeOwnership ?? [])
+      .filter((entry) => entry.owner === "developer" || entry.ticketId === progress?.assignedTicketId)
+      .map((entry) => entry.path),
+  );
+  return {
+    gitRepositoryPresent: true,
+    unclaimedChanges: tree.changedPaths.filter((path) => !claimed.has(path)),
+  };
 }
 
 function malformed(path: string, issues: readonly ValidationIssue[]): ProjectStateResult {
@@ -43,7 +72,6 @@ function malformed(path: string, issues: readonly ValidationIssue[]): ProjectSta
  * `malformed` result rather than a crash or a silent default.
  */
 export function readProjectState(root: string): ProjectStateResult {
-  const git = gitRepositoryPresent(root);
   const specification = readRecord(root, "specification");
   if (specification.kind === "malformed") return malformed(specification.path, specification.issues);
   const plan = readRecord(root, "plan");
@@ -52,7 +80,7 @@ export function readProjectState(root: string): ProjectStateResult {
   if (progress.kind === "malformed") return malformed(progress.path, progress.issues);
 
   if (specification.kind === "absent" && plan.kind === "absent" && progress.kind === "absent") {
-    return { kind: "uninitialized", state: createWorkflowState({ gitRepositoryPresent: git }) };
+    return { kind: "uninitialized", state: createWorkflowState(observeWorkingTree(root, undefined)) };
   }
 
   const specificationAccepted =
@@ -69,7 +97,7 @@ export function readProjectState(root: string): ProjectStateResult {
       ...(recorded?.assignedTicketId === undefined
         ? {}
         : { assignedTicketId: recorded.assignedTicketId }),
-      gitRepositoryPresent: git,
+      ...observeWorkingTree(root, recorded),
     },
   };
 }

@@ -57,6 +57,7 @@ export {
   resolveAction,
   type ActionRequest,
   type ActionResolution,
+  type ObservedStateField,
   type ResolutionContext,
   type UnmetPrerequisite,
   type WorkflowState,
@@ -76,6 +77,13 @@ export {
 } from "./actions/plan.js";
 
 export { refuse, unreadable, type Refusal } from "./actions/refusal.js";
+
+export {
+  claimChanges,
+  type ChangeClaim,
+  type ClaimOutcome,
+  type ClaimResult,
+} from "./actions/changes.js";
 
 export {
   acceptSpecification,
@@ -105,6 +113,7 @@ export {
 
 export {
   AUTHORIZATION_SCOPES,
+  CHANGE_OWNERS,
   DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
@@ -120,6 +129,8 @@ export {
   validateRecord,
   writeRecord,
   type AuthorizationScope,
+  type ChangeOwner,
+  type ChangeOwnership,
   type DecisionStatus,
   type FallbackScope,
   type FallbackStatus,
@@ -146,3 +157,5 @@ export {
 } from "./project/records.js";
 
 export { readProjectState, type ProjectStateResult } from "./project/state.js";
+
+export { readWorkingTree, type WorkingTree } from "./project/worktree.js";

@@ -141,6 +141,25 @@ export interface ReconciliationDiscrepancy {
   readonly consequential: boolean;
 }
 
+export const CHANGE_OWNERS = ["developer", "ticket"] as const;
+
+export type ChangeOwner = (typeof CHANGE_OWNERS)[number];
+
+/**
+ * Who owns an uncommitted change that was already in the working tree
+ * (issue #7): the developer, so jflow leaves it alone, or a ticket, which
+ * adopts it. Recorded only on the developer's word, never inferred; jflow
+ * never absorbs pre-existing changes silently.
+ */
+export type ChangeOwnership =
+  | { readonly path: string; readonly owner: Extract<ChangeOwner, "developer">; readonly note: string }
+  | {
+      readonly path: string;
+      readonly owner: Extract<ChangeOwner, "ticket">;
+      readonly ticketId: string;
+      readonly note: string;
+    };
+
 /**
  * Where the workflow stands: the acceptance gates, authorization, the
  * assigned ticket, fix attempts and resume reconciliation. This is the record
@@ -158,11 +177,16 @@ export interface ProgressRecord {
   readonly ticketChangesPresent: boolean;
   /** Unsuccessful fix attempts per ticket, one shared counter (D48). */
   readonly fixAttempts?: Readonly<Record<string, number>>;
+  /** Owners the developer gave pre-existing uncommitted changes, one entry per path. */
+  readonly changeOwnership?: readonly ChangeOwnership[];
   readonly reconciliation?: {
     readonly lastReconciledAt?: string;
     readonly discrepancies: readonly ReconciliationDiscrepancy[];
   };
 }
+
+/** The progress record of a project where nothing has been authorized yet. */
+export const EMPTY_PROGRESS: ProgressRecord = { executionAuthorized: false, ticketChangesPresent: false };
 
 export const LESSON_STATUSES = ["candidate", "active", "superseded"] as const;
 
@@ -515,6 +539,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "assignedTicketId",
       "ticketChangesPresent",
       "fixAttempts",
+      "changeOwnership",
       "reconciliation",
     ],
     issues,
@@ -562,6 +587,42 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
           issues,
         );
       }
+    }
+  }
+
+  let changeOwnership: ChangeOwnership[] | undefined;
+  if (doc["changeOwnership"] !== undefined) {
+    const claims: ChangeOwnership[] = [];
+    changeOwnership = claims;
+    if (!Array.isArray(doc["changeOwnership"])) {
+      issues.add("changeOwnership", "must be an array of claimed changes");
+    } else {
+      const paths = new Set<string>();
+      doc["changeOwnership"].forEach((entry, index) => {
+        const path = `changeOwnership[${index}]`;
+        const item = requireObject(entry, path, ["path", "owner", "ticketId", "note"], issues);
+        if (!item) return;
+        const changed = requireNonEmptyString(item["path"], `${path}.path`, issues);
+        if (changed !== "") {
+          if (paths.has(changed)) issues.add(`${path}.path`, `"${changed}" already has an owner`);
+          paths.add(changed);
+        }
+        const owner = validateEnumValue<ChangeOwner>(item["owner"], `${path}.owner`, CHANGE_OWNERS, issues);
+        const ticketId = optionalString(item["ticketId"], `${path}.ticketId`, issues);
+        const note = requireNonEmptyString(item["note"], `${path}.note`, issues);
+        if (owner === "ticket") {
+          if (ticketId === undefined) {
+            issues.add(`${path}.ticketId`, "a change adopted by a ticket must name the ticket");
+            return;
+          }
+          claims.push({ path: changed, owner, ticketId, note });
+        } else if (owner === "developer") {
+          if (ticketId !== undefined) {
+            issues.add(`${path}.ticketId`, "must be absent for a change the developer keeps");
+          }
+          claims.push({ path: changed, owner, note });
+        }
+      });
     }
   }
 
@@ -623,6 +684,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       authorizationScope,
       authorizationNote,
       assignedTicketId: optionalString(doc["assignedTicketId"], "assignedTicketId", issues),
+      changeOwnership,
       fixAttempts,
       reconciliation,
     },

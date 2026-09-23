@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
+import { claimChanges } from "./actions/changes.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import {
   acceptPlan,
@@ -58,6 +59,7 @@ Usage:
   jflow plan write <draft.json>                                   [--root <dir>]
   jflow plan accept [--note <words>] [--authorize plan|ticket --ticket <id>] [--root <dir>]
   jflow plan authorize --scope plan|ticket [--ticket <id>] --note <words> [--root <dir>]
+  jflow changes claim [<path>…] --owner developer|ticket --note <words> [--root <dir>]
   jflow help
 
 Every command prints one JSON object. <request> is an action name or a
@@ -69,6 +71,9 @@ A plan draft holds title, summary, source and tickets (id, title,
 acceptanceCriteria, dependsOn); a ticket without criteria is refused.
 "plan accept" alone accepts without authorizing; add --authorize when the
 developer's instruction also authorized execution.
+"changes claim" records who owns uncommitted changes jflow found and asked
+about: the developer (left out of the ticket) or the assigned ticket. With
+no paths it covers every unclaimed change. It never stages or discards.
 `;
 
 interface ParsedArgs {
@@ -77,7 +82,7 @@ interface ParsedArgs {
   readonly options: Readonly<Record<string, string>>;
 }
 
-const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket"];
+const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket", "owner"];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
@@ -302,6 +307,27 @@ function runPlan(args: ParsedArgs, io: CliIo): number {
   }
 }
 
+function runChanges(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, ...paths] = args.positional;
+  if (subcommand !== "claim") {
+    io.stderr(`changes needs claim\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const owner = args.options["owner"];
+  if (owner !== "developer" && owner !== "ticket") {
+    io.stderr(`changes claim needs --owner developer|ticket\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const result = claimChanges(root, {
+    owner,
+    note: args.options["note"] ?? "",
+    ...(paths.length === 0 ? {} : { paths }),
+  });
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 export function runCli(argv: readonly string[], io: CliIo): number {
   let args: ParsedArgs;
   try {
@@ -348,6 +374,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
 
     case "plan":
       return runPlan(args, io);
+
+    case "changes":
+      return runChanges(args, io);
 
     case "check-host": {
       const root = resolvePath(io.cwd, args.options["root"] ?? ".");

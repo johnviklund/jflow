@@ -85,6 +85,10 @@ const examples: ProjectRecords = {
     assignedTicketId: "T2",
     ticketChangesPresent: true,
     fixAttempts: { T2: 1 },
+    changeOwnership: [
+      { path: "notes.md", owner: "developer", note: "that's mine, leave it" },
+      { path: "src/draft.ts", owner: "ticket", ticketId: "T2", note: "part of ticket 2" },
+    ],
     reconciliation: {
       lastReconciledAt: "2026-09-20T10:00:00Z",
       discrepancies: [
@@ -202,6 +206,35 @@ describe("readRecord", () => {
     expect(() =>
       writeRecord(root, "progress", { executionAuthorized: true, ticketChangesPresent: false }),
     ).toThrow(/authorizationScope/);
+  });
+
+  it("requires each claimed change to name one owner in the developer's words", () => {
+    const root = makeRoot();
+    const progress = (changeOwnership: unknown) =>
+      writeRecord(root, "progress", {
+        executionAuthorized: false,
+        ticketChangesPresent: false,
+        changeOwnership,
+      } as never);
+
+    expect(() => progress([{ path: "a.ts", owner: "ticket", note: "yes" }])).toThrow(
+      /changeOwnership\[0\]\.ticketId/,
+    );
+    expect(() =>
+      progress([{ path: "a.ts", owner: "developer", ticketId: "T1", note: "mine" }]),
+    ).toThrow(/changeOwnership\[0\]\.ticketId/);
+    expect(() => progress([{ path: "a.ts", owner: "someone", note: "?" }])).toThrow(
+      /changeOwnership\[0\]\.owner/,
+    );
+    expect(() => progress([{ path: "a.ts", owner: "developer" }])).toThrow(
+      /changeOwnership\[0\]\.note/,
+    );
+    expect(() =>
+      progress([
+        { path: "a.ts", owner: "developer", note: "mine" },
+        { path: "a.ts", owner: "ticket", ticketId: "T1", note: "no, the ticket's" },
+      ]),
+    ).toThrow(/changeOwnership\[1\]\.path/);
   });
 
   it("rejects a timestamp that is not ISO 8601", () => {

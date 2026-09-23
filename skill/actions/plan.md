@@ -8,8 +8,11 @@ tickets against an unaccepted specification.
 **Run**, in order:
 
 1. `scripts/jflow run plan` — confirm it is `ready`.
-2. Draft the breakdown (Method below), write it to a JSON file and run
-   `scripts/jflow plan write <draft.json>`. It lands as
+2. Draft the breakdown (Method below), write it to a JSON file outside
+   the project's working tree (a temporary directory) and run
+   `scripts/jflow plan write <draft.json>`. A draft left in the project is
+   an uncommitted change with no owner, and `implement` will stop to ask
+   about it. It lands as
    `awaiting-acceptance` with every ticket `ready`. A refusal naming
    `tickets[n].acceptanceCriteria` means that ticket has no criteria: write
    them or merge the ticket away; never present a breakdown the helper

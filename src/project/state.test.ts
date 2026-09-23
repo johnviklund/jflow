@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,11 @@ function makeRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "jflow-state-"));
   roots.push(root);
   return root;
+}
+
+/** The test creates the repository; jflow never initializes one. */
+function initRepository(root: string): void {
+  execFileSync("git", ["init", "--quiet"], { cwd: root });
 }
 
 afterEach(() => {
@@ -97,14 +103,82 @@ describe("readProjectState", () => {
     }
   });
 
-  it("detects a Git repository from the directory, never from a record", () => {
+  it("detects a Git repository by asking Git, never from a record", () => {
     const root = makeRoot();
     writeRecord(root, "specification", specification);
     expect(readProjectState(root)).toMatchObject({ state: { gitRepositoryPresent: false } });
 
-    mkdirSync(join(root, ".git"));
+    initRepository(root);
 
     expect(readProjectState(root)).toMatchObject({ state: { gitRepositoryPresent: true } });
+  });
+
+  it("reports a .git Git cannot read as unreadable rather than as a repository", () => {
+    const root = makeRoot();
+    mkdirSync(join(root, ".git"));
+
+    const result = readProjectState(root);
+
+    expect(result.kind).toBe("uninitialized");
+    if (result.kind !== "uninitialized") return;
+    expect(result.state.gitRepositoryPresent).toBe(false);
+    expect(result.state.gitRepositoryUnreadable).toEqual(expect.any(String));
+  });
+
+  it("lists uncommitted changes nobody has claimed, leaving out jflow's own records", () => {
+    const root = makeRoot();
+    initRepository(root);
+    writeRecord(root, "progress", { executionAuthorized: false, ticketChangesPresent: false });
+    writeFileSync(join(root, "notes.md"), "mine\n");
+
+    expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: ["notes.md"] } });
+  });
+
+  it("treats changes the developer assigned an owner to as claimed", () => {
+    const root = makeRoot();
+    initRepository(root);
+    writeFileSync(join(root, "notes.md"), "mine\n");
+    writeFileSync(join(root, "draft.ts"), "adopted\n");
+    writeFileSync(join(root, "later.txt"), "new\n");
+    writeRecord(root, "progress", {
+      executionAuthorized: false,
+      ticketChangesPresent: false,
+      assignedTicketId: "T1",
+      changeOwnership: [
+        { path: "notes.md", owner: "developer", note: "that's my scratch file" },
+        { path: "draft.ts", owner: "ticket", ticketId: "T1", note: "fold it into T1" },
+      ],
+    });
+
+    expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: ["later.txt"] } });
+  });
+
+  it("does not count a change adopted by another ticket as claimed for the assigned one", () => {
+    const root = makeRoot();
+    initRepository(root);
+    writeFileSync(join(root, "draft.ts"), "adopted by T1\n");
+    writeRecord(root, "progress", {
+      executionAuthorized: false,
+      ticketChangesPresent: false,
+      assignedTicketId: "T2",
+      changeOwnership: [{ path: "draft.ts", owner: "ticket", ticketId: "T1", note: "fold it into T1" }],
+    });
+
+    expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: ["draft.ts"] } });
+  });
+
+  it("presumes changes made after the ticket's work began are the ticket's", () => {
+    const root = makeRoot();
+    initRepository(root);
+    writeFileSync(join(root, "src.ts"), "ticket work\n");
+    writeRecord(root, "progress", {
+      executionAuthorized: true,
+      authorizationScope: "ticket",
+      ticketChangesPresent: true,
+      assignedTicketId: "T1",
+    });
+
+    expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: [] } });
   });
 
   it("reports a malformed record as a recoverable error naming the file and issues", () => {

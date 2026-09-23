@@ -29,9 +29,19 @@ export interface WorkflowState {
   readonly assignedTicketId?: string;
   /** The assigned ticket has changes available to assess. */
   readonly ticketChangesPresent: boolean;
-  /** A local Git repository is present (SPEC.md confirmed default 1). */
+  /** A local Git repository is present and readable (SPEC.md confirmed default 1). */
   readonly gitRepositoryPresent: boolean;
+  /** Why a `.git` that is present cannot be read; jflow never repairs one. */
+  readonly gitRepositoryUnreadable?: string;
+  /**
+   * Uncommitted changes whose owner is not recorded (issue #7). Work that
+   * would touch them pauses and asks; jflow never absorbs them silently.
+   */
+  readonly unclaimedChanges: readonly string[];
 }
+
+/** State observed from the working tree on every read, never recorded. */
+export type ObservedStateField = "gitRepositoryPresent" | "gitRepositoryUnreadable" | "unclaimedChanges";
 
 export function createWorkflowState(
   overrides: Partial<WorkflowState> = {},
@@ -42,6 +52,7 @@ export function createWorkflowState(
     executionAuthorized: false,
     ticketChangesPresent: false,
     gitRepositoryPresent: false,
+    unclaimedChanges: [],
   };
   return { ...base, ...overrides };
 }
@@ -85,7 +96,7 @@ export type ActionResolution =
 
 interface ConditionRule {
   readonly satisfied: (state: WorkflowState) => boolean;
-  readonly reason: string;
+  readonly reason: string | ((state: WorkflowState) => string);
   readonly needsHuman: boolean;
 }
 
@@ -119,8 +130,16 @@ const CONDITION_RULES: Readonly<Record<WorkflowCondition, ConditionRule>> = {
   },
   "git.repository": {
     satisfied: (state) => state.gitRepositoryPresent,
-    reason:
-      "a local Git repository is required for this action; jflow never initializes a repository, discards changes, or absorbs pre-existing uncommitted work on your behalf",
+    reason: (state) =>
+      state.gitRepositoryUnreadable === undefined
+        ? "a local Git repository is required for this action; jflow never initializes a repository, discards changes, or absorbs pre-existing uncommitted work on your behalf, so create one yourself (git init) and ask again"
+        : `the Git repository here cannot be read (${state.gitRepositoryUnreadable}); jflow never repairs or re-initializes a repository, so fix it and ask again`,
+    needsHuman: true,
+  },
+  "git.changesOwned": {
+    satisfied: (state) => state.unclaimedChanges.length === 0,
+    reason: (state) =>
+      `uncommitted changes with no recorded owner: ${state.unclaimedChanges.join(", ")}; say whether they are yours to keep out of the ticket, the ticket's to adopt, or to be committed or set aside by you first — jflow never absorbs or discards them itself`,
     needsHuman: true,
   },
 };
@@ -170,7 +189,8 @@ export function resolveAction(
     for (const condition of action.prerequisites) {
       const rule = CONDITION_RULES[condition];
       if (rule.satisfied(state)) continue;
-      unmet.push({ condition, reason: rule.reason, needsHuman: rule.needsHuman });
+      const reason = typeof rule.reason === "string" ? rule.reason : rule.reason(state);
+      unmet.push({ condition, reason, needsHuman: rule.needsHuman });
     }
   }
 

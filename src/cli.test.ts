@@ -183,8 +183,10 @@ describe("jflow helper CLI", () => {
 
   it("takes a plan from draft to acceptance, keeping authorization a separate recorded step", () => {
     const h = harness({ state: { specificationAccepted: true }, gitRepository: true });
+    // Drafts live outside the project's working tree, as the skill writes them.
+    const draft = join(harness().root, "plan.json");
     writeFileSync(
-      join(h.root, "plan.json"),
+      draft,
       JSON.stringify({
         title: "CSV export",
         summary: "Export the list.",
@@ -195,19 +197,19 @@ describe("jflow helper CLI", () => {
       }),
     );
 
-    const refused = run(["plan", "write", "plan.json"], h.root);
+    const refused = run(["plan", "write", draft], h.root);
     expect(refused.code).toBe(EXIT_NEEDS_HUMAN);
     expect(JSON.stringify(refused.json()["issues"])).toContain("tickets[1].acceptanceCriteria");
 
     writeFileSync(
-      join(h.root, "plan.json"),
+      draft,
       JSON.stringify({
         title: "CSV export",
         summary: "Export the list.",
         tickets: [{ id: "T1", title: "Serialise", acceptanceCriteria: ["rows round-trip"], dependsOn: [] }],
       }),
     );
-    const written = run(["plan", "write", "plan.json"], h.root);
+    const written = run(["plan", "write", draft], h.root);
     const looksGood = run(["plan", "accept", "--note", "looks good"], h.root);
     const implementAsks = run(["run", "implement"], h.root);
     const go = run(["plan", "authorize", "--scope", "ticket", "--ticket", "T1", "--note", "go ahead with T1"], h.root);
@@ -219,6 +221,28 @@ describe("jflow helper CLI", () => {
     expect(JSON.stringify(implementAsks.json()["outcome"])).toContain("execution.authorized");
     expect(go.code).toBe(EXIT_OK);
     expect((implementReady.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("ready");
+  });
+
+  it("asks about pre-existing changes and records the developer's answer", () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    writeFileSync(join(h.root, "notes.md"), "mine\n");
+
+    const asks = run(["run", "implement"], h.root);
+    const noNote = run(["changes", "claim", "--owner", "developer"], h.root);
+    const badOwner = run(["changes", "claim", "--owner", "jflow", "--note", "x"], h.root);
+    const claimed = run(["changes", "claim", "notes.md", "--owner", "developer", "--note", "leave my notes"], h.root);
+    const ready = run(["run", "implement"], h.root);
+
+    expect(asks.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(JSON.stringify(asks.json()["humanAsks"])).toContain("notes.md");
+    expect(noNote.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(badOwner.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(claimed.code).toBe(EXIT_OK);
+    expect(claimed.json()).toMatchObject({ ok: true, outcome: { unclaimedChanges: [] } });
+    expect((ready.json()["outcome"] as Record<string, unknown>)["kind"]).toBe("ready");
   });
 
   it("records acceptance and whole-plan authorization from one instruction", () => {

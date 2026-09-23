@@ -7,7 +7,8 @@ specification for it, or `scripts/jflow run brainstorm` returned `ready`.
 
 1. `scripts/jflow run brainstorm` — confirm it is `ready`. It needs no Git
    repository and no prior records.
-2. Investigate (Method below), then write the draft to a JSON file and run
+2. Investigate (Method below), then write the draft to a JSON file outside
+   the project's working tree (a temporary directory) and run
    `scripts/jflow specification write <draft.json>`. Every decision lands
    as a proposal; `plan` is refused until the developer accepts. A refusal
    with `issues` means a section is missing or empty: fix the draft, do not

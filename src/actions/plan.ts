@@ -1,4 +1,5 @@
 import {
+  EMPTY_PROGRESS,
   readRecord,
   validateRecord,
   writeRecord,
@@ -10,7 +11,7 @@ import {
 } from "../project/records.js";
 import { readProjectState } from "../project/state.js";
 import { isRecord } from "../validation.js";
-import { refuse, unreadable, type Refusal } from "./refusal.js";
+import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 
 /**
  * The helper's part of `plan` (issue #6, D28, D41, D51): writing the ticket
@@ -51,8 +52,6 @@ export interface Authorization {
 }
 
 type Progressed = { readonly ok: true; readonly progress: ProgressRecord } | Refusal;
-
-const EMPTY_PROGRESS: ProgressRecord = { executionAuthorized: false, ticketChangesPresent: false };
 
 /** Reports the first ticket on a dependency cycle, or undefined when the graph is acyclic. */
 function findDependencyCycle(tickets: readonly TicketRecord[]): string | undefined {
@@ -129,9 +128,7 @@ export function writePlan(
   options: { readonly now: string },
 ): PlanResult {
   const state = readProjectState(root);
-  if (state.kind === "malformed") {
-    return refuse(`the record at ${state.path} cannot be read`, state.issues);
-  }
+  if (state.kind === "malformed") return unreadableState(state);
   if (!state.state.specificationAccepted) {
     return refuse(
       "the specification has not been explicitly accepted; a plan cannot be made against an unagreed definition",

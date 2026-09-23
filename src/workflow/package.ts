@@ -65,6 +65,12 @@ const QUESTION_DIRECTORY = "questions/";
 const INDEPENDENT_ASSESSMENT_ARTEFACT: WorkflowArtefact = "review";
 const READ_ONLY_ARTEFACTS: readonly WorkflowArtefact[] = ["review", "diagnosis"];
 
+/** Prerequisites every action that requires a Git repository must list, and why. */
+const GIT_CONDITIONS: readonly (readonly [WorkflowCondition, string])[] = [
+  ["git.repository", ""],
+  ["git.changesOwned", "; pre-existing changes are never absorbed silently"],
+];
+
 const ACTION_KINDS: readonly ActionKind[] = ["stage", "always-available"];
 const SETTING_TYPES: readonly SettingType[] = ["boolean", "integer", "enum"];
 
@@ -213,17 +219,21 @@ function validateAction(
       );
     }
   } else {
-    if (requiresGitRepository && !prerequisites.includes("git.repository")) {
-      issues.add(
-        `${path}.prerequisites`,
-        `action "${name}" requires a Git repository and must list the "git.repository" prerequisite`,
-      );
-    }
-    if (!requiresGitRepository && prerequisites.includes("git.repository")) {
-      issues.add(
-        `${path}.requiresGitRepository`,
-        `action "${name}" lists the "git.repository" prerequisite and must set requiresGitRepository: true`,
-      );
+    // Work against a repository also pauses on changes nobody owns (issue
+    // #7); a package cannot drop that pause.
+    for (const [condition, why] of GIT_CONDITIONS) {
+      if (requiresGitRepository && !prerequisites.includes(condition)) {
+        issues.add(
+          `${path}.prerequisites`,
+          `action "${name}" requires a Git repository and must list the "${condition}" prerequisite${why}`,
+        );
+      }
+      if (!requiresGitRepository && prerequisites.includes(condition)) {
+        issues.add(
+          `${path}.requiresGitRepository`,
+          `action "${name}" lists the "${condition}" prerequisite and must set requiresGitRepository: true`,
+        );
+      }
     }
   }
 
