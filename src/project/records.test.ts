@@ -87,6 +87,23 @@ const examples: ProjectRecords = {
     assignedTicketId: "T2",
     ticketChangesPresent: true,
     fixAttempts: { T2: 1 },
+    validations: {
+      T2: {
+        disposition: "returned-to-fix",
+        criteria: [
+          {
+            criterion: "every record round-trips",
+            verdict: "not-met",
+            by: "jev",
+            reasonCode: "evidence-contradicts",
+            confidence: 0.97,
+            envelope: "ENV-20260920100000-validate-abc123",
+          },
+        ],
+        missingChecks: [],
+        validatedAt: "2026-09-20T10:00:00Z",
+      },
+    },
     changeOwnership: [
       { path: "notes.md", owner: "developer", note: "that's mine, leave it" },
       { path: "src/draft.ts", owner: "ticket", ticketId: "T2", note: "part of ticket 2" },
@@ -254,6 +271,32 @@ describe("readRecord", () => {
     expect(() =>
       writeRecord(root, "progress", { executionAuthorized: true, ticketChangesPresent: false }),
     ).toThrow(/authorizationScope/);
+  });
+
+  it("requires a ticket validation to judge every criterion with a known verdict and disposition", () => {
+    const root = makeRoot();
+    const validation = {
+      disposition: "admitted-to-review",
+      criteria: [{ criterion: "c1", verdict: "met", by: "jev", confidence: 0.99, envelope: "ENV-1-validate-a" }],
+      missingChecks: [],
+      validatedAt: "2026-09-20T10:00:00Z",
+    };
+    const progress = (value: unknown) =>
+      ({ executionAuthorized: false, ticketChangesPresent: false, validations: { T1: value } }) as unknown as ProgressRecord;
+
+    writeRecord(root, "progress", progress(validation));
+    expect(readRecord(root, "progress").kind).toBe("present");
+
+    expect(() => writeRecord(root, "progress", progress({ ...validation, disposition: "done" }))).toThrow(
+      /validations\.T1\.disposition/,
+    );
+    expect(() =>
+      writeRecord(root, "progress", progress({ ...validation, criteria: [{ criterion: "c1", verdict: "probably", by: "jev" }] })),
+    ).toThrow(/criteria\[0\]\.verdict/);
+    expect(() =>
+      writeRecord(root, "progress", progress({ ...validation, criteria: [{ criterion: "c1", verdict: "met", by: "jev", confidence: 2 }] })),
+    ).toThrow(/criteria\[0\]\.confidence/);
+    expect(() => writeRecord(root, "progress", progress({ ...validation, criteria: [] }))).toThrow(/criteria/);
   });
 
   it("requires each claimed change to name one owner in the developer's words", () => {

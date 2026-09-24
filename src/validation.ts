@@ -64,6 +64,11 @@ export function requireIntegerInRange(
   return value;
 }
 
+/** Whether `value` is one of a closed set of strings. */
+export function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+  return (values as readonly unknown[]).includes(value);
+}
+
 export function validateEnumValue<T extends string>(
   value: unknown,
   path: string,

@@ -7,6 +7,7 @@ import {
   type DecisionEnvelope,
   type DecisionReport,
 } from "./decisions.js";
+import { isOneOf } from "../validation.js";
 import type { EvidenceExcerpt } from "./evidence.js";
 
 /**
@@ -37,6 +38,7 @@ export const BOUNDARY_KINDS = [
   "review-dispute",
   "lesson-conflict",
   "resume-discrepancy",
+  "missing-check",
   "other",
 ] as const;
 
@@ -84,11 +86,8 @@ export type EscalationResult =
 
 const BOUNDARY_PREFIX = /^Boundary: ([a-z-]+)\./;
 
-function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
-  return (values as readonly unknown[]).includes(value);
-}
-
-function askAt(
+/** A human ask at a boundary, with the summary first and the detail after it. */
+export function humanAskAt(
   boundary: BoundaryKind | HardRule,
   summary: string,
   detail: string,
@@ -115,7 +114,7 @@ export async function askEscalation(
     return {
       kind: "hard-rule",
       ask: true,
-      askHuman: askAt(kind, summary, `${kind} is a hard rule: the decision is yours and Jev is not asked`),
+      askHuman: humanAskAt(kind, summary, `${kind} is a hard rule: the decision is yours and Jev is not asked`),
     };
   }
   if (!isOneOf(BOUNDARY_KINDS, kind)) {
@@ -140,14 +139,14 @@ export async function askEscalation(
       return {
         kind: result.kind,
         ask: true,
-        askHuman: askAt(kind, summary, `${result.askHuman} Continuing without Jev needs your approval.`),
+        askHuman: humanAskAt(kind, summary, `${result.askHuman} Continuing without Jev needs your approval.`),
         decision,
       };
     case "failed":
       return {
         kind: result.kind,
         ask: true,
-        askHuman: askAt(
+        askHuman: humanAskAt(
           kind,
           summary,
           `Jev could not be asked: ${result.failure.error}; continuing without Jev needs your approval.`,
@@ -174,7 +173,7 @@ export async function askEscalation(
   return {
     kind: "answered",
     ask: true,
-    askHuman: askAt(kind, summary, `at ${kind}: ${why}; envelope ${envelope.id}`, answer),
+    askHuman: humanAskAt(kind, summary, `at ${kind}: ${why}; envelope ${envelope.id}`, answer),
     envelope: envelope.id,
     decision,
   };

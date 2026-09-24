@@ -127,6 +127,7 @@ export {
   CONFLICT_KINDS,
   CONFLICT_STATUSES,
   CONSEQUENTIAL_AREAS,
+  CRITERION_VERDICTS,
   DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
@@ -138,6 +139,8 @@ export {
   SPECIFICATION_STATUSES,
   TICKET_STATUSES,
   TODO_STATUSES,
+  VALIDATION_DISPOSITIONS,
+  VERDICT_SOURCES,
   readRecord,
   recordPath,
   validateRecord,
@@ -150,6 +153,8 @@ export {
   type ConflictStatus,
   type ConflictsRecord,
   type ConsequentialArea,
+  type CriterionJudgment,
+  type CriterionVerdict,
   type DecisionStatus,
   type FallbackScope,
   type FallbackStatus,
@@ -172,11 +177,25 @@ export {
   type SpecificationStatus,
   type TicketRecord,
   type TicketStatus,
+  type TicketValidation,
   type TicketsRecord,
   type TodoItem,
   type TodoStatus,
   type TodosRecord,
+  type ValidationDisposition,
+  type VerdictSource,
 } from "./project/records.js";
+
+export {
+  EVIDENCE_KINDS,
+  overrideCriterion,
+  validateTicket,
+  type CriterionOverride,
+  type EvidenceKind,
+  type ValidationInput,
+  type TicketValidationResult,
+  type VerificationEvidence,
+} from "./jev/ticket-validation.js";
 
 export { readProjectState, type ProjectStateResult } from "./project/state.js";
 

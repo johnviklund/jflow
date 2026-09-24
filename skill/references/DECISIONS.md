@@ -11,7 +11,7 @@ workflow package:
 | `model-selection` | advisory | owned by its own issue |
 | `classify` | advisory | owned by its own issue |
 | `escalate` | binding | at every human-facing boundary, through `scripts/jflow escalate` |
-| `validate` | binding | owned by its own issue |
+| `validate` | binding | after a ticket's checks run, through `scripts/jflow ticket validate` |
 
 ## Asking
 
@@ -73,6 +73,7 @@ the project with `kind`, `summary` and `excerpts`, then run
 - `review-dispute`: when a review finding is disputed.
 - `lesson-conflict`: when a candidate lesson conflicts with a retained one.
 - `resume-discrepancy`: when resume finds the records and the work disagree.
+- `missing-check`: asked for you by `ticket validate`; do not ask it yourself.
 - `other`: any other point where you would ask the developer.
 
 The answer is binding:
@@ -96,6 +97,44 @@ Always ask the developer at these. If you pass one of them as the `kind`
 `specification-acceptance`, `plan-acceptance`), the helper returns
 `askHuman` without calling Jev. A missing key or a failed Jev call also
 asks the developer, because continuing without Jev needs their approval.
+
+## Validating a ticket
+
+After the ticket's checks have run, write an evidence file outside the
+project:
+
+```json
+{
+  "ticketId": "T3",
+  "evidence": [
+    { "kind": "check", "source": "npm test", "text": "<the output>", "exitCode": 0 },
+    { "kind": "claim", "source": "implementer", "text": "<what you did>" }
+  ],
+  "checks": ["npm test", "npm run typecheck"]
+}
+```
+
+Then run `scripts/jflow ticket validate <evidence.json>`. Evidence is
+check output, with the exact command as `source`, or your own claim.
+Never put a diff or file contents in it. `checks` lists every check the
+ticket has, so the helper can tell which ones have not run yet. Jev judges
+each accepted criterion separately. Act on `validation.disposition`:
+
+- `returned-to-fix`: a criterion is not met, or no check covers it and
+  `escalate` let you proceed. Fix it or add the missing check, run the
+  checks again and validate again.
+- `needs-check`: run the commands in `missingChecks`, add their output to
+  the evidence and validate again.
+- `admitted-to-review`: the ticket goes to review.
+- `awaiting-developer` (exit 1): put `askHuman` to the developer and wait.
+
+Only every criterion `met` admits a ticket. Your own claim never does, and
+with only a claim Jev is not asked. Output that is a diff is refused.
+To set a verdict aside, run `scripts/jflow ticket override <ticket>
+--criterion <n> --verdict <v> --by agent --reason "<why>" --evidence
+"<what it rests on>"`. `--criterion` counts from 0. A reason without
+evidence is refused. If a verdict came from a below-threshold answer, only
+the developer can set it aside (`--by developer`, with their words).
 
 ## Conflicts never go to Jev
 

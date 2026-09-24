@@ -20,6 +20,7 @@ import {
   type DecisionInput,
 } from "./jev/decisions.js";
 import { askEscalation, type Boundary } from "./jev/escalation.js";
+import { overrideCriterion, validateTicket, type ValidationInput, type TicketValidationResult } from "./jev/ticket-validation.js";
 import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
@@ -36,7 +37,7 @@ import {
   type SpecificationDraft,
 } from "./actions/specification.js";
 import { resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
-import { readRecord } from "./project/records.js";
+import { readRecord, type CriterionVerdict } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
 import { WorkflowPackageError, type WorkflowPackage } from "./workflow/types.js";
@@ -91,6 +92,9 @@ Usage:
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
   jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
+  jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
+  jflow ticket override <id> --criterion <n> --verdict met|not-met|insufficient-evidence
+                    --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
   jflow conflict raise <draft.json>          [--root <dir>]
   jflow conflict decide <id> --note <the developer's words> [--root <dir>]
   jflow traces list  [--root <dir>]
@@ -119,6 +123,13 @@ candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
 choose" records the chosen action: it must be permitted by the workflow,
 and setting Jev's answer aside needs --reason and --evidence.
+"ticket validate" asks the binding validate decision once per accepted
+criterion over ticketId, evidence (kind check or claim, source, text,
+exitCode) and checks (the ticket's commands). The validation's disposition
+is returned-to-fix, admitted-to-review, needs-check (run missingChecks) or
+awaiting-developer; it exits 1 only with "askHuman". "ticket override" sets
+one criterion's verdict aside (--criterion is zero-based) and settles the
+ticket again; an agent needs --reason and --evidence.
 "escalate" asks the binding escalate decision at a human-facing boundary
 over kind, summary and excerpts. It exits 0 with "ask": false when the
 work proceeds, and 1 with "askHuman" when the developer must be asked. The
@@ -152,6 +163,8 @@ const KNOWN_OPTIONS = [
   "by",
   "reason",
   "evidence",
+  "criterion",
+  "verdict",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -518,6 +531,60 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
+function reportValidation(result: TicketValidationResult, io: CliIo): number {
+  const ok = result.kind === "validated";
+  io.stdout(`${JSON.stringify({ ok, ...result }, null, 2)}\n`);
+  return ok && result.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
+async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  if (subcommand !== "validate" && subcommand !== "override") {
+    io.stderr(`ticket needs one of validate, override\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const dependencies = decisionDependencies(built.context, io);
+  if (subcommand === "validate") {
+    const read = readDraft<ValidationInput>(target, "ticket validate", io);
+    if (!read.ok) return read.exit;
+    return reportValidation(await validateTicket(root, read.draft, dependencies), io);
+  }
+
+  const { criterion, verdict, by, reason, evidence } = args.options;
+  if (
+    target === undefined ||
+    criterion === undefined ||
+    !/^\d+$/.test(criterion) ||
+    verdict === undefined ||
+    (by !== "agent" && by !== "developer")
+  ) {
+    io.stderr(`ticket override needs a ticket id, --criterion <n>, --verdict and --by agent|developer\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  return reportValidation(
+    await overrideCriterion(
+      root,
+      {
+        ticketId: target,
+        criterion: Number(criterion),
+        // overrideCriterion refuses a verdict outside the closed set.
+        verdict: verdict as CriterionVerdict,
+        by,
+        reason: reason ?? "",
+        ...(evidence === undefined ? {} : { evidence: [evidence] }),
+      },
+      dependencies,
+    ),
+    io,
+  );
+}
+
 async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const built = buildContext(args.options, io);
@@ -631,6 +698,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "escalate":
       return runEscalate(args, io);
+
+    case "ticket":
+      return runTicket(args, io);
 
     case "conflict":
       return runConflict(args, io);

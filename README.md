@@ -105,21 +105,33 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
     builds the `assignment` and `lesson-retention` packets.
   - `escalation.ts` is the binding `escalate` decision (issue #25). At a
     human-facing boundary (`next-ticket`, `fix-failed`, `review-dispute`,
-    `lesson-conflict`, `resume-discrepancy`, `other`) it asks whether the
-    developer must be consulted. A confident `proceed` is recorded as the
+    `lesson-conflict`, `resume-discrepancy`, `missing-check`, `other`) it
+    asks whether the developer must be consulted. A confident `proceed` is recorded as the
     workflow's choice and asks no one. `escalate`, a below-threshold
     answer, a missing key or a failed call asks the developer. The hard
     rules (consequential conflict, continuing without Jev, the
     specification and plan acceptance gates) always ask and never reach
     Jev. The boundary kind rides in the packet, so the envelope alone says
     where the question was asked and whether the developer was asked.
+  - `ticket-validation.ts` is the binding `validate` gate (issue #26). It
+    asks one question per criterion accepted with the plan, over the
+    recorded evidence (check output or the implementer's claim, never a
+    diff or repository content). Any `not-met` returns the ticket to fix.
+    Otherwise `insufficient-evidence` asks for the ticket's checks not yet
+    run, or asks `escalate` at `missing-check` when none remain: `proceed`
+    returns the ticket to fix so the missing check is added, and an ask
+    waits on the developer. Only all `met` admits it to review. A
+    below-threshold answer counts as insufficient evidence. Claim-only
+    evidence is settled by rule without asking Jev. The outcome is
+    `progress.validations[ticket]`. Setting a verdict aside records the
+    choice on its envelope and settles again.
   - `traces.ts` keeps traces under `.jflow/traces/` (the directory carries
     its own `.gitignore`) until `jflow traces clean`.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `escalate`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `todo`, `decide`, `escalate`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
@@ -161,7 +173,8 @@ ChatGPT desktop app; see `skill/references/HOST.md`.
   confidence meets the threshold. For the agent, choosing against it needs
   a recorded reason and evidence. The developer's choice needs their
   recorded words. No answer permits an action that prerequisite or
-  authorization checks refuse, and none writes a project record.
+  authorization checks refuse. Only a declared binding decision's outcome
+  is written to a project record (`validate`, as `progress.validations`).
   Consequential conflicts go to the developer without a Jev call.
 - Every declared decision carries an `authority` and a `basis`, and every
   policy entry a `basis`; a version-1 package carrying `decisions` or

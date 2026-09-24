@@ -1,9 +1,9 @@
 {
   "decision": "validate",
   "version": 2,
-  "status": "skeleton",
+  "status": "accepted",
   "ownedBy": "#26",
-  "prompt": "Skeleton (D37, D47): given a ticket's accepted acceptance criteria and the recorded verification evidence, is each criterion met? Wording proposed in #26 for explicit acceptance.",
+  "prompt": "You are judging one acceptance criterion of a jflow ticket against the verification evidence recorded for it. The criterion is worded as the developer accepted it with the plan. The evidence is what was recorded: check and test output with the command that produced it, and the implementer's own account of what was done. Answer met only when recorded check or test output shows the criterion is satisfied. Answer not-met when the evidence shows it is not satisfied. Answer insufficient-evidence when no recorded output bears on the criterion, when the output is incomplete or ambiguous, or when the only support is the implementer's account. Judge only whether this evidence satisfies this criterion as stated; do not judge code quality, requirements the criterion does not state, or anything the evidence does not show. Your answer grants no authorization and marks no work complete; the independent review still follows.",
   "answers": [
     "met",
     "not-met",
@@ -13,5 +13,9 @@
     "evidence-satisfies",
     "evidence-contradicts",
     "evidence-missing"
-  ]
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-25T00:00:00Z",
+    "note": "Accept as written (developer, answering the #26 wording proposal for validate)"
+  }
 }

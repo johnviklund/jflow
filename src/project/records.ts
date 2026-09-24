@@ -162,6 +162,55 @@ export type ChangeOwnership =
       readonly note: string;
     };
 
+export const CRITERION_VERDICTS = ["met", "not-met", "insufficient-evidence"] as const;
+
+export type CriterionVerdict = (typeof CRITERION_VERDICTS)[number];
+
+/**
+ * Who settled a criterion's verdict: Jev's binding answer, a fixed rule
+ * (evidence that is only the implementer's claim), or an agent or the
+ * developer setting Jev's answer aside with a recorded reason.
+ */
+export const VERDICT_SOURCES = ["jev", "rule", "agent", "developer"] as const;
+
+export type VerdictSource = (typeof VERDICT_SOURCES)[number];
+
+export interface CriterionJudgment {
+  /** The criterion as accepted with the plan. */
+  readonly criterion: string;
+  readonly verdict: CriterionVerdict;
+  readonly by: VerdictSource;
+  readonly reasonCode?: string;
+  readonly confidence?: number;
+  /** The decision envelope the verdict came from, when Jev was asked. */
+  readonly envelope?: string;
+  /** Why a rule decided, or why Jev's answer was set aside. */
+  readonly note?: string;
+}
+
+export const VALIDATION_DISPOSITIONS = [
+  "returned-to-fix",
+  "admitted-to-review",
+  "needs-check",
+  "awaiting-developer",
+] as const;
+
+export type ValidationDisposition = (typeof VALIDATION_DISPOSITIONS)[number];
+
+/**
+ * The `validate` gate's outcome for one ticket (D41, D47, issue #26): a
+ * verdict per accepted criterion and the ticket's next state.
+ */
+export interface TicketValidation {
+  readonly disposition: ValidationDisposition;
+  readonly criteria: readonly CriterionJudgment[];
+  /** The ticket's checks not yet run; what `needs-check` asks for. */
+  readonly missingChecks: readonly string[];
+  /** The escalate envelope asked when evidence was short and no check remained. */
+  readonly escalation?: string;
+  readonly validatedAt: string;
+}
+
 /**
  * Where the workflow stands: the acceptance gates, authorization, the
  * assigned ticket, fix attempts and resume reconciliation. This is the record
@@ -179,6 +228,8 @@ export interface ProgressRecord {
   readonly ticketChangesPresent: boolean;
   /** Unsuccessful fix attempts per ticket, one shared counter (D48). */
   readonly fixAttempts?: Readonly<Record<string, number>>;
+  /** The latest `validate` outcome per ticket (issue #26). */
+  readonly validations?: Readonly<Record<string, TicketValidation>>;
   /** Owners the developer gave pre-existing uncommitted changes, one entry per path. */
   readonly changeOwnership?: readonly ChangeOwnership[];
   readonly reconciliation?: {
@@ -615,6 +666,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "assignedTicketId",
       "ticketChangesPresent",
       "fixAttempts",
+      "validations",
       "changeOwnership",
       "reconciliation",
     ],
@@ -662,6 +714,19 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
           0,
           issues,
         );
+      }
+    }
+  }
+
+  let validations: Record<string, TicketValidation> | undefined;
+  if (doc["validations"] !== undefined) {
+    if (!isRecord(doc["validations"])) {
+      issues.add("validations", "must be an object keyed by ticket id");
+    } else {
+      validations = {};
+      for (const [ticketId, entry] of Object.entries(doc["validations"])) {
+        const validation = validateTicketValidation(entry, `validations.${ticketId}`, issues);
+        if (validation) validations[ticketId] = validation;
       }
     }
   }
@@ -762,10 +827,70 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       assignedTicketId: optionalString(doc["assignedTicketId"], "assignedTicketId", issues),
       changeOwnership,
       fixAttempts,
+      validations,
       reconciliation,
     },
   );
 };
+
+function validateTicketValidation(
+  value: unknown,
+  path: string,
+  issues: IssueCollector,
+): TicketValidation | undefined {
+  const doc = requireObject(value, path, ["disposition", "criteria", "missingChecks", "escalation", "validatedAt"], issues);
+  if (!doc) return undefined;
+  const criteria: CriterionJudgment[] = [];
+  if (!Array.isArray(doc["criteria"]) || doc["criteria"].length === 0) {
+    issues.add(`${path}.criteria`, "a validation must judge at least one criterion");
+  } else {
+    doc["criteria"].forEach((entry, index) => {
+      const at = `${path}.criteria[${index}]`;
+      const item = requireObject(
+        entry,
+        at,
+        ["criterion", "verdict", "by", "reasonCode", "confidence", "envelope", "note"],
+        issues,
+      );
+      if (!item) return;
+      const confidence = item["confidence"];
+      if (confidence !== undefined && (typeof confidence !== "number" || !(confidence >= 0 && confidence <= 1))) {
+        issues.add(`${at}.confidence`, "must be a number from 0 to 1");
+      }
+      criteria.push(
+        withOptional<CriterionJudgment>(
+          {
+            criterion: requireNonEmptyString(item["criterion"], `${at}.criterion`, issues),
+            verdict:
+              validateEnumValue<CriterionVerdict>(item["verdict"], `${at}.verdict`, CRITERION_VERDICTS, issues) ??
+              "insufficient-evidence",
+            by: validateEnumValue<VerdictSource>(item["by"], `${at}.by`, VERDICT_SOURCES, issues) ?? "rule",
+          },
+          {
+            reasonCode: optionalString(item["reasonCode"], `${at}.reasonCode`, issues),
+            confidence: typeof confidence === "number" ? confidence : undefined,
+            envelope: optionalString(item["envelope"], `${at}.envelope`, issues),
+            note: optionalString(item["note"], `${at}.note`, issues),
+          },
+        ),
+      );
+    });
+  }
+  return withOptional<TicketValidation>(
+    {
+      disposition: validateEnumValue<ValidationDisposition>(
+        doc["disposition"],
+        `${path}.disposition`,
+        VALIDATION_DISPOSITIONS,
+        issues,
+      ) ?? "awaiting-developer",
+      criteria,
+      missingChecks: validateStringArray(doc["missingChecks"], `${path}.missingChecks`, issues),
+      validatedAt: requireTimestamp(doc["validatedAt"], `${path}.validatedAt`, issues),
+    },
+    { escalation: optionalString(doc["escalation"], `${path}.escalation`, issues) },
+  );
+}
 
 const validateLessons: Validator<LessonsRecord> = (value, issues) => {
   const doc = requireObject(value, "", ["lessons"], issues);

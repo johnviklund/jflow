@@ -434,6 +434,33 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(escalating.sent).toHaveLength(1);
   });
 
+  it("validates a ticket over recorded evidence and sets a not-met verdict aside only with evidence", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true } });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({
+        tickets: [{ id: "T1", title: "Parser", acceptanceCriteria: ["parses an empty file"], dependsOn: [], status: "in-progress" }],
+      }),
+    );
+    h.writeFile(
+      "evidence.json",
+      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 failed", exitCode: 1 }], checks: ["npm test"] }),
+    );
+    const answering = jev("not-met", "evidence-contradicts");
+
+    const validated = await run(["ticket", "validate", "evidence.json"], h.root, {}, answering);
+    const override = ["ticket", "override", "T1", "--criterion", "0", "--verdict", "met", "--by", "agent", "--reason", "flaky"];
+    const unexplained = await run(override, h.root, {}, answering);
+    const overridden = await run([...override, "--evidence", "npm test: 1 passed on rerun"], h.root, {}, answering);
+
+    expect(validated.code).toBe(EXIT_OK);
+    expect(validated.json()).toMatchObject({ ok: true, kind: "validated", validation: { disposition: "returned-to-fix" } });
+    expect(unexplained.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(unexplained.json()).toMatchObject({ ok: false, reason: expect.stringContaining("evidence-based reason") });
+    expect(overridden.code).toBe(EXIT_OK);
+    expect(overridden.json()).toMatchObject({ ok: true, validation: { disposition: "admitted-to-review" } });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));
