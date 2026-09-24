@@ -4,6 +4,7 @@ import { resolve as resolvePath } from "node:path";
 import { claimChanges } from "./actions/changes.js";
 import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
+import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { unreadable } from "./actions/refusal.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import { fetchTransport, type JevTransport } from "./jev/client.js";
@@ -92,6 +93,8 @@ Usage:
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
   jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
+  jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
+  jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
   jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
   jflow ticket override <id> --criterion <n> --verdict met|not-met|insufficient-evidence
                     --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
@@ -123,6 +126,15 @@ candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
 choose" records the chosen action: it must be permitted by the workflow,
 and setting Jev's answer aside needs --reason and --evidence.
+"implement start" starts one ticket under recorded execution
+authorization: the authorized ticket, or under whole-plan authorization
+the one named. It refuses while another ticket is in progress and reports
+the delegation limits and the fix counter. "implement check" takes the
+same evidence file as "ticket validate" plus an optional recommendation,
+records it under .jflow/evidence, asks validate, and counts a not-met on
+the ticket's one fix counter; at the limit it asks escalate, and an
+attempt that could reach the limit needs the recommendation. It never
+commits or marks the ticket done.
 "ticket validate" asks the binding validate decision once per accepted
 criterion over ticketId, evidence (kind check or claim, source, text,
 exitCode) and checks (the ticket's commands). The validation's disposition
@@ -531,7 +543,7 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
-function reportValidation(result: TicketValidationResult, io: CliIo): number {
+function reportValidation(result: TicketValidationResult | CheckResult, io: CliIo): number {
   const ok = result.kind === "validated";
   io.stdout(`${JSON.stringify({ ok, ...result }, null, 2)}\n`);
   return ok && result.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
@@ -583,6 +595,26 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
     ),
     io,
   );
+}
+
+async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  if (subcommand !== "start" && subcommand !== "check") {
+    io.stderr(`implement needs one of start, check\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  if (subcommand === "start") {
+    return report(startTicket(root, target === undefined ? {} : { ticketId: target }, built.context), io);
+  }
+  const read = readDraft<CheckInput>(target, "implement check", io);
+  if (!read.ok) return read.exit;
+  return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io)), io);
 }
 
 async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
@@ -698,6 +730,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "escalate":
       return runEscalate(args, io);
+
+    case "implement":
+      return runImplement(args, io);
 
     case "ticket":
       return runTicket(args, io);

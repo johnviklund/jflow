@@ -69,7 +69,8 @@ the project with `kind`, `summary` and `excerpts`, then run
 
 - `next-ticket`: before starting the next ticket under whole-plan
   authorization.
-- `fix-failed`: after a fix attempt fails.
+- `fix-failed`: asked for you by `implement check` when the ticket's fix
+  counter reaches its limit; do not ask it yourself for a `not-met`.
 - `review-dispute`: when a review finding is disputed.
 - `lesson-conflict`: when a candidate lesson conflicts with a retained one.
 - `resume-discrepancy`: when resume finds the records and the work disagree.
@@ -114,7 +115,10 @@ project:
 }
 ```
 
-Then run `scripts/jflow ticket validate <evidence.json>`. Evidence is
+While implementing, run `scripts/jflow implement check <evidence.json>`
+instead (see `actions/implement.md`): it records the evidence and counts a
+`not-met` on the ticket's fix counter. Otherwise run
+`scripts/jflow ticket validate <evidence.json>`. Evidence is
 check output, with the exact command as `source`, or your own claim.
 Never put a diff or file contents in it. `checks` lists every check the
 ticket has, so the helper can tell which ones have not run yet. Jev judges

@@ -59,6 +59,20 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   ticket without acceptance criteria, or for a dependency cycle), record
   plan acceptance, and record execution authorization as a separate fact
   that the same instruction may grant — "looks good" accepts only.
+- `src/actions/implement.ts` — the helper side of `implement` (issue #8).
+  `implement start` starts exactly one ticket under recorded execution
+  authorization: the authorized ticket, or the named one under whole-plan
+  authorization, with its dependencies done and no other ticket in
+  progress. It reports the stage's delegation limits for parallel sub-work.
+  `implement check` records the ticket's check output under
+  `.jflow/evidence/` in the form `validate` consumes, asks `validate`, and
+  keeps the ticket's one fix counter (`progress.fixAttempts`, D48). The
+  ticket's first failure only returns it to fix; each later one is an
+  unsuccessful fix attempt. At `review.fixRetryLimit` (default 2)
+  `escalate` is asked at `fix-failed` with the attempts, evidence and the
+  agent's recommendation. `countUnsuccessfulFix` is the same counter for
+  review's blocking findings (#9). Nothing here commits or marks a ticket
+  done.
 - `src/project/worktree.ts` — the helper's only access to Git (issue #7).
   It admits read-only subcommands only (`status`, `rev-parse`), so no path
   initializes a repository, discards a change or stages pre-existing work.
@@ -131,11 +145,11 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `escalate`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `todo`, `decide`, `escalate`, `implement`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `brainstorm.md` and `plan.md` so far),
+  `todo.md`, `brainstorm.md`, `plan.md` and `implement.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in

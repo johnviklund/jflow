@@ -267,7 +267,7 @@
       {
         "key": "review.fixRetryLimit",
         "type": "integer",
-        "summary": "Unsuccessful fix-and-re-review attempts on the same blocking finding before asking the human.",
+        "summary": "Unsuccessful fix attempts on one ticket, counting not-met validation criteria and blocking review findings together, before escalate is asked (D48).",
         "default": 2,
         "minimum": 1,
         "maximum": 5

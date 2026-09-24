@@ -18,6 +18,7 @@ import {
   type DecisionInput,
 } from "./decisions.js";
 import { askEscalation, humanAskAt, type EscalationAsk } from "./escalation.js";
+import type { EvidenceExcerpt } from "./evidence.js";
 import { isOneOf } from "../validation.js";
 
 /**
@@ -117,14 +118,19 @@ function refuseInvalidEvidence(input: ValidationInput): Refused | undefined {
   return undefined;
 }
 
+/** One piece of evidence as a packet excerpt; a check's exit code leads its output. */
+export function evidenceExcerpt(entry: VerificationEvidence): EvidenceExcerpt {
+  return {
+    source: `${entry.kind}: ${entry.source}`,
+    text: entry.exitCode === undefined ? entry.text : `exit ${entry.exitCode}\n${entry.text}`,
+  };
+}
+
 function criterionInput(ticket: TicketRecord, index: number, evidence: readonly VerificationEvidence[]): DecisionInput {
   return {
     taskSummary: `Ticket ${ticket.id} (${ticket.title}). Criterion ${index + 1}: ${ticket.acceptanceCriteria[index]}`,
     candidates: [],
-    excerpts: evidence.map((entry) => ({
-      source: `${entry.kind}: ${entry.source}`,
-      text: entry.exitCode === undefined ? entry.text : `exit ${entry.exitCode}\n${entry.text}`,
-    })),
+    excerpts: evidence.map(evidenceExcerpt),
   };
 }
 

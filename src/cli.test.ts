@@ -461,6 +461,35 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(overridden.json()).toMatchObject({ ok: true, validation: { disposition: "admitted-to-review" } });
   });
 
+  it("starts only the authorized ticket and checks it through validate, recording the evidence", async () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    const ticket = (id: string) => ({ id, title: id, acceptanceCriteria: ["parses an empty file"], dependsOn: [], status: "ready" });
+    h.writeFile("jflow/tickets.json", JSON.stringify({ tickets: [ticket("T1"), ticket("T2")] }));
+
+    const started = await run(["implement", "start"], h.root);
+    const second = await run(["implement", "start", "T2"], h.root);
+    h.writeFile(
+      "evidence.json",
+      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 passed", exitCode: 0 }], checks: ["npm test"] }),
+    );
+    const checked = await run(["implement", "check", "evidence.json"], h.root, {}, jev("met", "evidence-satisfies"));
+
+    expect(started.code).toBe(EXIT_OK);
+    expect(started.json()).toMatchObject({ ok: true, outcome: { ticket: { id: "T1", status: "in-progress" } } });
+    expect(second.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(second.json()).toMatchObject({ ok: false, reason: expect.stringContaining("authorized for ticket T1 only") });
+    expect(checked.code).toBe(EXIT_OK);
+    expect(checked.json()).toMatchObject({
+      ok: true,
+      kind: "validated",
+      validation: { disposition: "admitted-to-review" },
+      evidence: ".jflow/evidence/T1.json",
+    });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

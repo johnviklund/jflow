@@ -27,6 +27,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant, and Jev's advisory `next-action` answer. Writes no project record; see `actions/next.md`. |
 | `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
+| `scripts/jflow implement start\|check` | Start the one authorized ticket, then check it through the `validate` gate and the ticket's fix counter; see `actions/implement.md`. |
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
 | `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
 | `scripts/jflow todo add\|list\|promote` | Record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
@@ -120,7 +121,7 @@ fix. A fix goes through an authorized `implement`.
 ## Layout
 
 - `actions/` — one method file per action. `status.md`, `next.md`,
-  `todo.md`, `brainstorm.md` and `plan.md` exist; the others are filled in
+  `todo.md`, `brainstorm.md`, `plan.md` and `implement.md` exist; the others are filled in
   by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
