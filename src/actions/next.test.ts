@@ -114,6 +114,27 @@ describe("next", () => {
     });
   });
 
+  it("recommends review once validate has admitted the assigned ticket", () => {
+    const admitted = harness({
+      state: {
+        specificationAccepted: true,
+        planAccepted: true,
+        executionAuthorized: true,
+        assignedTicketId: "T1",
+        ticketChangesPresent: true,
+        ticketAdmittedToReview: true,
+      },
+      gitRepository: true,
+    });
+
+    expect(recommended(next(admitted))).toMatchObject({
+      action: "review",
+      needsDeveloper: false,
+      unmet: [],
+      reason: expect.stringContaining("every criterion met"),
+    });
+  });
+
   it.each([
     ["every ticket is done", ["done", "withdrawn"], "wrap", false],
     ["only parked tickets remain", ["done", "parked"], "implement", true],

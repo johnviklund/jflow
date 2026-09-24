@@ -29,6 +29,12 @@ export interface WorkflowState {
   readonly assignedTicketId?: string;
   /** The assigned ticket has changes available to assess. */
   readonly ticketChangesPresent: boolean;
+  /**
+   * The assigned ticket's latest `validate` found every criterion met and it
+   * has not been reviewed since; validation is the gate into review (D47,
+   * issue #9).
+   */
+  readonly ticketAdmittedToReview: boolean;
   /** A local Git repository is present and readable (SPEC.md confirmed default 1). */
   readonly gitRepositoryPresent: boolean;
   /** Why a `.git` that is present cannot be read; jflow never repairs one. */
@@ -51,6 +57,7 @@ export function createWorkflowState(
     planAccepted: false,
     executionAuthorized: false,
     ticketChangesPresent: false,
+    ticketAdmittedToReview: false,
     gitRepositoryPresent: false,
     unclaimedChanges: [],
   };
@@ -126,6 +133,12 @@ const CONDITION_RULES: Readonly<Record<WorkflowCondition, ConditionRule>> = {
   "ticket.changesPresent": {
     satisfied: (state) => state.ticketChangesPresent,
     reason: "the assigned ticket has no changes to assess yet",
+    needsHuman: false,
+  },
+  "ticket.admittedToReview": {
+    satisfied: (state) => state.ticketAdmittedToReview,
+    reason:
+      "the assigned ticket has not passed validate with every criterion met since its last review; validation is the gate into review, so run implement check first",
     needsHuman: false,
   },
   "git.repository": {

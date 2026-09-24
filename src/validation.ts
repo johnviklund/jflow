@@ -173,3 +173,6 @@ export function rejectUnknownKeys(
     }
   }
 }
+
+/** A string with something other than whitespace in it. */
+export const hasText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";

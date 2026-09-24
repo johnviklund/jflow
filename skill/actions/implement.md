@@ -27,8 +27,8 @@ implementing it: without recorded authorization, ask. If the block is
 4. `scripts/jflow implement check <evidence.json>`. The helper records the
    evidence under `.jflow/evidence/<ticket>.json`, asks `validate`, and
    counts a `not-met`. Act on `validation.disposition`:
-   - `admitted-to-review`: stop implementing. The ticket goes to `review`.
-     Report what was done and the evidence.
+   - `admitted-to-review`: stop implementing. The ticket goes to `review`
+     (`actions/review.md`). Report what was done and the evidence.
    - `returned-to-fix`: fix what `criteria` shows as `not-met`, or add the
      check a criterion lacks. Then go back to step 3. `fix.attempts` says
      how many fixes have already failed.
@@ -42,7 +42,9 @@ implementing it: without recorded authorization, ask. If the block is
 
 Work on the started ticket only. Anything else you notice goes to
 `scripts/jflow todo add`. It does not go into this ticket. Coordinate the
-work as the primary agent. Sub-tasks that are independent of each other
+work as the primary agent. List every sub-agent that worked on the ticket
+under `"workers"` in the evidence file. None of them, and not you, may
+review it. Sub-tasks that are independent of each other
 may run in parallel, but only while `delegationLimits.allowParallelWithinUnit`
 is true, with never more than `delegationLimits.maxParallelWorkers` running
 at once. When it is false, work sequentially. Every worker stays inside
@@ -62,8 +64,10 @@ test or a criterion to make it pass. Setting a verdict aside goes through
 `ticket override` with evidence (`references/DECISIONS.md`).
 
 Never commit, and never mark the ticket done. The ticket stays
-`in-progress` until it passes review. If the conversation loses the
-ticket partway through, start it again and redo it from its definition.
+`in-progress` until it passes review. When review returns it to fix, fix
+every blocking finding, then go through step 3 again. If the
+conversation loses the ticket partway through, start it again and redo it
+from its definition.
 
 **Report**: which ticket you worked on. Each criterion with its verdict.
 The checks you ran and their results. Where the ticket went next (review,

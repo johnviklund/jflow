@@ -4,7 +4,7 @@ import {
   type WorkflowState,
 } from "../actions/resolve.js";
 import type { ValidationIssue } from "../workflow/types.js";
-import { readRecord, type ProgressRecord } from "./records.js";
+import { admittedToReview, readRecord, type ProgressRecord } from "./records.js";
 import { readWorkingTree } from "./worktree.js";
 
 /**
@@ -94,6 +94,8 @@ export function readProjectState(root: string): ProjectStateResult {
       planAccepted,
       executionAuthorized: recorded?.executionAuthorized ?? false,
       ticketChangesPresent: recorded?.ticketChangesPresent ?? false,
+      ticketAdmittedToReview:
+        recorded?.assignedTicketId !== undefined && admittedToReview(recorded, recorded.assignedTicketId),
       ...(recorded?.assignedTicketId === undefined
         ? {}
         : { assignedTicketId: recorded.assignedTicketId }),

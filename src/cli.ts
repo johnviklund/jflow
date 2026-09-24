@@ -6,6 +6,7 @@ import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/con
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { unreadable } from "./actions/refusal.js";
+import { decideFinding, recordReview, startReview, type ReviewInput } from "./actions/review.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import { fetchTransport, type JevTransport } from "./jev/client.js";
 import {
@@ -95,6 +96,10 @@ Usage:
   jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
+  jflow review start                         [--root <dir>] [--config <file>]
+  jflow review record <review.json>          [--root <dir>] [--config <file>]
+  jflow review decide <ticket> --finding <id> --outcome upheld|withdrawn --note <the developer's words>
+                    [--recommendation <next step>] [--root <dir>] [--config <file>]
   jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
   jflow ticket override <id> --criterion <n> --verdict met|not-met|insufficient-evidence
                     --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
@@ -133,8 +138,20 @@ the delegation limits and the fix counter. "implement check" takes the
 same evidence file as "ticket validate" plus an optional recommendation,
 records it under .jflow/evidence, asks validate, and counts a not-met on
 the ticket's one fix counter; at the limit it asks escalate, and an
-attempt that could reach the limit needs the recommendation. It never
+attempt that could reach the limit needs the recommendation. Its
+"workers" lists the sub-agents that worked on the ticket. It never
 commits or marks the ticket done.
+"review start" opens review of the assigned ticket once validate found
+every criterion met, and returns the reviewer's context, the review model
+and the agents that may not review. "review record" takes ticketId,
+reviewer (agent, model) and findings (kind requirement, correctness,
+standard or improvement; summary; evidence; optional dispute with reason,
+evidence, touches and conclusive), plus a recommendation when a blocking
+finding could reach the fix limit. A blocking finding returns the ticket
+to fix and through validate again; an improvement becomes a todo; a
+dispute is settled by evidence, asked of escalate, or, when it touches
+requirements, scope, workflow rules or permissions, put to the developer.
+"review decide" records the developer's decision on a disputed finding.
 "ticket validate" asks the binding validate decision once per accepted
 criterion over ticketId, evidence (kind check or claim, source, text,
 exitCode) and checks (the ticket's commands). The validation's disposition
@@ -177,6 +194,9 @@ const KNOWN_OPTIONS = [
   "evidence",
   "criterion",
   "verdict",
+  "finding",
+  "outcome",
+  "recommendation",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -617,6 +637,42 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io)), io);
 }
 
+async function runReview(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  if (subcommand !== "start" && subcommand !== "record" && subcommand !== "decide") {
+    io.stderr(`review needs one of start, record, decide\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  if (subcommand === "start") return report(startReview(root, built.context), io);
+
+  const dependencies = decisionDependencies(built.context, io);
+  let result;
+  if (subcommand === "record") {
+    const read = readDraft<ReviewInput>(target, "review record", io);
+    if (!read.ok) return read.exit;
+    result = await recordReview(root, read.draft, dependencies);
+  } else {
+    const { finding, outcome, note, recommendation } = args.options;
+    if (target === undefined || finding === undefined || (outcome !== "upheld" && outcome !== "withdrawn")) {
+      io.stderr(`review decide needs a ticket id, --finding <id> and --outcome upheld|withdrawn\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    result = await decideFinding(
+      root,
+      { ticketId: target, finding, outcome, note: note ?? "", ...(recommendation === undefined ? {} : { recommendation }) },
+      dependencies,
+    );
+  }
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok && result.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const built = buildContext(args.options, io);
@@ -733,6 +789,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "implement":
       return runImplement(args, io);
+
+    case "review":
+      return runReview(args, io);
 
     case "ticket":
       return runTicket(args, io);

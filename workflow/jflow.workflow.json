@@ -147,7 +147,7 @@
       "delegationLimits": { "maxParallelWorkers": 1, "allowParallelWithinUnit": false },
       "canEditCode": false,
       "requiresGitRepository": true,
-      "prerequisites": ["ticket.changesPresent", "git.repository", "git.changesOwned"],
+      "prerequisites": ["ticket.changesPresent", "ticket.admittedToReview", "git.repository", "git.changesOwned"],
       "produces": ["review"]
     },
     {

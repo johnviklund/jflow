@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createWorkflowState } from "../actions/resolve.js";
-import { writeRecord, type PlanRecord, type SpecificationRecord } from "./records.js";
+import { writeRecord, type PlanRecord, type SpecificationRecord, type TicketValidation } from "./records.js";
 import { readProjectState } from "./state.js";
 
 const roots: string[] = [];
@@ -179,6 +179,43 @@ describe("readProjectState", () => {
     });
 
     expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: [] } });
+  });
+
+  it("admits the assigned ticket to review only from its own all-met validation", () => {
+    const root = makeRoot();
+    const validation = (disposition: "admitted-to-review" | "returned-to-fix"): TicketValidation => ({
+      disposition,
+      criteria: [{ criterion: "c", verdict: disposition === "admitted-to-review" ? "met" : "not-met", by: "jev" }],
+      missingChecks: [],
+      validatedAt: "2026-09-25T10:00:00Z",
+    });
+    const progress = {
+      executionAuthorized: true,
+      authorizationScope: "ticket",
+      ticketChangesPresent: true,
+      assignedTicketId: "T1",
+    } as const;
+
+    writeRecord(root, "progress", { ...progress, validations: { T1: validation("returned-to-fix"), T2: validation("admitted-to-review") } });
+    expect(readProjectState(root)).toMatchObject({ state: { ticketAdmittedToReview: false } });
+
+    writeRecord(root, "progress", { ...progress, validations: { T1: validation("admitted-to-review") } });
+    expect(readProjectState(root)).toMatchObject({ state: { ticketAdmittedToReview: true } });
+
+    const reviewed = (disposition: "passed" | "awaiting-developer" | "returned-to-fix") => ({
+      reviewer: { agent: "reviewer-1" },
+      disposition,
+      findings: [],
+      reviewedAt: "2026-09-25T11:00:00Z",
+    });
+    for (const [disposition, admitted] of [["passed", false], ["awaiting-developer", false], ["returned-to-fix", true]] as const) {
+      writeRecord(root, "progress", {
+        ...progress,
+        validations: { T1: validation("admitted-to-review") },
+        reviews: { T1: reviewed(disposition) },
+      });
+      expect(readProjectState(root)).toMatchObject({ state: { ticketAdmittedToReview: admitted } });
+    }
   });
 
   it("reports a malformed record as a recoverable error naming the file and issues", () => {

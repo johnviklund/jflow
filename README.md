@@ -71,8 +71,23 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   unsuccessful fix attempt. At `review.fixRetryLimit` (default 2)
   `escalate` is asked at `fix-failed` with the attempts, evidence and the
   agent's recommendation. `countUnsuccessfulFix` is the same counter for
-  review's blocking findings (#9). Nothing here commits or marks a ticket
-  done.
+  review's blocking findings (#9). The evidence file's `workers` records
+  the sub-agents that worked on the ticket (`progress.implementers`).
+  Nothing here commits or marks a ticket done.
+- `src/actions/review.ts` — the helper side of `review` (issue #9). The
+  `ticket.admittedToReview` prerequisite reads the assigned ticket's
+  latest validation, so `review start` refuses a ticket until `validate`
+  has found every criterion met. It returns the reviewer's fresh context
+  and the review stage model. `review record` refuses a reviewer that is
+  the primary agent or a recorded worker, whatever its model. It disposes
+  of each finding by D33's fixed rule and never asks Jev to classify one.
+  Requirement, correctness and standard findings block. An improvement
+  becomes a todo. A dispute is withdrawn on recorded evidence. Otherwise
+  it is asked of `escalate` at `review-dispute`, or, when consequential,
+  raised as a conflict for the developer without Jev. A review that returns
+  the ticket to fix clears its validation and counts on the shared fix
+  counter. `review decide` records the developer's ruling on a dispute.
+  The latest review is kept in `progress.reviews`.
 - `src/project/worktree.ts` — the helper's only access to Git (issue #7).
   It admits read-only subcommands only (`status`, `rev-parse`), so no path
   initializes a repository, discards a change or stages pre-existing work.
@@ -145,11 +160,11 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `escalate`, `implement`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `todo`, `decide`, `escalate`, `implement`, `review`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `brainstorm.md`, `plan.md` and `implement.md` so far),
+  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md` and `review.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in
@@ -164,7 +179,9 @@ ChatGPT desktop app; see `skill/references/HOST.md`.
 ## Invariants enforced in code
 
 - Review always requires a role that is independent of the implementer; no
-  workflow package or configuration can disable that gate.
+  workflow package or configuration can disable that gate. A review by the
+  primary agent or a recorded worker is refused, and review is refused
+  until `validate` has found every criterion met.
 - `troubleshoot` and `review` can never edit code.
 - `implement` and `review` require a local Git repository; `brainstorm` and
   `plan` do not. jflow runs read-only Git commands only. It never

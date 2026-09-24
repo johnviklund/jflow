@@ -212,6 +212,79 @@ export interface TicketValidation {
 }
 
 /**
+ * What a review finding is (D33). The first three are confirmed violations
+ * that block the ticket; an improvement is optional and becomes a todo.
+ */
+export const FINDING_KINDS = ["requirement", "correctness", "standard", "improvement"] as const;
+
+export type FindingKind = (typeof FINDING_KINDS)[number];
+
+/**
+ * Where a finding stands under D33's fixed rule, never a Jev classification
+ * (D50): `blocking` holds the ticket, `todo` was filed without blocking it,
+ * `withdrawn` was disputed and settled against the finding, and
+ * `awaiting-developer` is a dispute the developer decides.
+ */
+export const FINDING_DISPOSITIONS = ["blocking", "todo", "withdrawn", "awaiting-developer"] as const;
+
+export type FindingDisposition = (typeof FINDING_DISPOSITIONS)[number];
+
+/** Who settled a disputed finding. */
+export const DISPUTE_RESOLVERS = ["agent", "workflow", "developer"] as const;
+
+export type DisputeResolver = (typeof DISPUTE_RESOLVERS)[number];
+
+export interface FindingDispute {
+  /** Why the implementer disputes the finding. */
+  readonly reason: string;
+  readonly evidence: readonly string[];
+  /** The escalate envelope asked at `review-dispute`. */
+  readonly escalation?: string;
+  /** The conflict recorded when the dispute is consequential (D7). */
+  readonly conflict?: string;
+  readonly resolution?: {
+    readonly by: DisputeResolver;
+    /** The evidence-backed finding, or the developer's words. */
+    readonly note: string;
+    readonly evidence?: readonly string[];
+  };
+}
+
+export interface ReviewFinding {
+  readonly id: string;
+  readonly kind: FindingKind;
+  readonly summary: string;
+  /** What the reviewer's finding rests on: file and line, command, criterion. */
+  readonly evidence: readonly string[];
+  readonly disposition: FindingDisposition;
+  /** The todo an improvement was filed as. */
+  readonly todo?: string;
+  readonly dispute?: FindingDispute;
+}
+
+export const REVIEW_DISPOSITIONS = ["passed", "returned-to-fix", "awaiting-developer"] as const;
+
+export type ReviewDisposition = (typeof REVIEW_DISPOSITIONS)[number];
+
+/**
+ * The latest review of one ticket (D31-D33, issue #9): who reviewed it, its
+ * findings and their fixed-rule disposition, and the ticket's next state.
+ */
+/** The agent that reviewed a ticket, and the model it ran on. */
+export interface Reviewer {
+  readonly agent: string;
+  readonly model?: string;
+}
+
+export interface TicketReview {
+  /** Never an agent that implemented the ticket (D32). */
+  readonly reviewer: Reviewer;
+  readonly disposition: ReviewDisposition;
+  readonly findings: readonly ReviewFinding[];
+  readonly reviewedAt: string;
+}
+
+/**
  * Where the workflow stands: the acceptance gates, authorization, the
  * assigned ticket, fix attempts and resume reconciliation. This is the record
  * the action resolver's `WorkflowState` is derived from.
@@ -230,12 +303,31 @@ export interface ProgressRecord {
   readonly fixAttempts?: Readonly<Record<string, number>>;
   /** The latest `validate` outcome per ticket (issue #26). */
   readonly validations?: Readonly<Record<string, TicketValidation>>;
+  /** The stage workers, besides the primary agent, that worked on each ticket; none of them may review it (D32). */
+  readonly implementers?: Readonly<Record<string, readonly string[]>>;
+  /** The latest review per ticket (issue #9). */
+  readonly reviews?: Readonly<Record<string, TicketReview>>;
   /** Owners the developer gave pre-existing uncommitted changes, one entry per path. */
   readonly changeOwnership?: readonly ChangeOwnership[];
   readonly reconciliation?: {
     readonly lastReconciledAt?: string;
     readonly discrepancies: readonly ReconciliationDiscrepancy[];
   };
+}
+
+/**
+ * Whether a ticket may be reviewed (D47, issue #9): its latest `validate`
+ * found every criterion met, and it has not been reviewed since. A review
+ * that returned it to fix clears the validation, so an all-met validation
+ * after one is the fix's; a review that passed or waits for the developer
+ * holds the ticket where it is.
+ */
+export function admittedToReview(progress: ProgressRecord, ticketId: string): boolean {
+  const review = progress.reviews?.[ticketId]?.disposition;
+  return (
+    progress.validations?.[ticketId]?.disposition === "admitted-to-review" &&
+    (review === undefined || review === "returned-to-fix")
+  );
 }
 
 /** The progress record of a project where nothing has been authorized yet. */
@@ -667,6 +759,8 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "ticketChangesPresent",
       "fixAttempts",
       "validations",
+      "implementers",
+      "reviews",
       "changeOwnership",
       "reconciliation",
     ],
@@ -727,6 +821,31 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       for (const [ticketId, entry] of Object.entries(doc["validations"])) {
         const validation = validateTicketValidation(entry, `validations.${ticketId}`, issues);
         if (validation) validations[ticketId] = validation;
+      }
+    }
+  }
+
+  let implementers: Record<string, string[]> | undefined;
+  if (doc["implementers"] !== undefined) {
+    if (!isRecord(doc["implementers"])) {
+      issues.add("implementers", "must be an object keyed by ticket id");
+    } else {
+      implementers = {};
+      for (const [ticketId, agents] of Object.entries(doc["implementers"])) {
+        implementers[ticketId] = validateStringArray(agents, `implementers.${ticketId}`, issues);
+      }
+    }
+  }
+
+  let reviews: Record<string, TicketReview> | undefined;
+  if (doc["reviews"] !== undefined) {
+    if (!isRecord(doc["reviews"])) {
+      issues.add("reviews", "must be an object keyed by ticket id");
+    } else {
+      reviews = {};
+      for (const [ticketId, entry] of Object.entries(doc["reviews"])) {
+        const review = validateTicketReview(entry, `reviews.${ticketId}`, issues);
+        if (review) reviews[ticketId] = review;
       }
     }
   }
@@ -828,6 +947,8 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       changeOwnership,
       fixAttempts,
       validations,
+      implementers,
+      reviews,
       reconciliation,
     },
   );
@@ -889,6 +1010,87 @@ function validateTicketValidation(
       validatedAt: requireTimestamp(doc["validatedAt"], `${path}.validatedAt`, issues),
     },
     { escalation: optionalString(doc["escalation"], `${path}.escalation`, issues) },
+  );
+}
+
+function validateTicketReview(value: unknown, path: string, issues: IssueCollector): TicketReview | undefined {
+  const doc = requireObject(value, path, ["reviewer", "disposition", "findings", "reviewedAt"], issues);
+  if (!doc) return undefined;
+  const reviewer = requireObject(doc["reviewer"], `${path}.reviewer`, ["agent", "model"], issues);
+  const findings: ReviewFinding[] = [];
+  if (!Array.isArray(doc["findings"])) {
+    issues.add(`${path}.findings`, "must be an array of findings");
+  } else {
+    doc["findings"].forEach((entry, index) => {
+      const at = `${path}.findings[${index}]`;
+      const item = requireObject(entry, at, ["id", "kind", "summary", "evidence", "disposition", "todo", "dispute"], issues);
+      if (!item) return;
+      findings.push(
+        withOptional<ReviewFinding>(
+          {
+            id: requireNonEmptyString(item["id"], `${at}.id`, issues),
+            kind: validateEnumValue<FindingKind>(item["kind"], `${at}.kind`, FINDING_KINDS, issues) ?? "requirement",
+            summary: requireNonEmptyString(item["summary"], `${at}.summary`, issues),
+            evidence: validateStringArray(item["evidence"], `${at}.evidence`, issues),
+            disposition:
+              validateEnumValue<FindingDisposition>(
+                item["disposition"],
+                `${at}.disposition`,
+                FINDING_DISPOSITIONS,
+                issues,
+              ) ?? "blocking",
+          },
+          {
+            todo: optionalString(item["todo"], `${at}.todo`, issues),
+            dispute: item["dispute"] === undefined ? undefined : validateDispute(item["dispute"], `${at}.dispute`, issues),
+          },
+        ),
+      );
+    });
+  }
+  return {
+    reviewer: reviewer
+      ? withOptional<Reviewer>(
+          { agent: requireNonEmptyString(reviewer["agent"], `${path}.reviewer.agent`, issues) },
+          { model: optionalString(reviewer["model"], `${path}.reviewer.model`, issues) },
+        )
+      : { agent: "" },
+    disposition:
+      validateEnumValue<ReviewDisposition>(doc["disposition"], `${path}.disposition`, REVIEW_DISPOSITIONS, issues) ??
+      "awaiting-developer",
+    findings,
+    reviewedAt: requireTimestamp(doc["reviewedAt"], `${path}.reviewedAt`, issues),
+  };
+}
+
+function validateDispute(value: unknown, path: string, issues: IssueCollector): FindingDispute | undefined {
+  const doc = requireObject(value, path, ["reason", "evidence", "escalation", "conflict", "resolution"], issues);
+  if (!doc) return undefined;
+  let resolution: FindingDispute["resolution"];
+  if (doc["resolution"] !== undefined) {
+    const item = requireObject(doc["resolution"], `${path}.resolution`, ["by", "note", "evidence"], issues);
+    if (item) {
+      resolution = withOptional<NonNullable<FindingDispute["resolution"]>>(
+        {
+          by:
+            validateEnumValue<DisputeResolver>(item["by"], `${path}.resolution.by`, DISPUTE_RESOLVERS, issues) ??
+            "developer",
+          note: requireNonEmptyString(item["note"], `${path}.resolution.note`, issues),
+        },
+        { evidence: optionalStringArray(item["evidence"], `${path}.resolution.evidence`, issues) },
+      );
+    }
+  }
+  return withOptional<FindingDispute>(
+    {
+      reason: requireNonEmptyString(doc["reason"], `${path}.reason`, issues),
+      evidence: validateStringArray(doc["evidence"], `${path}.evidence`, issues),
+    },
+    {
+      escalation: optionalString(doc["escalation"], `${path}.escalation`, issues),
+      conflict: optionalString(doc["conflict"], `${path}.conflict`, issues),
+      resolution,
+    },
   );
 }
 

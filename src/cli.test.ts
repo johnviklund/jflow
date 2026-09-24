@@ -490,6 +490,48 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     });
   });
 
+  it("reviews an admitted ticket with a distinct reviewer, blocking on a finding and filing an improvement", async () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({ tickets: [{ id: "T1", title: "T1", acceptanceCriteria: ["parses an empty file"], dependsOn: [], status: "ready" }] }),
+    );
+    await run(["implement", "start"], h.root);
+    const early = await run(["review", "start"], h.root);
+    h.writeFile(
+      "evidence.json",
+      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 passed", exitCode: 0 }], checks: ["npm test"] }),
+    );
+    await run(["implement", "check", "evidence.json"], h.root, {}, jev("met", "evidence-satisfies"));
+    const started = await run(["review", "start"], h.root);
+    const findings = [
+      { kind: "correctness", summary: "empty input throws", evidence: ["src/parse.ts:3"] },
+      { kind: "improvement", summary: "name the magic number" },
+    ];
+    h.writeFile("self.json", JSON.stringify({ ticketId: "T1", reviewer: { agent: "primary" }, findings }));
+    h.writeFile("review.json", JSON.stringify({ ticketId: "T1", reviewer: { agent: "reviewer-1" }, findings }));
+    const self = await run(["review", "record", "self.json"], h.root);
+    const recorded = await run(["review", "record", "review.json"], h.root);
+    const decided = await run(["review", "decide", "T1", "--finding", "F1", "--outcome", "withdrawn", "--note", "fine"], h.root);
+
+    expect(early.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(early.json()).toMatchObject({ ok: false, reason: expect.stringContaining("validate") });
+    expect(started.code).toBe(EXIT_OK);
+    expect(started.json()).toMatchObject({ ok: true, outcome: { ticket: { id: "T1" }, evidence: ".jflow/evidence/T1.json" } });
+    expect(self.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(recorded.code).toBe(EXIT_OK);
+    expect(recorded.json()).toMatchObject({
+      ok: true,
+      review: { disposition: "returned-to-fix", findings: [{ disposition: "blocking" }, { disposition: "todo", todo: "TODO-1" }] },
+      fix: { attempts: 0 },
+    });
+    expect(decided.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(decided.json()).toMatchObject({ ok: false, reason: expect.stringContaining("not waiting") });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

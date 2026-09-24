@@ -11,7 +11,7 @@ import {
   type WorkflowState,
 } from "../actions/resolve.js";
 import { resolveConfiguration } from "../config/configuration.js";
-import { writeRecord, type PlanRecord, type SpecificationRecord } from "../project/records.js";
+import { writeRecord, type PlanRecord, type SpecificationRecord, type TicketValidation } from "../project/records.js";
 import { readProjectState, type ProjectStateResult } from "../project/state.js";
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
 
@@ -75,6 +75,13 @@ const SEED_PLAN: PlanRecord = {
   writtenAt: "2026-01-01T00:00:00Z",
 };
 
+const SEED_ADMISSION: TicketValidation = {
+  disposition: "admitted-to-review",
+  criteria: [{ criterion: "Seeded criterion.", verdict: "met", by: "jev" }],
+  missingChecks: [],
+  validatedAt: "2026-01-01T00:00:00Z",
+};
+
 /**
  * Writes the records a `WorkflowState` is derived from: the specification
  * and plan statuses carry their gates, the progress record the rest. A
@@ -89,6 +96,7 @@ function seedRecords(root: string, state: WorkflowState): void {
     specificationAccepted,
     planAccepted,
     assignedTicketId,
+    ticketAdmittedToReview,
     ...flags
   } = state;
   // Only an accepted gate needs its record; an absent record is the closed gate.
@@ -106,6 +114,10 @@ function seedRecords(root: string, state: WorkflowState): void {
     ...flags,
     ...(flags.executionAuthorized ? { authorizationScope: "ticket" } : {}),
     ...(assignedTicketId === undefined ? {} : { assignedTicketId }),
+    // Admission is the assigned ticket's all-met validation, never a flag of its own.
+    ...(ticketAdmittedToReview && assignedTicketId !== undefined
+      ? { validations: { [assignedTicketId]: SEED_ADMISSION } }
+      : {}),
   });
 }
 

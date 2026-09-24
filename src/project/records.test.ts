@@ -104,6 +104,25 @@ const examples: ProjectRecords = {
         validatedAt: "2026-09-20T10:00:00Z",
       },
     },
+    implementers: { T2: ["worker-1"] },
+    reviews: {
+      T1: {
+        reviewer: { agent: "reviewer-1", model: "claude-sonnet-5" },
+        disposition: "awaiting-developer",
+        findings: [
+          { id: "F1", kind: "improvement", summary: "rename tok", evidence: [], disposition: "todo", todo: "TODO-1" },
+          {
+            id: "F2",
+            kind: "correctness",
+            summary: "off by one",
+            evidence: ["src/parse.ts:42"],
+            disposition: "awaiting-developer",
+            dispute: { reason: "1-based by design", evidence: ["SPEC.md:88"], escalation: "ENV-20260920100000-escalate-abc123" },
+          },
+        ],
+        reviewedAt: "2026-09-20T11:00:00Z",
+      },
+    },
     changeOwnership: [
       { path: "notes.md", owner: "developer", note: "that's mine, leave it" },
       { path: "src/draft.ts", owner: "ticket", ticketId: "T2", note: "part of ticket 2" },
@@ -297,6 +316,28 @@ describe("readRecord", () => {
       writeRecord(root, "progress", progress({ ...validation, criteria: [{ criterion: "c1", verdict: "met", by: "jev", confidence: 2 }] })),
     ).toThrow(/criteria\[0\]\.confidence/);
     expect(() => writeRecord(root, "progress", progress({ ...validation, criteria: [] }))).toThrow(/criteria/);
+  });
+
+  it("requires a review to name its reviewer and give each finding a known kind and disposition", () => {
+    const root = makeRoot();
+    const finding = { id: "F1", kind: "standard", summary: "no tests", evidence: [], disposition: "blocking" };
+    const review = { reviewer: { agent: "reviewer-1" }, disposition: "returned-to-fix", findings: [finding], reviewedAt: "2026-09-20T10:00:00Z" };
+    const progress = (value: unknown) =>
+      ({ executionAuthorized: false, ticketChangesPresent: false, reviews: { T1: value } }) as unknown as ProgressRecord;
+
+    writeRecord(root, "progress", progress(review));
+    expect(readRecord(root, "progress").kind).toBe("present");
+
+    expect(() => writeRecord(root, "progress", progress({ ...review, reviewer: { agent: "" } }))).toThrow(/reviewer\.agent/);
+    expect(() => writeRecord(root, "progress", progress({ ...review, findings: [{ ...finding, kind: "style" }] }))).toThrow(
+      /findings\[0\]\.kind/,
+    );
+    expect(() => writeRecord(root, "progress", progress({ ...review, findings: [{ ...finding, disposition: "ignored" }] }))).toThrow(
+      /findings\[0\]\.disposition/,
+    );
+    expect(() =>
+      writeRecord(root, "progress", progress({ ...review, findings: [{ ...finding, dispute: { reason: "no", evidence: [], resolution: { by: "jev", note: "x" } } }] })),
+    ).toThrow(/dispute\.resolution\.by/);
   });
 
   it("requires each claimed change to name one owner in the developer's words", () => {

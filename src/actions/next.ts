@@ -78,6 +78,11 @@ export function runNext(root: string, context: ResolutionContext): NextReport {
     recommendation = recommend("plan", "the specification is accepted and has no ticket breakdown yet");
   } else if (plan.record.status === "awaiting-acceptance") {
     recommendation = recommend("plan", "the ticket breakdown awaits your acceptance before implementation can start", true);
+  } else if (state.assignedTicketId !== undefined && state.ticketAdmittedToReview) {
+    recommendation = recommend(
+      "review",
+      `ticket ${state.assignedTicketId} passed validate with every criterion met; an independent reviewer assesses it next`,
+    );
   } else if (state.assignedTicketId !== undefined) {
     recommendation = recommend(
       "implement",

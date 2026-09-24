@@ -11,6 +11,7 @@ export const WORKFLOW_CONDITIONS = [
   "execution.authorized",
   "ticket.assigned",
   "ticket.changesPresent",
+  "ticket.admittedToReview",
   "git.repository",
   "git.changesOwned",
 ] as const;

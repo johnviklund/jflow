@@ -257,6 +257,19 @@ describe("resolveAction Git requirements", () => {
     if (result.status !== "blocked") return;
     expect(result.unmet.map((entry) => entry.condition)).toEqual([
       "ticket.changesPresent",
+      "ticket.admittedToReview",
+    ]);
+  });
+
+  it("refuses review of a ticket that has not passed validate with every criterion met", () => {
+    const state = createWorkflowState({ gitRepositoryPresent: true, ticketChangesPresent: true, assignedTicketId: "T1" });
+
+    const result = resolveAction({ action: "review" }, state, { workflowPackage, configuration });
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") return;
+    expect(result.unmet).toEqual([
+      expect.objectContaining({ condition: "ticket.admittedToReview", reason: expect.stringContaining("validate") }),
     ]);
   });
 });
@@ -276,6 +289,7 @@ describe("resolveAction roles and delegation limits", () => {
     const state = createWorkflowState({
       gitRepositoryPresent: true,
       ticketChangesPresent: true,
+      ticketAdmittedToReview: true,
     });
 
     const result = resolveAction({ action: "review" }, state, {
@@ -319,6 +333,7 @@ describe("resolveAction roles and delegation limits", () => {
     const state = createWorkflowState({
       gitRepositoryPresent: true,
       ticketChangesPresent: true,
+      ticketAdmittedToReview: true,
     });
     const result = resolveAction({ action: "review" }, state, {
       workflowPackage,
@@ -359,6 +374,7 @@ describe("resolveAction roles and delegation limits", () => {
     const state = createWorkflowState({
       gitRepositoryPresent: true,
       ticketChangesPresent: true,
+      ticketAdmittedToReview: true,
     });
 
     const result = resolveAction({ action: "review" }, state, {
@@ -380,6 +396,7 @@ describe("createWorkflowState", () => {
       planAccepted: false,
       executionAuthorized: false,
       ticketChangesPresent: false,
+      ticketAdmittedToReview: false,
       gitRepositoryPresent: false,
       unclaimedChanges: [],
     });

@@ -47,7 +47,7 @@ describe("Git requirement by action", () => {
 describe("actions that never edit code", () => {
   it.each([
     ["troubleshoot", {}],
-    ["review", { ticketChangesPresent: true, assignedTicketId: "T1" }],
+    ["review", { ticketChangesPresent: true, ticketAdmittedToReview: true, assignedTicketId: "T1" }],
   ] as const)("%s leaves the working tree exactly as it found it", (action, state) => {
     const h = harness({ state, gitRepository: true });
     h.writeFile("src/app.ts", "export const broken = true;\n");

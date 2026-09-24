@@ -22,6 +22,7 @@ import {
   type TicketsRecord,
 } from "../project/records.js";
 import { readProjectState } from "../project/state.js";
+import { hasText } from "../validation.js";
 import type { DelegationLimits } from "../workflow/types.js";
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 import { resolveAction, type ResolutionContext } from "./resolve.js";
@@ -65,7 +66,7 @@ export interface StartedTicket {
 
 export type StartResult = { readonly ok: true; readonly outcome: StartedTicket } | Refusal;
 
-function fixLimit(context: ResolutionContext): number {
+export function fixLimit(context: ResolutionContext): number {
   const configured = context.configuration.settings[FIX_LIMIT_SETTING];
   return typeof configured === "number" ? configured : DEFAULT_FIX_LIMIT;
 }
@@ -191,7 +192,7 @@ export function startTicket(
 }
 
 /** The ticket being worked on: execution authorized, the ticket assigned and in progress. */
-function readWorkingTicket(
+export function readWorkingTicket(
   root: string,
   ticketId: unknown,
 ): { readonly ok: true; readonly ticket: TicketRecord; readonly progress: ProgressRecord } | Refusal {
@@ -232,7 +233,11 @@ function afterFailure(current: number | undefined, limit: number): { readonly at
   return { attempts, counted, atLimit: counted && attempts >= limit };
 }
 
-const hasText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+/** Whether the ticket's next counted failure reaches the fix limit, so it needs a recommendation first. */
+export function nextFailureReachesLimit(progress: ProgressRecord, ticketId: string, context: ResolutionContext): boolean {
+  return afterFailure(progress.fixAttempts?.[ticketId], fixLimit(context)).atLimit;
+}
+
 
 /**
  * Records one failure on the ticket's single fix counter (D48), whichever
@@ -301,6 +306,8 @@ export async function countUnsuccessfulFix(
 /** What the agent ran for the ticket, plus its recommendation should this attempt reach the fix limit. */
 export interface CheckInput extends ValidationInput {
   readonly recommendation?: string;
+  /** Sub-agents that worked on the ticket besides the primary agent; none of them may review it. */
+  readonly workers?: readonly string[];
 }
 
 export type CheckResult =
@@ -320,6 +327,22 @@ function recordEvidence(root: string, input: ValidationInput, recordedAt: string
   return reference;
 }
 
+/** Adds the ticket's workers to its recorded implementers, which review checks its reviewer against (D32). */
+function recordImplementers(root: string, ticketId: string, workers: readonly string[]): { readonly ok: true } | Refusal {
+  if (workers.length === 0) return { ok: true };
+  const read = readRecords(root);
+  if (!read.ok) return read;
+  const { progress } = read.records;
+  const known = progress.implementers?.[ticketId] ?? [];
+  const next = validateRecord("progress", {
+    ...progress,
+    implementers: { ...progress.implementers, [ticketId]: [...new Set([...known, ...workers.map((id) => id.trim())])] },
+  });
+  if (!next.ok) return refuse("the ticket's implementers cannot be recorded", next.issues);
+  writeRecord(root, "progress", next.record);
+  return { ok: true };
+}
+
 /**
  * Records the ticket's check output as verification evidence and asks the
  * binding `validate` gate over it. All criteria `met` admits the ticket to
@@ -337,8 +360,11 @@ export async function checkTicket(
   const working = readWorkingTicket(root, input?.ticketId);
   if (!working.ok) return { kind: "refused", reason: working.reason };
   const { ticket, progress } = working;
-  const { recommendation, ...validation } = input;
-  if (afterFailure(progress.fixAttempts?.[ticket.id], fixLimit(dependencies.context)).atLimit && !hasText(recommendation)) {
+  const { recommendation, workers, ...validation } = input;
+  if (workers !== undefined && (!Array.isArray(workers) || !workers.every(hasText))) {
+    return { kind: "refused", reason: "workers must list the id of each sub-agent that worked on the ticket" };
+  }
+  if (nextFailureReachesLimit(progress, ticket.id, dependencies.context) && !hasText(recommendation)) {
     return {
       kind: "refused",
       reason: "if this attempt fails it reaches the fix limit; include a recommendation for the developer before checking",
@@ -348,6 +374,8 @@ export async function checkTicket(
   const result = await validateTicket(root, validation, dependencies);
   if (result.kind === "refused") return result;
   const evidence = recordEvidence(root, validation, dependencies.now());
+  const recorded = recordImplementers(root, ticket.id, workers ?? []);
+  if (!recorded.ok) return { kind: "refused", reason: recorded.reason };
   if (result.kind !== "validated") return result;
 
   const notMet = result.validation.criteria.filter((entry) => entry.verdict === "not-met");

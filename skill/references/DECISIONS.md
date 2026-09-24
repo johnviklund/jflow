@@ -71,7 +71,9 @@ the project with `kind`, `summary` and `excerpts`, then run
   authorization.
 - `fix-failed`: asked for you by `implement check` when the ticket's fix
   counter reaches its limit; do not ask it yourself for a `not-met`.
-- `review-dispute`: when a review finding is disputed.
+- `review-dispute`: asked for you by `review record` when a blocking
+  finding is disputed and the evidence does not settle it; do not ask it
+  yourself.
 - `lesson-conflict`: when a candidate lesson conflicts with a retained one.
 - `resume-discrepancy`: when resume finds the records and the work disagree.
 - `missing-check`: asked for you by `ticket validate`; do not ask it yourself.
@@ -129,7 +131,7 @@ each accepted criterion separately. Act on `validation.disposition`:
   checks again and validate again.
 - `needs-check`: run the commands in `missingChecks`, add their output to
   the evidence and validate again.
-- `admitted-to-review`: the ticket goes to review.
+- `admitted-to-review`: the ticket goes to review (`actions/review.md`).
 - `awaiting-developer` (exit 1): put `askHuman` to the developer and wait.
 
 Only every criterion `met` admits a ticket. Your own claim never does, and
@@ -139,6 +141,16 @@ To set a verdict aside, run `scripts/jflow ticket override <ticket>
 "<what it rests on>"`. `--criterion` counts from 0. A reason without
 evidence is refused. If a verdict came from a below-threshold answer, only
 the developer can set it aside (`--by developer`, with their words).
+
+## Review findings never go to Jev
+
+A review finding's disposition follows a fixed rule, never a Jev answer.
+A requirement, correctness or standard finding blocks the ticket. An
+improvement becomes a todo. Never ask `classify` or any other decision
+what a finding is. Only a disputed finding that its evidence does not
+settle reaches Jev, through `escalate` at `review-dispute`. A dispute that
+touches requirements, scope, workflow rules or permissions is a
+consequential conflict and goes to the developer. See `actions/review.md`.
 
 ## Conflicts never go to Jev
 
