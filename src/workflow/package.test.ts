@@ -16,6 +16,7 @@ function questionFiles(): Map<string, unknown> {
         status: "skeleton",
         prompt: "Must the human be consulted before proceeding?",
         answers: ["proceed", "escalate"],
+        reasons: ["routine", "consequential"],
       },
     ],
   ]);
@@ -276,6 +277,51 @@ describe("validateWorkflowPackage decisions", () => {
 
     expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
       "questions/escalate.json#answers",
+    );
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["empty", []],
+    ["repeated", ["routine", "routine"]],
+  ])("rejects a question file whose closed reason set is %s", (_label, reasons) => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    if (reasons === undefined) delete file["reasons"];
+    else file["reasons"] = reasons;
+
+    expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
+      "questions/escalate.json#reasons",
+    );
+  });
+
+  it("accepts proposed wording awaiting the developer's acceptance", () => {
+    const files = questionFiles();
+    (files.get("questions/escalate.json") as Record<string, unknown>)["status"] = "proposed";
+
+    expect(validate(validPackage(), files).ok).toBe(true);
+  });
+
+  it("requires accepted wording to record when and in what words the developer accepted it", () => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    file["status"] = "accepted";
+
+    expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
+      "questions/escalate.json#acceptance",
+    );
+
+    file["acceptance"] = { acceptedAt: "2026-09-24T10:00:00Z", note: "yes, that wording" };
+    expect(validate(validPackage(), files).ok).toBe(true);
+  });
+
+  it("refuses an acceptance record on wording that is not accepted", () => {
+    const files = questionFiles();
+    const file = files.get("questions/escalate.json") as Record<string, unknown>;
+    file["acceptance"] = { acceptedAt: "2026-09-24T10:00:00Z", note: "yes" };
+
+    expect(issuesOf(validPackage(), files).map((issue) => issue.path)).toContain(
+      "questions/escalate.json#acceptance",
     );
   });
 

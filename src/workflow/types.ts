@@ -129,10 +129,12 @@ export interface PolicyEntry {
 
 /**
  * Lifecycle of a question file's wording under `workflow/questions/`: a
- * `skeleton` is well-formed and resolvable but its prompt is a placeholder
- * until the owning decision's wording is accepted by the human (SPEC.md D37).
+ * `skeleton` is well-formed and resolvable but its prompt is a placeholder;
+ * `proposed` wording is written by the owning decision's issue and awaits the
+ * human's explicit acceptance; `accepted` wording records that acceptance
+ * (SPEC.md D37). Only accepted wording is relied on.
  */
-export const QUESTION_STATUSES = ["skeleton", "accepted"] as const;
+export const QUESTION_STATUSES = ["skeleton", "proposed", "accepted"] as const;
 
 export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
 

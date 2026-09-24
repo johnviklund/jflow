@@ -24,7 +24,9 @@ records or the workflow package cannot be read; stop and report the problem.
 | Command | Use |
 | --- | --- |
 | `scripts/jflow status` | Where the project stands and which actions could run now. Always safe. |
-| `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant. Writes nothing; see `actions/next.md`. |
+| `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant, and Jev's advisory `next-action` answer. Writes no project record; see `actions/next.md`. |
+| `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
+| `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
 | `scripts/jflow todo add\|list\|promote` | Record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
@@ -80,7 +82,12 @@ parts only the agent can honour.
   the candidates and selected excerpts. Never paste a whole conversation or
   repository into it, or anything secret.
 - Raw Jev traces stay under `.jflow/traces/`, outside version control.
-  Never delete, export or upload them unless the developer asks.
+  Never delete, export or upload them unless the developer asks. Decision
+  envelopes stay under `.jflow/envelopes/`, and `traces clean` leaves them.
+- A Jev answer is never authorization, and never marks work correct or
+  complete. Choosing against it needs a recorded reason and evidence, and
+  only within what the workflow already permits. Record `--by developer`
+  only for what the developer actually said.
 
 ## Git
 
@@ -115,4 +122,6 @@ fix. A fix goes through an authorized `implement`.
   by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
+- `references/DECISIONS.md` — asking Jev's declared decisions, what each
+  route allows, recording choices and overrides, and handling conflicts.
 - `scripts/jflow` — the helper.

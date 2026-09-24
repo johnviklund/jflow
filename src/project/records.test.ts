@@ -8,6 +8,7 @@ import {
   RecordValidationError,
   readRecord,
   recordPath,
+  validateRecord,
   writeRecord,
   type JevRecord,
   type LessonsRecord,
@@ -158,6 +159,33 @@ const examples: ProjectRecords = {
         recordedAt: "2026-09-20T10:05:00Z",
         status: "promoted",
         promotion: { decidedAt: "2026-09-20T11:00:00Z", note: "yes, put the rename in this plan" },
+      },
+    ],
+  },
+  conflicts: {
+    conflicts: [
+      {
+        id: "C1",
+        summary: "review asks for a flag the specification excludes",
+        kind: "consequential",
+        touches: ["requirements"],
+        recordedAt: "2026-09-20T12:00:00Z",
+        status: "resolved",
+        resolution: { by: "developer", note: "keep it out", resolvedAt: "2026-09-20T12:30:00Z" },
+      },
+      {
+        id: "C2",
+        summary: "does the parser handle CRLF",
+        kind: "technical",
+        recordedAt: "2026-09-20T13:00:00Z",
+        status: "resolved",
+        investigation: { finding: "it does", evidence: ["src/parse.test.ts:40"] },
+        resolution: {
+          by: "investigation",
+          note: "it does",
+          evidence: ["src/parse.test.ts:40"],
+          resolvedAt: "2026-09-20T13:10:00Z",
+        },
       },
     ],
   },
@@ -524,6 +552,37 @@ describe("writeRecord", () => {
   });
 });
 
+describe("conflicts record", () => {
+  const base = {
+    id: "C1",
+    summary: "s",
+    recordedAt: "2026-09-20T12:00:00Z",
+  };
+
+  it.each([
+    ["a consequential conflict that names nothing it touches", { ...base, kind: "consequential", status: "awaiting-developer" }, "conflicts[0].touches"],
+    ["a technical conflict claiming consequential areas", { ...base, kind: "technical", touches: ["scope"], status: "awaiting-developer" }, "conflicts[0].touches"],
+    ["a resolved conflict without its resolution", { ...base, kind: "technical", status: "resolved" }, "conflicts[0].resolution"],
+    [
+      "a consequential conflict settled by investigation",
+      {
+        ...base,
+        kind: "consequential",
+        touches: ["scope"],
+        status: "resolved",
+        resolution: { by: "investigation", note: "n", resolvedAt: "2026-09-20T12:00:00Z" },
+      },
+      "conflicts[0].resolution.by",
+    ],
+  ])("refuses %s", (_label, conflict, path) => {
+    const result = validateRecord("conflicts", { conflicts: [conflict] });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toContain(path);
+  });
+});
+
 describe("record types", () => {
   it("accept the minimal shape of each record", () => {
     const root = makeRoot();
@@ -549,6 +608,7 @@ describe("record types", () => {
       jev: { fallback: { status: "off" } },
       resume: { writtenAt: "2026-09-20T12:00:00Z", summary: "s" },
       todos: { items: [] },
+      conflicts: { conflicts: [] },
     };
 
     for (const kind of RECORD_KINDS) {

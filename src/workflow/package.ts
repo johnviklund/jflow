@@ -30,6 +30,8 @@ import {
   requireBoolean,
   requireIntegerInRange,
   requireNonEmptyString,
+  requireObject,
+  requireTimestamp,
   validateEnumValue,
 } from "../validation.js";
 
@@ -483,7 +485,7 @@ function validateQuestionFile(
     );
   }
   const version = requireIntegerInRange(parsed["version"], field("version"), 1, issues);
-  validateEnumValue<QuestionStatus>(parsed["status"], field("status"), QUESTION_STATUSES, issues);
+  const status = validateEnumValue<QuestionStatus>(parsed["status"], field("status"), QUESTION_STATUSES, issues);
   requireNonEmptyString(parsed["prompt"], field("prompt"), issues);
 
   const answers = parsed["answers"];
@@ -493,6 +495,31 @@ function validateQuestionFile(
     answers.some((answer) => typeof answer !== "string" || answer.trim() === "")
   ) {
     issues.add(field("answers"), "must be a non-empty array of answer names");
+  }
+
+  // Every answer comes with a code from this closed set, so harness
+  // observations and replay can group answers by why they were given (D35).
+  const reasons = parsed["reasons"];
+  if (
+    !Array.isArray(reasons) ||
+    reasons.length === 0 ||
+    reasons.some((reason) => typeof reason !== "string" || reason.trim() === "") ||
+    new Set(reasons).size !== reasons.length
+  ) {
+    issues.add(field("reasons"), "must be a non-empty array of distinct reason codes");
+  }
+
+  // Wording counts as accepted only with the developer's recorded acceptance
+  // (D37): when, and in their words.
+  const acceptance = parsed["acceptance"];
+  if (status === "accepted") {
+    const record = requireObject(acceptance, field("acceptance"), ["acceptedAt", "note"], issues);
+    if (record) {
+      requireTimestamp(record["acceptedAt"], `${field("acceptance")}.acceptedAt`, issues);
+      requireNonEmptyString(record["note"], `${field("acceptance")}.note`, issues);
+    }
+  } else if (acceptance !== undefined) {
+    issues.add(field("acceptance"), "must be absent until the wording is accepted");
   }
 
   return issues.count === before ? version : undefined;

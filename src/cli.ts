@@ -2,9 +2,23 @@ import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
 import { claimChanges } from "./actions/changes.js";
+import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { unreadable } from "./actions/refusal.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
+import { fetchTransport, type JevTransport } from "./jev/client.js";
+import {
+  adviseNext,
+  askDecision,
+  CHOICE_MAKERS,
+  permittedChoices,
+  readEnvelope,
+  recordChoice,
+  reportDecision,
+  type ChoiceMaker,
+  type DecisionDependencies,
+  type DecisionInput,
+} from "./jev/decisions.js";
 import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
@@ -20,7 +34,7 @@ import {
   writeSpecification,
   type SpecificationDraft,
 } from "./actions/specification.js";
-import { resolveConfiguration } from "./config/configuration.js";
+import { resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
 import { readRecord } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
@@ -45,6 +59,11 @@ export interface CliIo {
   readonly stderr: (text: string) => void;
   /** Host probes; defaults to the real process. Injected by tests. */
   readonly hostProbes?: HostProbeOptions;
+  /** Where the Jev key is read from and how requests are sent; defaults to the process and the network. */
+  readonly jev?: {
+    readonly env: Readonly<Record<string, string | undefined>>;
+    readonly transport: JevTransport;
+  };
 }
 
 export const USAGE = `jflow helper
@@ -66,6 +85,12 @@ Usage:
   jflow todo add <summary…> [--detail <context>] [--root <dir>]
   jflow todo list                                [--root <dir>]
   jflow todo promote <id> --note <the developer's words> [--root <dir>]
+  jflow decide ask <decision> <input.json>   [--root <dir>] [--config <file>]
+  jflow decide show <envelope>               [--root <dir>]
+  jflow decide choose <envelope> --action <a> --by workflow|agent|developer
+                    [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
+  jflow conflict raise <draft.json>          [--root <dir>]
+  jflow conflict decide <id> --note <the developer's words> [--root <dir>]
   jflow traces list  [--root <dir>]
   jflow traces clean [--root <dir>]
   jflow help
@@ -85,6 +110,17 @@ no paths it covers every unclaimed change. It never stages or discards.
 "todo add" records future work outside the plan and authorizes nothing;
 "todo promote" records the developer's decision to bring an item into the
 plan, and says whether plan or realign adds its ticket.
+"next" also asks Jev's advisory next-action decision and reports it under
+"jev" with its envelope; a missing key is reported there, never skipped.
+"decide ask" asks a declared Jev decision over an input holding taskSummary,
+candidates and excerpts (source, text); the answer's route says whether the
+workflow acts on it, you weigh it, or the developer decides. "decide
+choose" records the chosen action: it must be permitted by the workflow,
+and setting Jev's answer aside needs --reason and --evidence.
+"conflict raise" takes summary, touches (requirements, scope,
+workflow-rules, permissions) and, for a technical disagreement,
+investigation (finding, evidence, conclusive); a consequential or
+inconclusive one waits for the developer and never reaches Jev.
 "traces clean" deletes the local Jev traces under .jflow/traces; run it only
 when the developer asks. Project records keep their summaries.
 `;
@@ -95,7 +131,21 @@ interface ParsedArgs {
   readonly options: Readonly<Record<string, string>>;
 }
 
-const KNOWN_OPTIONS = ["root", "config", "basis", "note", "authorize", "scope", "ticket", "owner", "detail"];
+const KNOWN_OPTIONS = [
+  "root",
+  "config",
+  "basis",
+  "note",
+  "authorize",
+  "scope",
+  "ticket",
+  "owner",
+  "detail",
+  "action",
+  "by",
+  "reason",
+  "evidence",
+];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
@@ -193,7 +243,17 @@ function exitCodeFor(outcome: DispatchOutcome): number {
   }
 }
 
-function runRequest(request: string, options: ParsedArgs["options"], io: CliIo): number {
+function decisionDependencies(context: ResolutionContext, io: CliIo): DecisionDependencies {
+  const jev = io.jev ?? { env: process.env, transport: fetchTransport };
+  return {
+    context,
+    apiKey: resolveJevApiKey({ env: jev.env }),
+    transport: jev.transport,
+    now: () => new Date().toISOString(),
+  };
+}
+
+async function runRequest(request: string, options: ParsedArgs["options"], io: CliIo): Promise<number> {
   const built = buildContext(options, io);
   if (!built.ok) {
     io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
@@ -204,7 +264,13 @@ function runRequest(request: string, options: ParsedArgs["options"], io: CliIo):
   const outcome = dispatch(root, request, built.context, {
     onHumanAsk: (event) => humanAsks.push(event),
   });
-  io.stdout(`${JSON.stringify({ request, outcome, humanAsks }, null, 2)}\n`);
+  // `next` also carries Jev's advisory next-action answer (issue #17);
+  // the records' own recommendation above is unchanged by it.
+  const jev =
+    outcome.kind === "completed" && outcome.action === "next"
+      ? (await adviseNext(root, decisionDependencies(built.context, io))).jev
+      : undefined;
+  io.stdout(`${JSON.stringify(jev === undefined ? { request, outcome, humanAsks } : { request, outcome, humanAsks, jev }, null, 2)}\n`);
   return exitCodeFor(outcome);
 }
 
@@ -378,6 +444,100 @@ function runTodo(args: ParsedArgs, io: CliIo): number {
   }
 }
 
+async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target, inputPath] = args.positional;
+
+  switch (subcommand) {
+    case "ask": {
+      if (target === undefined) {
+        io.stderr(`decide ask needs a decision name\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const read = readDraft<DecisionInput>(inputPath, "decide ask", io);
+      if (!read.ok) return read.exit;
+      const result = await askDecision(root, target, read.draft, decisionDependencies(built.context, io));
+      const decision = reportDecision(result);
+      io.stdout(`${JSON.stringify({ ok: result.kind === "answered", decision }, null, 2)}\n`);
+      return result.kind === "answered" ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+    case "show": {
+      if (target === undefined) {
+        io.stderr(`decide show needs an envelope id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(readEnvelope(root, target), io);
+    }
+    case "choose": {
+      const action = args.options["action"];
+      const by = args.options["by"] as ChoiceMaker | undefined;
+      if (target === undefined || action === undefined || by === undefined || !CHOICE_MAKERS.includes(by as ChoiceMaker)) {
+        io.stderr(`decide choose needs an envelope id, --action and --by workflow|agent|developer\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const envelope = readEnvelope(root, target);
+      if (!envelope.ok) return report(envelope, io);
+      const reason = args.options["reason"];
+      const evidence = args.options["evidence"];
+      return report(
+        recordChoice(
+          root,
+          target,
+          {
+            action,
+            by,
+            ...(reason === undefined ? {} : { reason }),
+            ...(evidence === undefined ? {} : { evidence: [evidence] }),
+          },
+          permittedChoices(root, envelope.envelope.decision, built.context),
+          { now: new Date().toISOString() },
+        ),
+        io,
+      );
+    }
+    default:
+      io.stderr(`decide needs one of ask, show, choose\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
+function runConflict(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const now = new Date().toISOString();
+
+  switch (subcommand) {
+    case "raise": {
+      const read = readDraft<ConflictDraft>(target, "conflict raise", io);
+      if (!read.ok) return read.exit;
+      const draft = read.draft;
+      const result = raiseConflict(root, { ...draft, touches: draft.touches ?? [] }, { now });
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+    case "decide": {
+      if (target === undefined) {
+        io.stderr(`conflict decide needs a conflict id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(decideConflict(root, target, { note: args.options["note"] ?? "", now }), io);
+    }
+    default:
+      io.stderr(`conflict needs one of raise, decide\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
 function runTraces(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   switch (args.positional[0]) {
@@ -391,7 +551,7 @@ function runTraces(args: ParsedArgs, io: CliIo): number {
   }
 }
 
-export function runCli(argv: readonly string[], io: CliIo): number {
+export async function runCli(argv: readonly string[], io: CliIo): Promise<number> {
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);
@@ -445,6 +605,12 @@ export function runCli(argv: readonly string[], io: CliIo): number {
     case "todo":
       return runTodo(args, io);
 
+    case "decide":
+      return runDecide(args, io);
+
+    case "conflict":
+      return runConflict(args, io);
+
     case "traces":
       return runTraces(args, io);
 
@@ -466,9 +632,9 @@ export function runCli(argv: readonly string[], io: CliIo): number {
  * directly. Anything the commands did not handle (an I/O failure reading the
  * project, say) is reported as unreadable rather than as a stack trace.
  */
-export function main(): void {
+export async function main(): Promise<void> {
   try {
-    process.exitCode = runCli(process.argv.slice(2), {
+    process.exitCode = await runCli(process.argv.slice(2), {
       cwd: process.cwd(),
       stdout: (text) => process.stdout.write(text),
       stderr: (text) => process.stderr.write(text),

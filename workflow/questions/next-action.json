@@ -1,11 +1,29 @@
 {
   "decision": "next-action",
-  "version": 1,
-  "status": "skeleton",
+  "version": 2,
+  "status": "accepted",
   "ownedBy": "#17",
-  "prompt": "Skeleton (D37): given the workflow state and eligible actions, which action should run next, and which supporting skills apply? Wording proposed in #17 for explicit acceptance.",
+  "prompt": "You are choosing the one workflow action that should run next in a jflow project. The state lists every action with whether its prerequisites are met and, where they are not, what is missing; the candidates are the actions that may be recommended. Choose the action that most directly moves the accepted work forward from the recorded state. Prefer an action whose prerequisites are met. Choose an action that waits on the developer (an acceptance, an authorization, the decision a parked ticket waits on) only when nothing else can move the work forward. Judge only from the supplied records and do not assume work the records do not show. Your answer is a recommendation: it grants no authorization and marks no work complete.",
   "answers": [
-    "recommend",
-    "no-recommendation"
-  ]
+    "brainstorm",
+    "plan",
+    "implement",
+    "troubleshoot",
+    "review",
+    "wrap",
+    "realign",
+    "learn"
+  ],
+  "reasons": [
+    "prerequisites-met",
+    "awaits-developer",
+    "work-in-progress",
+    "failure-recovery",
+    "work-complete",
+    "insufficient-evidence"
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-24T00:00:00Z",
+    "note": "Accept all three (developer, answering the #17 wording proposal for next-action, assignment and lesson-retention)"
+  }
 }

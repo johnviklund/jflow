@@ -1,11 +1,22 @@
 {
   "decision": "assignment",
-  "version": 1,
-  "status": "skeleton",
+  "version": 2,
+  "status": "accepted",
   "ownedBy": "#17",
-  "prompt": "Skeleton (D37): given the proposed stage-worker assignments and the unit of work, are they relevant and free of overlap? Wording proposed in #17 for explicit acceptance.",
+  "prompt": "You are assessing the proposed stage-worker assignments for one unit of work in a jflow project. The state describes the unit of work and each proposed assignment: its role, the task it is given, and the files or areas it covers. Answer accept when every assignment is relevant to the unit of work and no two assignments cover the same task or files in a way that would duplicate or conflict. Answer revise when an assignment is irrelevant, two assignments overlap, or a required role is missing. Required roles, such as a reviewer independent of the implementer, are never optional. Judge only the supplied assignments.",
   "answers": [
     "accept",
     "revise"
-  ]
+  ],
+  "reasons": [
+    "relevant-and-distinct",
+    "irrelevant-assignment",
+    "overlapping-assignments",
+    "missing-role",
+    "insufficient-evidence"
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-24T00:00:00Z",
+    "note": "Accept all three (developer, answering the #17 wording proposal for next-action, assignment and lesson-retention)"
+  }
 }

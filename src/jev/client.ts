@@ -14,7 +14,7 @@ import { completeTrace, startTrace } from "./traces.js";
  * exact exchange goes to a local trace without the key; the caller gets a
  * portable summary with a trace reference. Whether a failure is retried,
  * and fallback approval, are #18's; how an answer is used and recorded as a
- * decision envelope in the project records is #17's.
+ * decision envelope is `decisions.ts`'s (#17).
  */
 
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -27,6 +27,8 @@ export interface DecisionQuestion {
   readonly status: QuestionStatus;
   readonly prompt: string;
   readonly answers: readonly string[];
+  /** The closed set every answer's reason code comes from (D35). */
+  readonly reasons: readonly string[];
 }
 
 /**
@@ -49,6 +51,7 @@ export function loadDecisionQuestion(workflowPackage: WorkflowPackage, decision:
     status: file.status,
     prompt: file.prompt,
     answers: file.answers,
+    reasons: file.reasons,
   };
 }
 
@@ -88,6 +91,8 @@ export interface JevCallSummary {
   readonly questionStatus: QuestionStatus;
   readonly model: string;
   readonly answer: string;
+  /** Why the answer was given, from the question's closed reason set. */
+  readonly reasonCode: string;
   readonly confidence?: number;
   /** How many pieces of evidence were withheld or cut; the trace lists them. */
   readonly omittedEvidence: number;
@@ -128,25 +133,82 @@ function parseJson(body: string): unknown {
   }
 }
 
+/** The key of the reason question asked alongside a decision's own question. */
+function reasonKey(question: DecisionQuestion): string {
+  return `${question.decision}.reason`;
+}
+
+/** The parts of a request that come from the client rather than the question or packet. */
+export interface RequestFrame {
+  readonly model: string;
+  readonly reasonInstructions: string;
+}
+
+export const REQUEST_FRAME: RequestFrame = {
+  model: JEV_MODEL,
+  reasonInstructions:
+    "Give the closed reason code that best explains your answer to the other question in this request.",
+};
+
+/**
+ * The exact request body for one decision over one packet. A decision
+ * envelope keeps the question, packet and frame, so the same body can be
+ * rebuilt from the envelope alone (D36).
+ */
+export function jevRequestBody(
+  question: DecisionQuestion,
+  evidence: EvidencePacket,
+  frame: RequestFrame = REQUEST_FRAME,
+): string {
+  const choices = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, name]));
+  return JSON.stringify({
+    model: frame.model,
+    state: evidence,
+    questions: {
+      [question.decision]: { type: "choice", instructions: question.prompt, criteria: choices(question.answers) },
+      [reasonKey(question)]: {
+        type: "choice",
+        instructions: frame.reasonInstructions,
+        criteria: choices(question.reasons),
+      },
+    },
+  });
+}
+
 type ParsedAnswer =
-  | { readonly ok: true; readonly model: string; readonly answer: string; readonly confidence?: number }
+  | {
+      readonly ok: true;
+      readonly model: string;
+      readonly answer: string;
+      readonly reasonCode: string;
+      readonly confidence?: number;
+    }
   | { readonly ok: false; readonly error: string };
 
+type AnswerEntry = { choice?: unknown; confidence?: unknown };
+
 function parseAnswer(body: unknown, question: DecisionQuestion): ParsedAnswer {
-  const document = body as { model?: unknown; answers?: Record<string, { choice?: unknown; confidence?: unknown }> };
-  const entry = document?.answers?.[question.decision];
-  const choice = entry?.choice;
-  if (typeof choice !== "string" || !question.answers.includes(choice)) {
-    return {
-      ok: false,
-      error: `Jev returned no usable answer to "${question.decision}" (got ${JSON.stringify(choice)}; expected one of ${question.answers.join(", ")})`,
-    };
-  }
-  const confidence = entry?.confidence;
+  const document = body as { model?: unknown; answers?: Record<string, AnswerEntry> };
+  const closedChoice = (key: string, allowed: readonly string[]): { ok: true; choice: string } | { ok: false; error: string } => {
+    const choice = document?.answers?.[key]?.choice;
+    return typeof choice === "string" && allowed.includes(choice)
+      ? { ok: true, choice }
+      : {
+          ok: false,
+          error: `Jev returned no usable answer to "${key}" (got ${JSON.stringify(choice)}; expected one of ${allowed.join(", ")})`,
+        };
+  };
+  const answer = closedChoice(question.decision, question.answers);
+  if (!answer.ok) return answer;
+  // An answer without its reason code cannot be grouped or replayed (D35).
+  const reason = closedChoice(reasonKey(question), question.reasons);
+  if (!reason.ok) return reason;
+  const confidence = document.answers?.[question.decision]?.confidence;
   return {
     ok: true,
     model: typeof document.model === "string" ? document.model : JEV_MODEL,
-    answer: choice,
+    answer: answer.choice,
+    reasonCode: reason.choice,
     ...(typeof confidence === "number" ? { confidence } : {}),
   };
 }
@@ -163,17 +225,7 @@ export async function askJev(
   const key = options.apiKey.key;
   // Whatever the caller passed, the key itself never leaves in the evidence.
   const evidence = JSON.parse(redact(JSON.stringify(call.evidence), [key])) as EvidencePacket;
-  const body = JSON.stringify({
-    model: JEV_MODEL,
-    state: evidence,
-    questions: {
-      [question.decision]: {
-        type: "choice",
-        instructions: question.prompt,
-        criteria: Object.fromEntries(question.answers.map((answer) => [answer, answer])),
-      },
-    },
-  });
+  const body = jevRequestBody(question, evidence);
   const requestedAt = options.now();
   const traceName = `${requestedAt.replace(/[:.]/g, "-")}-${question.decision}-${randomBytes(3).toString("hex")}`;
   const headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
@@ -245,6 +297,7 @@ export async function askJev(
       questionStatus: question.status,
       model: answer.model,
       answer: answer.answer,
+      reasonCode: answer.reasonCode,
       ...(answer.confidence === undefined ? {} : { confidence: answer.confidence }),
       omittedEvidence: evidence.omitted.length,
       answeredAt: requestedAt,

@@ -41,7 +41,10 @@ function fakeTransport(status: number, body: unknown): JevTransport & { readonly
 
 const answered = {
   model: "jev-1.13",
-  answers: { escalate: { type: "choice", choice: "escalate", probabilities: { proceed: 0.2, escalate: 0.8 }, confidence: 0.8 } },
+  answers: {
+    escalate: { type: "choice", choice: "escalate", probabilities: { proceed: 0.2, escalate: 0.8 }, confidence: 0.8 },
+    "escalate.reason": { type: "choice", choice: "uncertain", confidence: 0.7 },
+  },
   usage: { input_tokens: 10, output_tokens: 1 },
 };
 
@@ -96,6 +99,11 @@ describe("askJev", () => {
           instructions: question.prompt,
           criteria: { proceed: "proceed", escalate: "escalate" },
         },
+        "escalate.reason": {
+          type: "choice",
+          instructions: expect.stringContaining("closed reason code"),
+          criteria: Object.fromEntries(question.reasons.map((reason) => [reason, reason])),
+        },
       },
     });
   });
@@ -135,6 +143,7 @@ describe("askJev", () => {
         questionStatus: "skeleton",
         model: "jev-1.13",
         answer: "escalate",
+        reasonCode: "uncertain",
         confidence: 0.8,
         omittedEvidence: 0,
         answeredAt: now,
@@ -178,6 +187,15 @@ describe("askJev", () => {
     );
 
     expect(result).toMatchObject({ kind: "failed", failure: { retryable: false, error: expect.stringContaining("maybe") } });
+  });
+
+  it("reports an answer without a code from the closed reason set as a failure", async () => {
+    const h = harness();
+    const unexplained = { ...answered, answers: { escalate: answered.answers.escalate, "escalate.reason": { choice: "vibes" } } };
+
+    const result = await askJev({ question, evidence }, configured(h.root, fakeTransport(200, unexplained)));
+
+    expect(result).toMatchObject({ kind: "failed", failure: { retryable: false, error: expect.stringContaining("vibes") } });
   });
 });
 

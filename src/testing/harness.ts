@@ -39,6 +39,8 @@ export type ActionOutcome = DispatchOutcome;
 
 export interface ProjectHarness {
   readonly root: string;
+  /** The shipped package with an empty configuration, as requests are resolved against. */
+  readonly context: ResolutionContext;
   /** Human-ask events recorded so far, in order. */
   readonly events: readonly HumanAskEvent[];
   /** Runs a request as the developer would phrase it: an action name or a sentence. */
@@ -136,6 +138,7 @@ export function createProjectHarness(options: HarnessOptions = {}): ProjectHarne
 
   return {
     root,
+    context,
     events,
     request,
     runAction: request,

@@ -1,12 +1,24 @@
 {
   "decision": "lesson-retention",
-  "version": 1,
-  "status": "skeleton",
+  "version": 2,
+  "status": "accepted",
   "ownedBy": "#17",
-  "prompt": "Skeleton (D37): given a candidate project lesson and its evidence, should it be retained, and when is it likely to apply again? Wording proposed in #17 for explicit acceptance.",
+  "prompt": "You are assessing a candidate project lesson for retention in a jflow project. The state gives the lesson's statement, its scope, the evidence linked to it, and any retained lessons or accepted decisions it touches. Answer retain when the linked evidence supports the lesson, its scope is clear, it does not repeat a retained lesson, and it is likely to apply to later work in that scope. Answer discard when it is speculative, unsupported, a duplicate, or unlikely to apply again. Answer escalate when it conflicts with an accepted decision or a retained lesson; that conflict is the developer's to resolve. Your answer does not establish that the lesson is true.",
   "answers": [
     "retain",
     "discard",
     "escalate"
-  ]
+  ],
+  "reasons": [
+    "evidence-backed",
+    "speculative",
+    "duplicate",
+    "unlikely-to-recur",
+    "conflicts-with-decision",
+    "insufficient-evidence"
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-24T00:00:00Z",
+    "note": "Accept all three (developer, answering the #17 wording proposal for next-action, assignment and lesson-retention)"
+  }
 }

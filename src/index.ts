@@ -124,6 +124,9 @@ export {
 export {
   AUTHORIZATION_SCOPES,
   CHANGE_OWNERS,
+  CONFLICT_KINDS,
+  CONFLICT_STATUSES,
+  CONSEQUENTIAL_AREAS,
   DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
@@ -142,6 +145,11 @@ export {
   type AuthorizationScope,
   type ChangeOwner,
   type ChangeOwnership,
+  type ConflictEntry,
+  type ConflictKind,
+  type ConflictStatus,
+  type ConflictsRecord,
+  type ConsequentialArea,
   type DecisionStatus,
   type FallbackScope,
   type FallbackStatus,
@@ -189,8 +197,10 @@ export {
 export {
   JEV_ENDPOINT,
   JEV_MODEL,
+  REQUEST_FRAME,
   askJev,
   fetchTransport,
+  jevRequestBody,
   loadDecisionQuestion,
   type DecisionQuestion,
   type JevCallResult,
@@ -198,7 +208,43 @@ export {
   type JevClientOptions,
   type JevFailure,
   type JevTransport,
+  type RequestFrame,
   type TransportRequest,
 } from "./jev/client.js";
 
 export { TRACE_DIRECTORY, cleanTraces, listTraces } from "./jev/traces.js";
+
+export {
+  ENVELOPE_DIRECTORY,
+  adviseNext,
+  askDecision,
+  assignmentEvidence,
+  lessonRetentionEvidence,
+  listEnvelopes,
+  nextActionEvidence,
+  permittedChoices,
+  readEnvelope,
+  rebuildJevRequest,
+  recordChoice,
+  reportDecision,
+  routeAnswer,
+  type AskDecisionResult,
+  type ChoiceInput,
+  type ChoiceMaker,
+  type ChoiceResult,
+  type DecisionChoice,
+  type DecisionDependencies,
+  type DecisionEnvelope,
+  type DecisionInput,
+  type DecisionReport,
+  type DecisionRoute,
+  type NextAdvice,
+  type ProposedAssignment,
+} from "./jev/decisions.js";
+
+export {
+  decideConflict,
+  raiseConflict,
+  type ConflictDraft,
+  type ConflictResult,
+} from "./actions/conflicts.js";

@@ -21,10 +21,9 @@ import type { ValidationIssue } from "../workflow/types.js";
 
 /**
  * The authoritative project record store (SPEC.md D14, issue #3). Plans,
- * tickets, progress, lessons, Jev fallback status, the wrap resume record and
- * todo items live as one JSON file each under a version-controlled `jflow/`
- * directory,
- * so a fresh conversation recovers full context from files alone.
+ * tickets, progress, lessons, Jev fallback status, the wrap resume record,
+ * todo items and conflicts live as one JSON file each under a
+ * version-controlled `jflow/` directory, so a fresh conversation recovers full context from files alone.
  *
  * Records keep summaries and trace references only (D23): every schema is
  * closed, so a raw Jev request or response body has no field of its own to
@@ -47,6 +46,7 @@ export const RECORD_KINDS = [
   "jev",
   "resume",
   "todos",
+  "conflicts",
 ] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -281,6 +281,52 @@ export interface TodosRecord {
   readonly items: readonly TodoItem[];
 }
 
+/** What a conflict touches that makes it consequential: the developer's to decide (D7). */
+export const CONSEQUENTIAL_AREAS = ["requirements", "scope", "workflow-rules", "permissions"] as const;
+
+export type ConsequentialArea = (typeof CONSEQUENTIAL_AREAS)[number];
+
+export const CONFLICT_KINDS = ["consequential", "technical"] as const;
+
+export type ConflictKind = (typeof CONFLICT_KINDS)[number];
+
+export const CONFLICT_STATUSES = ["awaiting-developer", "resolved"] as const;
+
+export type ConflictStatus = (typeof CONFLICT_STATUSES)[number];
+
+/**
+ * A disagreement met during the work (D7, issue #17). A consequential one
+ * touches requirements, scope, workflow rules or permissions and waits for
+ * the developer; a technical one is settled by investigation, or waits for
+ * the developer when investigation is inconclusive. Jev is never asked.
+ */
+export const CONFLICT_RESOLVERS = ["investigation", "developer"] as const;
+
+export type ConflictResolver = (typeof CONFLICT_RESOLVERS)[number];
+
+export interface ConflictEntry {
+  readonly id: string;
+  readonly summary: string;
+  readonly kind: ConflictKind;
+  /** Present exactly for a consequential conflict. */
+  readonly touches?: readonly ConsequentialArea[];
+  readonly recordedAt: string;
+  readonly status: ConflictStatus;
+  /** What the investigation found, kept even when it was inconclusive. */
+  readonly investigation?: { readonly finding: string; readonly evidence: readonly string[] };
+  readonly resolution?: {
+    readonly by: ConflictResolver;
+    /** The finding, or the developer's words. */
+    readonly note: string;
+    readonly evidence?: readonly string[];
+    readonly resolvedAt: string;
+  };
+}
+
+export interface ConflictsRecord {
+  readonly conflicts: readonly ConflictEntry[];
+}
+
 export interface ProjectRecords {
   readonly specification: SpecificationRecord;
   readonly plan: PlanRecord;
@@ -290,6 +336,7 @@ export interface ProjectRecords {
   readonly jev: JevRecord;
   readonly resume: ResumeRecord;
   readonly todos: TodosRecord;
+  readonly conflicts: ConflictsRecord;
 }
 
 export type RecordReadResult<K extends RecordKind> =
@@ -942,6 +989,103 @@ const validateTodos: Validator<TodosRecord> = (value, issues) => {
   return { items };
 };
 
+const validateConflicts: Validator<ConflictsRecord> = (value, issues) => {
+  const doc = requireObject(value, "", ["conflicts"], issues);
+  if (!doc) return undefined;
+  const conflicts: ConflictEntry[] = [];
+  if (!Array.isArray(doc["conflicts"])) {
+    issues.add("conflicts", "must be an array of conflicts");
+    return { conflicts };
+  }
+  const ids = new Set<string>();
+  doc["conflicts"].forEach((entry, index) => {
+    const path = `conflicts[${index}]`;
+    const conflict = requireObject(
+      entry,
+      path,
+      ["id", "summary", "kind", "touches", "recordedAt", "status", "investigation", "resolution"],
+      issues,
+    );
+    if (!conflict) return;
+    const id = requireNonEmptyString(conflict["id"], `${path}.id`, issues);
+    if (ids.has(id)) issues.add(`${path}.id`, `duplicate conflict id "${id}"`);
+    ids.add(id);
+    const kind = validateEnumValue<ConflictKind>(conflict["kind"], `${path}.kind`, CONFLICT_KINDS, issues);
+    const status = validateEnumValue<ConflictStatus>(conflict["status"], `${path}.status`, CONFLICT_STATUSES, issues);
+
+    let touches: ConsequentialArea[] | undefined;
+    if (conflict["touches"] !== undefined) {
+      touches = validateStringArray(conflict["touches"], `${path}.touches`, issues).filter(
+        (area, areaIndex): area is ConsequentialArea =>
+          validateEnumValue(area, `${path}.touches[${areaIndex}]`, CONSEQUENTIAL_AREAS, issues) !== undefined,
+      );
+    }
+    // Consequential means it touches something only the developer changes (D7).
+    if (kind === "consequential" && (touches === undefined || touches.length === 0)) {
+      issues.add(`${path}.touches`, "a consequential conflict names what it touches");
+    }
+    if (kind === "technical" && touches !== undefined) {
+      issues.add(`${path}.touches`, "must be absent for a technical conflict");
+    }
+
+    let investigation: ConflictEntry["investigation"];
+    if (conflict["investigation"] !== undefined) {
+      const found = requireObject(conflict["investigation"], `${path}.investigation`, ["finding", "evidence"], issues);
+      if (found) {
+        investigation = {
+          finding: requireNonEmptyString(found["finding"], `${path}.investigation.finding`, issues),
+          evidence: validateStringArray(found["evidence"], `${path}.investigation.evidence`, issues),
+        };
+      }
+    }
+
+    let resolution: ConflictEntry["resolution"];
+    if (conflict["resolution"] !== undefined) {
+      const resolved = requireObject(
+        conflict["resolution"],
+        `${path}.resolution`,
+        ["by", "note", "evidence", "resolvedAt"],
+        issues,
+      );
+      if (resolved) {
+        const by = validateEnumValue<ConflictResolver>(resolved["by"], `${path}.resolution.by`, CONFLICT_RESOLVERS, issues);
+        resolution = withOptional<NonNullable<ConflictEntry["resolution"]>>(
+          {
+            by: by ?? "developer",
+            note: requireNonEmptyString(resolved["note"], `${path}.resolution.note`, issues),
+            resolvedAt: requireTimestamp(resolved["resolvedAt"], `${path}.resolution.resolvedAt`, issues),
+          },
+          { evidence: optionalStringArray(resolved["evidence"], `${path}.resolution.evidence`, issues) },
+        );
+        // Investigation settles only technical disagreements (D7).
+        if (by === "investigation" && kind === "consequential") {
+          issues.add(`${path}.resolution.by`, "a consequential conflict is resolved by the developer");
+        }
+      }
+    }
+    if (status === "resolved" && resolution === undefined) {
+      issues.add(`${path}.resolution`, "a resolved conflict records how it was resolved");
+    }
+    if (status === "awaiting-developer" && conflict["resolution"] !== undefined) {
+      issues.add(`${path}.resolution`, "must be absent while the conflict awaits the developer");
+    }
+
+    conflicts.push(
+      withOptional<ConflictEntry>(
+        {
+          id,
+          summary: requireNonEmptyString(conflict["summary"], `${path}.summary`, issues),
+          kind: kind ?? "consequential",
+          recordedAt: requireTimestamp(conflict["recordedAt"], `${path}.recordedAt`, issues),
+          status: status ?? "awaiting-developer",
+        },
+        { touches, investigation, resolution },
+      ),
+    );
+  });
+  return { conflicts };
+};
+
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
   specification: validateSpecification,
   plan: validatePlan,
@@ -951,6 +1095,7 @@ const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } =
   jev: validateJev,
   resume: validateResume,
   todos: validateTodos,
+  conflicts: validateConflicts,
 };
 
 /** Walks the whole document so a credential cannot hide in a nested field (D14, D23). */

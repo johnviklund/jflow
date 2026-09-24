@@ -1,11 +1,17 @@
 {
   "decision": "escalate",
-  "version": 1,
+  "version": 2,
   "status": "skeleton",
   "ownedBy": "#25",
   "prompt": "Skeleton (D37, D44): given this situation packet and its boundary kind, must the human be consulted before proceeding? Wording proposed in #25 for explicit acceptance.",
   "answers": [
     "proceed",
     "escalate"
+  ],
+  "reasons": [
+    "routine",
+    "consequential",
+    "uncertain",
+    "insufficient-evidence"
   ]
 }

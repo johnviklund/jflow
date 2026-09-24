@@ -1,6 +1,6 @@
 {
   "decision": "classify",
-  "version": 1,
+  "version": 2,
   "status": "skeleton",
   "ownedBy": "#29",
   "prompt": "Skeleton (D37): given a piece of workflow content and its content kind (item routing, lesson scope, ticket testability), which class applies? Wording proposed in #29 for explicit acceptance.",
@@ -10,5 +10,10 @@
     "scope",
     "testable",
     "untestable"
+  ],
+  "reasons": [
+    "clear-match",
+    "ambiguous",
+    "insufficient-evidence"
   ]
 }

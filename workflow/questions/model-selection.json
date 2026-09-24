@@ -1,11 +1,16 @@
 {
   "decision": "model-selection",
-  "version": 1,
+  "version": 2,
   "status": "skeleton",
   "ownedBy": "#28",
   "prompt": "Skeleton (D37): given a stage-worker assignment and the configured model set for that stage, which model and effort are recommended? Wording proposed in #28 for explicit acceptance.",
   "answers": [
     "recommend",
     "no-recommendation"
+  ],
+  "reasons": [
+    "fits-stage",
+    "no-suitable-model",
+    "insufficient-evidence"
   ]
 }
