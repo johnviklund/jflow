@@ -1,9 +1,9 @@
 {
   "decision": "escalate",
   "version": 2,
-  "status": "skeleton",
+  "status": "accepted",
   "ownedBy": "#25",
-  "prompt": "Skeleton (D37, D44): given this situation packet and its boundary kind, must the human be consulted before proceeding? Wording proposed in #25 for explicit acceptance.",
+  "prompt": "You are deciding whether a jflow workflow must stop and consult the developer before it proceeds. The packet names the boundary the workflow has reached (starting the next ticket under whole-plan authorization, a failed fix attempt, a disputed review finding, a conflicting candidate lesson, a discrepancy found on resume, or another point where the developer could be asked) and gives the situation with its evidence. Answer proceed only when the evidence shows the primary agent can continue within the authority already granted and no choice remains that the developer would want to make. Answer escalate when the next step needs a judgment the records do not settle, would change what was agreed, or rests on evidence that is missing or contradictory. Judge only from the supplied packet and do not assume facts it does not show. When unsure, escalate. Your answer grants no authorization and marks no work complete; it decides only whether the developer is asked.",
   "answers": [
     "proceed",
     "escalate"
@@ -13,5 +13,9 @@
     "consequential",
     "uncertain",
     "insufficient-evidence"
-  ]
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-24T00:00:00Z",
+    "note": "Accept as written (developer, answering the #25 wording proposal for escalate)"
+  }
 }

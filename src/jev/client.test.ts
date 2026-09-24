@@ -140,7 +140,7 @@ describe("askJev", () => {
       summary: {
         decision: "escalate",
         questionVersion: question.version,
-        questionStatus: "skeleton",
+        questionStatus: question.status,
         model: "jev-1.13",
         answer: "escalate",
         reasonCode: "uncertain",

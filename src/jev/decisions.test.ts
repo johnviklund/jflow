@@ -172,7 +172,7 @@ describe("the decision envelope", () => {
       authority: "binding",
       askedAt: now,
       request: {
-        question: { decision: "escalate", version: pkg.decisions["escalate"]!.version, status: "skeleton" },
+        question: { decision: "escalate", version: pkg.decisions["escalate"]!.version, status: "accepted" },
         packet: { taskSummary: input.taskSummary, excerpts: [{ source: "npm test", text: "1 failed" }] },
       },
       policy: { version: expect.stringMatching(/^sha256:[0-9a-f]+$/), thresholds: pkg.policy["escalate"]!.thresholds },

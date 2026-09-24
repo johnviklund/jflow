@@ -409,6 +409,31 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(answering.sent).toHaveLength(1);
   });
 
+  it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
+    const h = harness();
+    h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));
+    h.writeFile("gate.json", JSON.stringify({ kind: "plan-acceptance", summary: "the breakdown is ready", excerpts: [] }));
+    const proceeding = jev("proceed", "routine");
+    const escalating = jev("escalate", "consequential");
+
+    const proceeded = await run(["escalate", "boundary.json"], h.root, {}, proceeding);
+    const escalated = await run(["escalate", "boundary.json"], h.root, {}, escalating);
+    const gated = await run(["escalate", "gate.json"], h.root, {}, escalating);
+
+    expect(proceeded.code).toBe(EXIT_OK);
+    expect(proceeded.json()).toMatchObject({ ok: true, ask: false, decision: { answer: "proceed", route: "act" } });
+    expect(proceeded.json()).not.toHaveProperty("askHuman");
+    expect(escalated.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(escalated.json()).toMatchObject({
+      ok: true,
+      ask: true,
+      askHuman: { kind: "human-ask", boundary: "fix-failed", reasonCode: "consequential" },
+    });
+    expect(gated.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(gated.json()).toMatchObject({ ok: true, kind: "hard-rule", askHuman: { boundary: "plan-acceptance" } });
+    expect(escalating.sent).toHaveLength(1);
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

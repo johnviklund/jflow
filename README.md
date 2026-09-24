@@ -103,13 +103,23 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
     needs a reason and evidence. A choice the workflow's own checks do not
     permit is refused. `next` asks `next-action` end to end. It also
     builds the `assignment` and `lesson-retention` packets.
+  - `escalation.ts` is the binding `escalate` decision (issue #25). At a
+    human-facing boundary (`next-ticket`, `fix-failed`, `review-dispute`,
+    `lesson-conflict`, `resume-discrepancy`, `other`) it asks whether the
+    developer must be consulted. A confident `proceed` is recorded as the
+    workflow's choice and asks no one. `escalate`, a below-threshold
+    answer, a missing key or a failed call asks the developer. The hard
+    rules (consequential conflict, continuing without Jev, the
+    specification and plan acceptance gates) always ask and never reach
+    Jev. The boundary kind rides in the packet, so the envelope alone says
+    where the question was asked and whether the developer was asked.
   - `traces.ts` keeps traces under `.jflow/traces/` (the directory carries
     its own `.gitignore`) until `jflow traces clean`.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `todo`, `decide`, `escalate`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,

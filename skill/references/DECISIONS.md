@@ -10,7 +10,7 @@ workflow package:
 | `lesson-retention` | advisory | before retaining a candidate project lesson |
 | `model-selection` | advisory | owned by its own issue |
 | `classify` | advisory | owned by its own issue |
-| `escalate` | binding | owned by its own issue |
+| `escalate` | binding | at every human-facing boundary, through `scripts/jflow escalate` |
 | `validate` | binding | owned by its own issue |
 
 ## Asking
@@ -59,6 +59,43 @@ scripts/jflow decide choose <envelope> --action <a> --by workflow|agent|develope
   actually said. Claiming it for your own choice skips the evidence check
   and breaks the record.
 - On `ask-human` the choice is the developer's. Record it that way.
+
+## Escalating at a boundary
+
+Whenever the workflow could stop and ask the developer, ask `escalate`
+first instead of asking on your own judgment. Write a boundary file outside
+the project with `kind`, `summary` and `excerpts`, then run
+`scripts/jflow escalate <boundary.json>`. The `kind` is one of:
+
+- `next-ticket`: before starting the next ticket under whole-plan
+  authorization.
+- `fix-failed`: after a fix attempt fails.
+- `review-dispute`: when a review finding is disputed.
+- `lesson-conflict`: when a candidate lesson conflicts with a retained one.
+- `resume-discrepancy`: when resume finds the records and the work disagree.
+- `other`: any other point where you would ask the developer.
+
+The answer is binding:
+
+- Exit 0, `"ask": false`: proceed within the authority you already have.
+  Do not ask the developer. The helper has recorded the choice.
+- Exit 1 with `askHuman`: put its reasons to the developer, with your
+  recommendation, and wait. Record their answer with
+  `scripts/jflow decide choose <envelope> --action proceed|escalate
+  --by developer --reason "<their words>"`.
+- To proceed past an `escalate` answer yourself, you need evidence that
+  the concern is settled. Record it with `decide choose <envelope>
+  --action proceed --by agent --reason ... --evidence ...`. A reason
+  without evidence is refused. Below the threshold, only the developer
+  can decide.
+
+The hard rules are not escalation boundaries: a consequential conflict,
+continuing without Jev, and the specification and plan acceptance gates.
+Always ask the developer at these. If you pass one of them as the `kind`
+(`consequential-conflict`, `continue-without-jev`,
+`specification-acceptance`, `plan-acceptance`), the helper returns
+`askHuman` without calling Jev. A missing key or a failed Jev call also
+asks the developer, because continuing without Jev needs their approval.
 
 ## Conflicts never go to Jev
 

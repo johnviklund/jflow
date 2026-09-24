@@ -243,6 +243,18 @@ export {
 } from "./jev/decisions.js";
 
 export {
+  askEscalation,
+  BOUNDARY_KINDS,
+  escalationOf,
+  HARD_RULES,
+  type Boundary,
+  type BoundaryKind,
+  type EscalationAsk,
+  type EscalationResult,
+  type HardRule,
+} from "./jev/escalation.js";
+
+export {
   decideConflict,
   raiseConflict,
   type ConflictDraft,

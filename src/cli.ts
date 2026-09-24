@@ -19,6 +19,7 @@ import {
   type DecisionDependencies,
   type DecisionInput,
 } from "./jev/decisions.js";
+import { askEscalation, type Boundary } from "./jev/escalation.js";
 import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
@@ -89,6 +90,7 @@ Usage:
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
+  jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
   jflow conflict raise <draft.json>          [--root <dir>]
   jflow conflict decide <id> --note <the developer's words> [--root <dir>]
   jflow traces list  [--root <dir>]
@@ -117,6 +119,11 @@ candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
 choose" records the chosen action: it must be permitted by the workflow,
 and setting Jev's answer aside needs --reason and --evidence.
+"escalate" asks the binding escalate decision at a human-facing boundary
+over kind, summary and excerpts. It exits 0 with "ask": false when the
+work proceeds, and 1 with "askHuman" when the developer must be asked. The
+hard rules (consequential-conflict, continue-without-jev,
+specification-acceptance, plan-acceptance) always ask and never reach Jev.
 "conflict raise" takes summary, touches (requirements, scope,
 workflow-rules, permissions) and, for a technical disagreement,
 investigation (finding, evidence, conclusive); a consequential or
@@ -511,6 +518,20 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
+async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const read = readDraft<Boundary>(args.positional[0], "escalate", io);
+  if (!read.ok) return read.exit;
+  const result = await askEscalation(root, read.draft, decisionDependencies(built.context, io));
+  io.stdout(`${JSON.stringify({ ok: result.kind !== "refused", ...result }, null, 2)}\n`);
+  return result.kind !== "refused" && !result.ask ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 function runConflict(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
@@ -607,6 +628,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "decide":
       return runDecide(args, io);
+
+    case "escalate":
+      return runEscalate(args, io);
 
     case "conflict":
       return runConflict(args, io);
