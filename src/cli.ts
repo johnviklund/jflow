@@ -11,6 +11,7 @@ import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type FindingInput, type ReviewInput } from "./actions/review.js";
 import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
+import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import {
   applyDiagnosis,
   recordDiagnosis,
@@ -121,6 +122,8 @@ Usage:
   jflow review plan record <review.json>     [--root <dir>] [--config <file>]
   jflow review plan decide --finding <id> --outcome upheld|withdrawn --note <the developer's words>
                     [--root <dir>] [--config <file>]
+  jflow worker assign <assignment.json>      [--root <dir>] [--config <file>]
+  jflow worker finish <id>                   [--root <dir>]
   jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
   jflow ticket override <id> --criterion <n> --verdict met|not-met|insufficient-evidence
                     --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
@@ -200,6 +203,13 @@ acceptance criteria and the agents that may not review; "record" takes
 reviewer and findings under the same rule; "decide" settles a disputed
 finding. A blocking finding holds the plan, and the developer decides the
 new work. A one-ticket plan's ticket review covers the plan.
+"worker assign" records a stage worker before it runs: stage, role (one
+the stage declares), agent, model and ticketId. The model must be the
+stage's configured one; when that is unavailable, add unavailable (model,
+reason) and run only the configured fallback. With no model or no
+fallback configured it asks and records nothing. It refuses the primary
+agent and more workers than the stage allows at once. "worker finish"
+frees the place.
 "ticket validate" asks the binding validate decision once per accepted
 criterion over ticketId, evidence (kind check or claim, source, text,
 exitCode) and checks (the ticket's commands). The validation's disposition
@@ -721,6 +731,33 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io)), io);
 }
 
+function runWorker(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const now = new Date().toISOString();
+  if (subcommand === "finish") {
+    if (target === undefined) {
+      io.stderr(`worker finish needs an assignment id\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    return report(finishWorker(root, target, { now }), io);
+  }
+  if (subcommand !== "assign") {
+    io.stderr(`worker needs one of assign, finish\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const read = readDraft<WorkerDraft>(target, "worker assign", io);
+  if (!read.ok) return read.exit;
+  const result = assignWorker(root, read.draft, built.context, { now });
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok && "assignment" in result.outcome ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 function runTroubleshoot(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
@@ -933,6 +970,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "troubleshoot":
       return runTroubleshoot(args, io);
+
+    case "worker":
+      return runWorker(args, io);
 
     case "ticket":
       return runTicket(args, io);

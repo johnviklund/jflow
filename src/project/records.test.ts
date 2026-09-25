@@ -245,6 +245,22 @@ const examples: ProjectRecords = {
       },
     ],
   },
+  workers: {
+    assignments: [
+      {
+        id: "W-1",
+        stage: "implement",
+        role: "implementer",
+        agent: "worker-1",
+        ticketId: "T2",
+        model: "fallback-model",
+        substitution: { unavailableModel: "configured-model", reason: "the host reported it unavailable" },
+        status: "finished",
+        startedAt: "2026-09-20T14:00:00Z",
+        finishedAt: "2026-09-20T14:30:00Z",
+      },
+    ],
+  },
 };
 
 describe("readRecord", () => {
@@ -742,6 +758,7 @@ describe("record types", () => {
       todos: { items: [] },
       conflicts: { conflicts: [] },
       diagnoses: { diagnoses: [] },
+      workers: { assignments: [] },
     };
 
     for (const kind of RECORD_KINDS) {

@@ -88,6 +88,19 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
+- `src/actions/workers.ts` — stage workers (issue #15, D18-D20). `worker
+  assign` records a worker before it runs in `jflow/workers.json`: its
+  stage, declared role, agent and the model reported for it. The helper
+  cannot observe the host, so it enforces that only a configured model is
+  ever reported. The
+  model must be the stage's configured one, or, when that is reported
+  unavailable, the explicitly configured fallback, recorded as a
+  substitution. With neither configured it asks and records nothing. It
+  refuses a role the stage does not declare, more active workers within
+  one ticket than the stage's delegation limits allow, and the primary
+  agent, whose model jflow never switches. Recorded workers count as a
+  ticket's implementers, so none of them reviews it. A test keeps the skill, the workflow package, the
+  README and the helper's usage free of specific model names.
 - `src/actions/plan-review.ts` — the integrated review of a plan (issue
   #13, D9). `planCompletion` holds a multi-ticket plan incomplete until
   every ticket is done or withdrawn and an integrated review has passed.

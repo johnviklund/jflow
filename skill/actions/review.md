@@ -57,8 +57,9 @@ every ticket is done: `implement next` returns `needs-plan-review`, or
 The reviewer is a different agent from whoever implemented the ticket.
 Never review your own implementation, and never reuse or continue a
 worker that worked on it. Those are the `implementers`, and the helper
-refuses them. Spawn a new sub-agent on `stageModel` when one is
-configured. It may be the implementer's model. Give it a fresh context
+refuses them. Spawn a new sub-agent on `stageModel`, recorded as a
+stage worker with role `reviewer` (`SKILL.md`, "Stage workers"). It may
+be the implementer's model. Give it a fresh context
 that holds only:
 
 - the ticket's title and accepted criteria;
@@ -108,8 +109,8 @@ It uses the same steps with `review plan`:
    its criteria and commit, `planCriteria` (the plan's acceptance
    criteria), `implementers` (every agent that worked on any ticket; none
    of them may review), `stageModel`, and `previousReview`.
-2. Spawn a new reviewer on `stageModel`, distinct from every
-   implementer. Give it the tickets, `planCriteria`, the project's
+2. Spawn a new reviewer on `stageModel`, recorded as a stage worker with
+   role `reviewer` and no `ticketId`, distinct from every implementer. Give it the tickets, `planCriteria`, the project's
    standards, and the changes across the plan's commits. Ask it for
    findings in how the tickets work together, and against `planCriteria`,
    not the per-ticket findings already reviewed.

@@ -64,7 +64,8 @@ review it. Sub-tasks that are independent of each other
 may run in parallel, but only while `delegationLimits.allowParallelWithinUnit`
 is true, with never more than `delegationLimits.maxParallelWorkers` running
 at once. When it is false, work sequentially. Every worker stays inside
-this ticket.
+this ticket. Record each worker before it runs, as `SKILL.md` says under
+"Stage workers", and finish it when it is done.
 
 The ticket's checks are the commands whose results its acceptance criteria
 depend on: the tests named in them, and the project's typecheck and test

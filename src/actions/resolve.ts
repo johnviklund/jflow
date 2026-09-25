@@ -159,7 +159,7 @@ const CONDITION_RULES: Readonly<Record<WorkflowCondition, ConditionRule>> = {
 
 const GLOBAL_DELEGATION_SETTING = "delegation.maxParallelWorkers";
 
-function effectiveDelegationLimits(
+export function effectiveDelegationLimits(
   action: WorkflowAction,
   configuration: ResolvedConfiguration,
 ): DelegationLimits {

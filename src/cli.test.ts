@@ -613,6 +613,36 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(again.json()).toMatchObject({ ok: false, reason: expect.stringContaining("complete") });
   });
 
+  it("records a stage worker on its configured model, and asks when the model is unavailable with no fallback", async () => {
+    const h = harness();
+    h.writeFile("cfg/models.json", JSON.stringify({ stageModels: { implement: { model: "builder-model" } } }));
+    h.writeFile(
+      ".jflow/worker.json",
+      JSON.stringify({ stage: "implement", role: "implementer", agent: "worker-1", model: "builder-model" }),
+    );
+    h.writeFile(
+      ".jflow/down.json",
+      JSON.stringify({
+        stage: "implement",
+        role: "implementer",
+        agent: "worker-2",
+        model: "anything",
+        unavailable: { model: "builder-model", reason: "unavailable" },
+      }),
+    );
+    const config = join(h.root, "cfg", "models.json");
+
+    const assigned = await run(["worker", "assign", join(h.root, ".jflow", "worker.json"), "--config", config], h.root);
+    const down = await run(["worker", "assign", join(h.root, ".jflow", "down.json"), "--config", config], h.root);
+    const finished = await run(["worker", "finish", "W-1"], h.root);
+
+    expect(assigned.code).toBe(EXIT_OK);
+    expect(assigned.json()).toMatchObject({ ok: true, outcome: { assignment: { id: "W-1", model: "builder-model" } } });
+    expect(down.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(down.json()).toMatchObject({ ok: true, outcome: { askHuman: expect.anything() } });
+    expect(finished.json()).toMatchObject({ ok: true, outcome: { assignment: { status: "finished" } } });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

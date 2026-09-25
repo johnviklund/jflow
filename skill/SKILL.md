@@ -28,6 +28,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
 | `scripts/jflow implement start\|check\|complete\|fix\|next\|park\|independence` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, record a diagnosis's fix, and once review passes, record it done with its local commit. Under whole-plan authorization, move to the next ticket, park a blocked one, and record independence checks; see `actions/implement.md`. |
+| `scripts/jflow worker assign\|finish` | Record a stage worker before it runs, on its stage's configured model, within the stage's roles and delegation limits, and free its place when it is done; see "Stage workers". |
 | `scripts/jflow troubleshoot start\|record` | Record a failed check, then its diagnosis and recommended fix, refused if the working tree changed meanwhile; see `actions/troubleshoot.md`. |
 | `scripts/jflow review start\|record\|decide`, `review plan start\|record\|decide` | Open review of a ticket `validate` admitted, record an independent reviewer's findings under the fixed disposition rule, and record the developer's decision on a disputed finding. `review plan` is the integrated review a multi-ticket plan needs before it is complete; see `actions/review.md`. |
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
@@ -95,6 +96,38 @@ parts only the agent can honour.
   complete. Choosing against it needs a recorded reason and evidence, and
   only within what the workflow already permits. Record `--by developer`
   only for what the developer actually said.
+
+## Stage workers
+
+A stage worker is a sub-agent the primary agent runs within a stage,
+whichever stage it is. Each stage declares its roles and delegation
+limits, and may have a worker model configured. Before a worker runs,
+write an assignment file outside the project with `stage`, `role`,
+`agent`, `model` and `ticketId`. Then run `scripts/jflow worker assign
+<assignment.json>`:
+
+- The model is the stage's configured model (`stageModel`). The helper
+  refuses any other.
+- If the host reports that model unavailable, add `"unavailable":
+  {"model": "<the configured model>", "reason": "<what the host said>"}`
+  and run only the configured fallback. The helper records the
+  substitution. Report unavailability only when the host reported it.
+- `askHuman` (exit 1): no model is configured, or the model is
+  unavailable and there is no fallback, or the fallback is unavailable
+  too. Ask the developer which model to use, and start nothing. Their
+  answer goes into the configuration (`stageModels`); then assign the
+  worker again.
+- A role the stage does not declare, or more workers than the stage
+  allows at once, is refused. Choose within them.
+
+The limits count within one unit of work, the ticket. Run
+`scripts/jflow worker finish <id>` when the worker is done, or if it
+stopped without finishing. The helper cannot see which model the host
+actually ran, so it records the model you report. You, the
+primary agent, are never a stage worker. Your model stays the same across
+every stage, and jflow never changes it. Refer to models only by the
+names the developer configured. Never name one as required or known to
+work.
 
 ## Git
 

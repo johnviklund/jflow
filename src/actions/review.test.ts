@@ -207,6 +207,31 @@ describe("reviewer independence", () => {
     });
   });
 
+  it("counts the stage workers recorded for the ticket as implementers", async () => {
+    const h = project();
+    writeRecord(h.root, "workers", {
+      assignments: [
+        {
+          id: "W-1",
+          stage: "implement",
+          role: "implementer",
+          agent: "worker-7",
+          ticketId: "T1",
+          model: "builder-model",
+          status: "finished",
+          startedAt: now,
+          finishedAt: now,
+        },
+      ],
+    });
+
+    expect(startReview(h.root, h.context)).toMatchObject({ ok: true, outcome: { implementers: ["primary", "worker-7"] } });
+    expect(await recordReview(h.root, review({ reviewer: { agent: "worker-7" } }), dependencies(h, jev()))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("implemented"),
+    });
+  });
+
   it("counts the workers named in the ticket's checks as implementers", async () => {
     const h = project({});
     const deps = dependencies(h, jev({ validate: [met()] }));

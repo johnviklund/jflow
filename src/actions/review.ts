@@ -54,8 +54,9 @@ import { readTicketDiagnoses } from "./troubleshoot.js";
  * here edits code, commits, or marks a ticket done.
  */
 
-/** The implementing agent every ticket has: the primary agent coordinates its work. */
-export const PRIMARY_AGENT = "primary";
+import { PRIMARY_AGENT, recordedImplementers } from "./workers.js";
+
+export { PRIMARY_AGENT };
 
 const BLOCKING_KINDS: readonly FindingKind[] = ["requirement", "correctness", "standard"];
 
@@ -127,8 +128,15 @@ export type ReviewResult =
     }
   | Refusal;
 
-function implementersOf(progress: ProgressRecord, ticketId: string): readonly string[] {
-  return [PRIMARY_AGENT, ...(progress.implementers?.[ticketId] ?? [])];
+/** The primary agent, the workers named in the ticket's checks, and its recorded stage workers. */
+function implementersOf(
+  root: string,
+  progress: ProgressRecord,
+  ticketId: string,
+): { readonly ok: true; readonly agents: readonly string[] } | Refusal {
+  const recorded = recordedImplementers(root, ticketId);
+  if (!recorded.ok) return recorded;
+  return { ok: true, agents: [...new Set([PRIMARY_AGENT, ...(progress.implementers?.[ticketId] ?? []), ...recorded.agents])] };
 }
 
 /** The plan's one ticket, when it has exactly one that is not withdrawn (D9). */
@@ -175,6 +183,8 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
   const coversPlan = single.ticketId === ticket.id;
   const specification = readRecord(root, "specification");
   if (specification.kind === "malformed") return unreadable("specification", specification);
+  const implementers = implementersOf(root, progress, ticket.id);
+  if (!implementers.ok) return implementers;
   const evidence = `${EVIDENCE_DIRECTORY}/${encodeURIComponent(ticket.id)}.json`;
   const previousReview = progress.reviews?.[ticket.id];
   return {
@@ -183,7 +193,7 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
       ticket,
       validation,
       ...(existsSync(join(root, evidence)) ? { evidence } : {}),
-      implementers: implementersOf(progress, ticket.id),
+      implementers: implementers.agents,
       ...(resolution.stageModel === undefined ? {} : { stageModel: resolution.stageModel }),
       ...(previousReview === undefined ? {} : { previousReview }),
       diagnoses: diagnosed.diagnoses,
@@ -467,7 +477,9 @@ export async function recordReview(
   const { ticket, progress } = working;
   if (!admittedToReview(progress, ticket.id)) return refuse(notAdmitted(progress, ticket.id));
 
-  const reviewer = reviewerOf(input.reviewer, implementersOf(progress, ticket.id), `ticket ${ticket.id}`);
+  const implementers = implementersOf(root, progress, ticket.id);
+  if (!implementers.ok) return implementers;
+  const reviewer = reviewerOf(input.reviewer, implementers.agents, `ticket ${ticket.id}`);
   if (!reviewer.ok) return reviewer;
   const findings = Array.isArray(input.findings) ? input.findings : [];
   const problem = findingsProblem(findings);

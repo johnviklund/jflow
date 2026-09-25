@@ -22,7 +22,7 @@ import type { ValidationIssue } from "../workflow/types.js";
 /**
  * The authoritative project record store (SPEC.md D14, issue #3). Plans,
  * tickets, progress, lessons, Jev fallback status, the wrap resume record,
- * todo items, conflicts and diagnoses live as one JSON file each under a
+ * todo items, conflicts, diagnoses and worker assignments live as one JSON file each under a
  * version-controlled `jflow/` directory, so a fresh conversation recovers full context from files alone.
  *
  * Records keep summaries and trace references only (D23): every schema is
@@ -48,6 +48,7 @@ export const RECORD_KINDS = [
   "todos",
   "conflicts",
   "diagnoses",
+  "workers",
 ] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -555,6 +556,35 @@ export interface DiagnosesRecord {
   readonly diagnoses: readonly DiagnosisEntry[];
 }
 
+export const WORKER_STATUSES = ["active", "finished"] as const;
+
+export type WorkerStatus = (typeof WORKER_STATUSES)[number];
+
+/**
+ * A stage worker the primary agent assigned (D18-D20, issue #15): the
+ * stage and declared role it worked in, and the model reported for it (the
+ * helper cannot observe the host, so it records what the agent reports).
+ * `substitution` records that the configured model was unavailable and the
+ * explicitly configured fallback ran instead; nothing else may run.
+ */
+export interface WorkerAssignment {
+  readonly id: string;
+  readonly stage: string;
+  readonly role: string;
+  readonly agent: string;
+  readonly ticketId?: string;
+  /** The model the worker runs on, as the primary agent reported it. */
+  readonly model: string;
+  readonly substitution?: { readonly unavailableModel: string; readonly reason: string };
+  readonly status: WorkerStatus;
+  readonly startedAt: string;
+  readonly finishedAt?: string;
+}
+
+export interface WorkersRecord {
+  readonly assignments: readonly WorkerAssignment[];
+}
+
 export interface ProjectRecords {
   readonly specification: SpecificationRecord;
   readonly plan: PlanRecord;
@@ -566,6 +596,7 @@ export interface ProjectRecords {
   readonly todos: TodosRecord;
   readonly conflicts: ConflictsRecord;
   readonly diagnoses: DiagnosesRecord;
+  readonly workers: WorkersRecord;
 }
 
 export type RecordReadResult<K extends RecordKind> =
@@ -1670,6 +1701,60 @@ const validateDiagnoses: Validator<DiagnosesRecord> = (value, issues) => {
   return { diagnoses };
 };
 
+const validateWorkers: Validator<WorkersRecord> = (value, issues) => {
+  const doc = requireObject(value, "", ["assignments"], issues);
+  if (!doc) return undefined;
+  const assignments: WorkerAssignment[] = [];
+  if (!Array.isArray(doc["assignments"])) {
+    issues.add("assignments", "must be an array of worker assignments");
+    return { assignments };
+  }
+  const ids = new Set<string>();
+  doc["assignments"].forEach((entry, index) => {
+    const path = `assignments[${index}]`;
+    const item = requireObject(
+      entry,
+      path,
+      ["id", "stage", "role", "agent", "ticketId", "model", "substitution", "status", "startedAt", "finishedAt"],
+      issues,
+    );
+    if (!item) return;
+    const id = requireNonEmptyString(item["id"], `${path}.id`, issues);
+    if (ids.has(id)) issues.add(`${path}.id`, `duplicate assignment id "${id}"`);
+    ids.add(id);
+    const status = validateEnumValue<WorkerStatus>(item["status"], `${path}.status`, WORKER_STATUSES, issues) ?? "active";
+    const finishedAt = optionalTimestamp(item["finishedAt"], `${path}.finishedAt`, issues);
+    if ((status === "finished") !== (finishedAt !== undefined)) {
+      issues.add(`${path}.finishedAt`, "must be present exactly when the worker has finished");
+    }
+    let substitution: WorkerAssignment["substitution"];
+    if (item["substitution"] !== undefined) {
+      const sub = requireObject(item["substitution"], `${path}.substitution`, ["unavailableModel", "reason"], issues);
+      if (sub) {
+        substitution = {
+          unavailableModel: requireNonEmptyString(sub["unavailableModel"], `${path}.substitution.unavailableModel`, issues),
+          reason: requireNonEmptyString(sub["reason"], `${path}.substitution.reason`, issues),
+        };
+      }
+    }
+    assignments.push(
+      withOptional<WorkerAssignment>(
+        {
+          id,
+          stage: requireNonEmptyString(item["stage"], `${path}.stage`, issues),
+          role: requireNonEmptyString(item["role"], `${path}.role`, issues),
+          agent: requireNonEmptyString(item["agent"], `${path}.agent`, issues),
+          model: requireNonEmptyString(item["model"], `${path}.model`, issues),
+          status,
+          startedAt: requireTimestamp(item["startedAt"], `${path}.startedAt`, issues),
+        },
+        { ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues), substitution, finishedAt },
+      ),
+    );
+  });
+  return { assignments };
+};
+
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
   specification: validateSpecification,
   plan: validatePlan,
@@ -1681,6 +1766,7 @@ const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } =
   todos: validateTodos,
   conflicts: validateConflicts,
   diagnoses: validateDiagnoses,
+  workers: validateWorkers,
 };
 
 /** Walks the whole document so a credential cannot hide in a nested field (D14, D23). */

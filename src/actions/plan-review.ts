@@ -19,6 +19,7 @@ import { decideConflict } from "./conflicts.js";
 import type { HumanAskEvent } from "./dispatch.js";
 import { EVIDENCE_DIRECTORY } from "./implement.js";
 import { refuse, unreadable, type Refusal } from "./refusal.js";
+import { recordedImplementers } from "./workers.js";
 import type { ResolutionContext } from "./resolve.js";
 import {
   decideDispute,
@@ -102,8 +103,13 @@ function readRecords(root: string): { readonly ok: true; readonly records: Recor
 }
 
 /** Every agent that implemented any of the plan's tickets. */
-function planImplementers(progress: ProgressRecord): readonly string[] {
-  return [...new Set([PRIMARY_AGENT, ...Object.values(progress.implementers ?? {}).flat()])];
+function planImplementers(root: string, progress: ProgressRecord): { readonly ok: true; readonly agents: readonly string[] } | Refusal {
+  const recorded = recordedImplementers(root);
+  if (!recorded.ok) return recorded;
+  return {
+    ok: true,
+    agents: [...new Set([PRIMARY_AGENT, ...Object.values(progress.implementers ?? {}).flat(), ...recorded.agents])],
+  };
 }
 
 /** Why the integrated review cannot be taken now, if it cannot. */
@@ -152,6 +158,8 @@ export function startPlanReview(root: string, context: ResolutionContext): Start
   if (specification.kind === "absent" || specification.record.acceptanceCriteria.length === 0) {
     return refuse("there are no specification acceptance criteria to review the plan against");
   }
+  const implementers = planImplementers(root, read.records.progress);
+  if (!implementers.ok) return implementers;
   const stageModel = context.configuration.stageModels["review"];
   const previousReview = read.records.progress.planReview;
   return {
@@ -168,7 +176,7 @@ export function startPlanReview(root: string, context: ResolutionContext): Start
         };
       }),
       planCriteria: specification.record.acceptanceCriteria,
-      implementers: planImplementers(read.records.progress),
+      implementers: implementers.agents,
       ...(stageModel === undefined ? {} : { stageModel }),
       ...(previousReview === undefined ? {} : { previousReview }),
     },
@@ -217,7 +225,9 @@ export async function recordPlanReview(
   if (!read.ok) return read;
   const problem = notReviewable(read.records);
   if (problem !== undefined) return refuse(problem);
-  const reviewer = reviewerOf(input?.reviewer, planImplementers(read.records.progress), "a ticket of this plan");
+  const implementers = planImplementers(root, read.records.progress);
+  if (!implementers.ok) return implementers;
+  const reviewer = reviewerOf(input?.reviewer, implementers.agents, "a ticket of this plan");
   if (!reviewer.ok) return reviewer;
   const findings = Array.isArray(input.findings) ? input.findings : [];
   const invalid = findingsProblem(findings);
