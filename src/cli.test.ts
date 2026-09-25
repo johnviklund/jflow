@@ -442,6 +442,34 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(listed.json()).toMatchObject({ ok: true, lessons: [{ id: "L-1", status: "active" }] });
   });
 
+  it("has learn check a retained lesson before use, supersede it with evidence, and leave it out of use after", async () => {
+    const h = harness();
+    h.writeFile("lesson.json", JSON.stringify({
+      statement: "Reset the fixture clock before each parser test.",
+      scope: "src/parser tests",
+      evidence: [{ kind: "commit", reference: "a1b2c3d" }],
+    }));
+    await run(["learn", "propose", "lesson.json"], h.root, {}, jev("retain", "evidence-backed"));
+    await run(["learn", "decide", "L-1", "--outcome", "retained", "--by", "agent"], h.root);
+
+    const checked = await run(["learn", "check", "L-1", "--task", "T1 parser dates", "--outcome", "applies", "--reason", "T1 adds clock-reading tests"], h.root);
+    const unreasoned = await run(["learn", "check", "L-1", "--task", "T2", "--outcome", "skipped"], h.root);
+    const superseded = await run(
+      ["learn", "supersede", "L-1", "--successor", "commit 7c7c7c7 resets the clock in the parser", "--evidence", "npm test -- parser passes without the reset", "--by", "agent"],
+      h.root,
+    );
+    const active = await run(["learn", "active"], h.root);
+    const reused = await run(["learn", "check", "L-1", "--task", "T3", "--outcome", "applies", "--reason", "r"], h.root);
+
+    expect(checked.code).toBe(EXIT_OK);
+    expect(checked.json()).toMatchObject({ ok: true, outcome: { apply: true } });
+    expect(unreasoned.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(superseded.code).toBe(EXIT_OK);
+    expect(superseded.json()).toMatchObject({ ok: true, outcome: { superseded: true, lesson: { status: "superseded" } } });
+    expect(active.json()).toMatchObject({ ok: true, lessons: [] });
+    expect(reused.code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
     const h = harness();
     h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));

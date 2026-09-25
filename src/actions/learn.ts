@@ -113,9 +113,9 @@ function scopesWorkflow(scope: string): boolean {
   return WORKFLOW_SCOPES.some((pattern) => pattern.test(normalized));
 }
 
-type LessonsRead = { readonly ok: true; readonly lessons: LessonsRecord } | Refusal;
+export type LessonsRead = { readonly ok: true; readonly lessons: LessonsRecord } | Refusal;
 
-function readLessons(root: string): LessonsRead {
+export function readLessons(root: string): LessonsRead {
   const read = readRecord(root, "lessons");
   if (read.kind === "malformed") return unreadable("lessons", read);
   return { ok: true, lessons: read.kind === "present" ? read.record : { lessons: [] } };

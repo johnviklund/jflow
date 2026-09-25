@@ -86,6 +86,17 @@ export {
 } from "./actions/learn.js";
 
 export {
+  activeLessons,
+  checkLesson,
+  supersedeLesson,
+  type LessonCheckInput,
+  type LessonCheckResult,
+  type SupersessionInput,
+  type SupersessionResult,
+  type UsableLesson,
+} from "./actions/lesson-use.js";
+
+export {
   acceptPlan,
   authorizeExecution,
   writePlan,
@@ -141,6 +152,7 @@ export {
   DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
+  LESSON_CHECK_OUTCOMES,
   LESSON_DECIDERS,
   LESSON_OUTCOMES,
   LESSON_STATUSES,
@@ -172,6 +184,8 @@ export {
   type FallbackStatus,
   type JevRecord,
   type LessonAdvice,
+  type LessonCheck,
+  type LessonCheckOutcome,
   type LessonDecider,
   type LessonDecision,
   type LessonEvidence,

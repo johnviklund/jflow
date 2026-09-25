@@ -202,6 +202,17 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   lesson scoped to jflow's workflow, its Jev questions or its policy is
   refused. Only the lessons
   record is written, so the interrupted action resumes as it was.
+- `src/actions/lesson-use.ts` — using a retained lesson (issue #20). Only
+  active lessons are offered (`learn active`). Each is re-checked against
+  the task before use, and the check (applies, or skipped with the reason)
+  is recorded on the lesson (`learn check`). A contradicted lesson is
+  marked superseded with the evidence and kept as history; a superseded
+  lesson or a candidate is never applied. Superseding a lesson the
+  developer retained, or one whose contradiction touches an accepted
+  decision, asks `escalate` at `lesson-conflict`. On `proceed` a lesson the
+  developer retained stays retained, with the contradiction recorded, and
+  only their own word supersedes it; one that only touched an accepted
+  decision is superseded, which never writes that decision.
 - `src/jev/` — the Jev client (issue #16).
   - `evidence.ts` builds the bounded packet for one decision: task summary,
     candidates and selected excerpts. It redacts credentials, including the
@@ -265,9 +276,8 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   human-ask events raised. Test scaffolding, not library API.
 
 The other workflow actions, the remaining Jev decisions' call sites, and
-the rest of compound learning are not implemented yet. That rest covers
-re-checking a retained lesson before use, marking one superseded, and
-question-file proposals with replay. Nothing has been run
+question-file proposals with replay (the rest of compound learning) are
+not implemented yet. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
@@ -300,6 +310,10 @@ on the ChatGPT desktop app; see `skill/references/HOST.md`.
   gates or Jev's questions reads the lessons record, and a lesson scoped to
   the workflow is refused. An assessed lesson is active only on a recorded
   decision to retain it, and `learn` never changes an accepted decision.
+- Only a retained lesson is offered for use or can be checked as
+  applying; a candidate or a superseded lesson never is. The agent cannot
+  supersede a lesson the developer retained without `escalate`, and on
+  `proceed` their decision stands.
 - A superseded lesson must name its successor and the evidence; an approved
   Jev fallback and an authorized execution must record their scope; a parked
   ticket must record why.

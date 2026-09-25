@@ -36,6 +36,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
 | `scripts/jflow todo add\|list\|promote` | Record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
 | `scripts/jflow learn propose\|decide\|list` | Record a candidate project lesson with Jev's advisory `lesson-retention` answer, then retain it or keep it a candidate; a conflict with an accepted decision asks `escalate`. See `actions/learn.md`. |
+| `scripts/jflow learn active\|check\|supersede` | List the lessons that may be used, re-check one against the task before each use, and mark a contradicted one superseded with evidence; see `actions/learn.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
@@ -87,6 +88,7 @@ parts only the agent can honour.
   the current ticket; only the developer's explicit decision promotes it.
 - A retained lesson is project knowledge. It never changes the workflow, a
   gate, a Jev question or policy, and never overrides an accepted decision.
+  Re-check it against the task every time before applying it.
 - Secrets never go into project files or the conversation. If the helper
   reports the Jev API key missing, ask how to configure it rather than
   proceeding without Jev.

@@ -431,6 +431,25 @@ export interface LessonRetention {
   readonly decision?: LessonDecision;
 }
 
+export const LESSON_CHECK_OUTCOMES = ["applies", "skipped", "contradicted"] as const;
+
+export type LessonCheckOutcome = (typeof LESSON_CHECK_OUTCOMES)[number];
+
+/**
+ * One re-check of a retained lesson against the task at hand (issue #20,
+ * SPEC.md user story 56): it applies, it was skipped with the reason, or
+ * new evidence contradicts it. `escalation` is the envelope of an
+ * `escalate` asked because superseding it would change a human decision.
+ */
+export interface LessonCheck {
+  readonly task: string;
+  readonly outcome: LessonCheckOutcome;
+  readonly reason: string;
+  readonly evidence?: readonly string[];
+  readonly escalation?: string;
+  readonly checkedAt: string;
+}
+
 export interface LessonRecord {
   readonly id: string;
   readonly statement: string;
@@ -442,6 +461,8 @@ export interface LessonRecord {
   readonly supersededBy?: string;
   readonly supersededEvidence?: string;
   readonly retention?: LessonRetention;
+  /** Every applicability check, oldest first; kept after supersession as history. */
+  readonly checks?: readonly LessonCheck[];
 }
 
 export interface LessonsRecord {
@@ -1355,7 +1376,7 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
     const lesson = requireObject(
       entry,
       path,
-      ["id", "statement", "scope", "evidence", "status", "supersededBy", "supersededEvidence", "retention"],
+      ["id", "statement", "scope", "evidence", "status", "supersededBy", "supersededEvidence", "retention", "checks"],
       issues,
     );
     if (!lesson) return;
@@ -1425,13 +1446,44 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
           evidence,
           status: status ?? "candidate",
         },
-        { supersededBy, supersededEvidence, retention },
+        { supersededBy, supersededEvidence, retention, checks: validateChecks(lesson["checks"], `${path}.checks`, issues) },
       ),
     );
   });
 
   return { lessons };
 };
+
+function validateChecks(value: unknown, path: string, issues: IssueCollector): LessonCheck[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    issues.add(path, "must be an array of applicability checks");
+    return undefined;
+  }
+  const checks: LessonCheck[] = [];
+  value.forEach((entry, index) => {
+    const itemPath = `${path}[${index}]`;
+    const item = requireObject(entry, itemPath, ["task", "outcome", "reason", "evidence", "escalation", "checkedAt"], issues);
+    if (!item) return;
+    checks.push(
+      withOptional<LessonCheck>(
+        {
+          task: requireNonEmptyString(item["task"], `${itemPath}.task`, issues),
+          outcome:
+            validateEnumValue<LessonCheckOutcome>(item["outcome"], `${itemPath}.outcome`, LESSON_CHECK_OUTCOMES, issues) ??
+            "skipped",
+          reason: requireNonEmptyString(item["reason"], `${itemPath}.reason`, issues),
+          checkedAt: requireTimestamp(item["checkedAt"], `${itemPath}.checkedAt`, issues),
+        },
+        {
+          evidence: optionalStringArray(item["evidence"], `${itemPath}.evidence`, issues),
+          escalation: optionalString(item["escalation"], `${itemPath}.escalation`, issues),
+        },
+      ),
+    );
+  });
+  return checks;
+}
 
 function validateAdvice(value: unknown, path: string, issues: IssueCollector): LessonAdvice | undefined {
   const doc = requireObject(value, path, ["envelope", "answer", "reasonCode", "route", "unavailable", "traceReference"], issues);

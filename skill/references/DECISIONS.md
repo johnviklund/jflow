@@ -112,8 +112,11 @@ the project with `kind`, `summary` and `excerpts`, then run
   finding is disputed and the evidence does not settle it; do not ask it
   yourself.
 - `lesson-conflict`: asked for you by `learn propose` when a candidate
-  lesson conflicts with an accepted decision or a retained lesson; do not
-  ask it yourself.
+  lesson conflicts with an accepted decision or a retained lesson, and by
+  `learn supersede` when the lesson was retained on the developer's word
+  or the contradiction touches an accepted decision; do not ask it
+  yourself. Here `proceed` never changes a human decision: a lesson the
+  developer retained stays retained, with the contradiction recorded.
 - `resume-discrepancy`: when resume finds the records and the work disagree.
 - `missing-check`: asked for you by `ticket validate`; do not ask it yourself.
 - `other`: any other point where you would ask the developer.

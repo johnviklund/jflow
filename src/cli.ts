@@ -11,6 +11,7 @@ import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type FindingInput, type ReviewInput } from "./actions/review.js";
 import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
 import { decideLesson, proposeLesson, type LessonDraft } from "./actions/learn.js";
+import { activeLessons, checkLesson, supersedeLesson } from "./actions/lesson-use.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import {
@@ -109,6 +110,12 @@ Usage:
   jflow learn decide <id> --outcome retained|candidate --by agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--assessment <A-n>] [--root <dir>]
   jflow learn list                           [--root <dir>]
+  jflow learn active                         [--root <dir>]
+  jflow learn check <id> --task <the task> --outcome applies|skipped --reason <why>
+                    [--evidence <what it rests on>] [--root <dir>]
+  jflow learn supersede <id> --successor <lesson id or change> --evidence <what contradicts it>
+                    --by agent|developer [--reason <the developer's words>] [--conflicts-with <decision id>]
+                    [--task <the task>] [--stage <name>] [--root <dir>] [--config <file>]
   jflow decide ask <decision> <input.json>   [--root <dir>] [--config <file>]
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
@@ -168,6 +175,17 @@ retaining it or keeping it a candidate beside Jev's answer: setting the
 answer aside needs --reason and --evidence, and where the answer is not
 relied on, retaining needs the developer or your jev assess record. A
 lesson scoped to the workflow, its Jev questions or its policy is refused.
+"learn active" lists the lessons that may be used: retained ones only.
+"learn check" records re-checking one against the task before each use:
+it applies, or it is skipped with the reason. A superseded lesson or a
+candidate is refused. "learn supersede" marks a contradicted lesson
+superseded with the evidence and keeps it as history. Where that would
+change a human decision (a lesson the developer retained, or an accepted
+decision it touches) the agent's supersession asks escalate at
+lesson-conflict instead. On proceed a lesson the developer retained stays
+as they decided (only --by developer then supersedes it), and one that
+only touches an accepted decision is superseded. An option given twice
+keeps its last value.
 "next" also asks Jev's advisory next-action decision and reports it under
 "jev" with its envelope; a missing key is reported there, never skipped.
 "decide ask" asks a declared Jev decision over an input holding taskSummary,
@@ -291,6 +309,9 @@ const KNOWN_OPTIONS = [
   "blocker",
   "stage",
   "assessment",
+  "task",
+  "successor",
+  "conflicts-with",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -956,8 +977,52 @@ async function runLearn(args: ParsedArgs, io: CliIo): Promise<number> {
       }
       return report({ ok: true, lessons: read.kind === "present" ? read.record.lessons : [] }, io);
     }
+    case "active":
+      return report(activeLessons(root), io);
+    case "check": {
+      const { task, outcome, reason, evidence } = args.options;
+      if (target === undefined || task === undefined || reason === undefined || (outcome !== "applies" && outcome !== "skipped")) {
+        io.stderr(`learn check needs a lesson id, --task, --outcome applies|skipped and --reason\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const result = checkLesson(
+        root,
+        target,
+        { task, outcome, reason, ...(evidence === undefined ? {} : { evidence: [evidence] }) },
+        { now: new Date().toISOString() },
+      );
+      return report(result, io);
+    }
+    case "supersede": {
+      const { successor, evidence, by, reason, task } = args.options;
+      const conflictsWith = args.options["conflicts-with"];
+      if (target === undefined || successor === undefined || evidence === undefined || (by !== "agent" && by !== "developer")) {
+        io.stderr(`learn supersede needs a lesson id, --successor, --evidence and --by agent|developer\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const result = await supersedeLesson(
+        root,
+        target,
+        {
+          successor,
+          evidence: [evidence],
+          by,
+          ...(reason === undefined ? {} : { reason }),
+          ...(task === undefined ? {} : { task }),
+          ...(conflictsWith === undefined ? {} : { conflictsWith: [conflictsWith] }),
+        },
+        decisionDependencies(built.context, io, args.options["stage"]),
+      );
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
     default:
-      io.stderr(`learn needs one of propose, decide, list\n${USAGE}`);
+      io.stderr(`learn needs one of propose, decide, list, active, check, supersede\n${USAGE}`);
       return EXIT_NEEDS_HUMAN;
   }
 }
