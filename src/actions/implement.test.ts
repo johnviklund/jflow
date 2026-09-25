@@ -184,10 +184,14 @@ describe("starting a ticket", () => {
     expect(ticketOf(h, "T2")?.status).toBe("ready");
   });
 
-  it("starts a named ticket under whole-plan authorization once its dependencies are done", () => {
+  it("starts a ticket under whole-plan authorization only once escalate has let it, through implement next", () => {
     const h = wholePlan([ticket({ status: "done" }), ticket({ id: "T2", title: "Printer", dependsOn: ["T1"] })]);
 
-    const result = startTicket(h.root, { ticketId: "T2" }, h.context);
+    expect(startTicket(h.root, { ticketId: "T2" }, h.context)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("implement next"),
+    });
+    const result = startTicket(h.root, { ticketId: "T2" }, h.context, { escalated: true });
 
     expect(result).toMatchObject({ ok: true, outcome: { ticket: { id: "T2", status: "in-progress" } } });
     expect(progressOf(h)).toMatchObject({ authorizationScope: "plan", assignedTicketId: "T2" });
@@ -196,7 +200,7 @@ describe("starting a ticket", () => {
   it("refuses under whole-plan authorization without a named ticket, or before its dependencies are done", () => {
     const h = wholePlan([ticket(), ticket({ id: "T2", title: "Printer", dependsOn: ["T1"] })]);
 
-    expect(startTicket(h.root, {}, h.context)).toMatchObject({ ok: false, reason: expect.stringContaining("name") });
+    expect(startTicket(h.root, {}, h.context)).toMatchObject({ ok: false, reason: expect.stringContaining("implement next") });
     expect(startTicket(h.root, { ticketId: "T2" }, h.context)).toMatchObject({
       ok: false,
       reason: expect.stringContaining("T1"),

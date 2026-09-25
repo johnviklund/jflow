@@ -308,12 +308,30 @@ export interface ProgressRecord {
   readonly implementers?: Readonly<Record<string, readonly string[]>>;
   /** The latest review per ticket (issue #9). */
   readonly reviews?: Readonly<Record<string, TicketReview>>;
+  /** The latest independence check per ticket that may start beside a parked one (issue #12). */
+  readonly independenceChecks?: Readonly<Record<string, IndependenceCheck>>;
   /** Owners the developer gave pre-existing uncommitted changes, one entry per path. */
   readonly changeOwnership?: readonly ChangeOwnership[];
   readonly reconciliation?: {
     readonly lastReconciledAt?: string;
     readonly discrepancies: readonly ReconciliationDiscrepancy[];
   };
+}
+
+/**
+ * Why a ticket may start while others are parked (D30, issue #12): the
+ * parked tickets it was checked against, and why neither their
+ * dependencies, their unresolved decisions nor their partial edits affect
+ * it.
+ */
+export interface IndependenceCheck {
+  readonly parked: readonly string[];
+  readonly dependencies: string;
+  readonly decisions: string;
+  readonly partialEdits: string;
+  /** The parked tickets' uncommitted paths when the check was made. */
+  readonly partialEditPaths: readonly string[];
+  readonly checkedAt: string;
 }
 
 /**
@@ -809,6 +827,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "validations",
       "implementers",
       "reviews",
+      "independenceChecks",
       "changeOwnership",
       "reconciliation",
     ],
@@ -894,6 +913,33 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       for (const [ticketId, entry] of Object.entries(doc["reviews"])) {
         const review = validateTicketReview(entry, `reviews.${ticketId}`, issues);
         if (review) reviews[ticketId] = review;
+      }
+    }
+  }
+
+  let independenceChecks: Record<string, IndependenceCheck> | undefined;
+  if (doc["independenceChecks"] !== undefined) {
+    if (!isRecord(doc["independenceChecks"])) {
+      issues.add("independenceChecks", "must be an object keyed by ticket id");
+    } else {
+      independenceChecks = {};
+      for (const [ticketId, entry] of Object.entries(doc["independenceChecks"])) {
+        const at = `independenceChecks.${ticketId}`;
+        const item = requireObject(
+          entry,
+          at,
+          ["parked", "dependencies", "decisions", "partialEdits", "partialEditPaths", "checkedAt"],
+          issues,
+        );
+        if (!item) continue;
+        independenceChecks[ticketId] = {
+          parked: validateStringArray(item["parked"], `${at}.parked`, issues),
+          dependencies: requireNonEmptyString(item["dependencies"], `${at}.dependencies`, issues),
+          decisions: requireNonEmptyString(item["decisions"], `${at}.decisions`, issues),
+          partialEdits: requireNonEmptyString(item["partialEdits"], `${at}.partialEdits`, issues),
+          partialEditPaths: validateStringArray(item["partialEditPaths"], `${at}.partialEditPaths`, issues),
+          checkedAt: requireTimestamp(item["checkedAt"], `${at}.checkedAt`, issues),
+        };
       }
     }
   }
@@ -997,6 +1043,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       validations,
       implementers,
       reviews,
+      independenceChecks,
       reconciliation,
     },
   );

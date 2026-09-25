@@ -571,6 +571,31 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(fixed.json()).toMatchObject({ ok: true, outcome: { diagnosis: { status: "applied", application: { ticketId: "T1" } } } });
   });
 
+  it("parks a blocked ticket, records an independence check, and moves to the next ticket on escalate's proceed", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true }, gitRepository: true });
+    const ticket = (id: string) => ({ id, title: id, acceptanceCriteria: [`${id} works`], dependsOn: [], status: "ready" });
+    h.writeFile("jflow/tickets.json", JSON.stringify({ tickets: [ticket("T1"), ticket("T2")] }));
+    await run(["plan", "authorize", "--scope", "plan", "--note", "implement the whole plan"], h.root);
+    const first = await run(["implement", "next"], h.root, {}, jev("proceed", "routine"));
+    expect(first.json()).toMatchObject({ kind: "started", ticket: { id: "T1" } });
+
+    const parked = await run(["implement", "park", "T1", "--blocker", "the date format is undecided"], h.root);
+    const unchecked = await run(["implement", "next"], h.root);
+    h.writeFile(
+      ".jflow/check.json",
+      JSON.stringify({ ticketId: "T2", dependencies: "none", decisions: "T2 has no dates", partialEdits: "T1 left none" }),
+    );
+    const checked = await run(["implement", "independence", join(h.root, ".jflow", "check.json")], h.root);
+    const next = await run(["implement", "next"], h.root, {}, jev("proceed", "routine"));
+
+    expect(parked.json()).toMatchObject({ ok: true, outcome: { ticket: { status: "parked" } } });
+    expect(unchecked.code).toBe(EXIT_OK);
+    expect(unchecked.json()).toMatchObject({ kind: "needs-independence-check", candidates: ["T2"] });
+    expect(checked.json()).toMatchObject({ ok: true, outcome: { check: { parked: ["T1"] } } });
+    expect(next.code).toBe(EXIT_OK);
+    expect(next.json()).toMatchObject({ ok: true, kind: "started", ticket: { id: "T2" } });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

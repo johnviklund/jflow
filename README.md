@@ -88,6 +88,20 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
+- `src/actions/progression.ts`, `independence.ts` — whole-plan progress
+  (issue #12, D29, D30). `implement next` picks the next eligible ticket
+  in plan order. Under whole-plan authorization it asks `escalate` at
+  `next-ticket` before every start, and `proceed` starts the ticket;
+  `implement start` there only restarts the ticket in progress. Without whole-plan
+  authorization it asks the developer without Jev. It reports
+  `needs-independence-check`, or `waiting` with reasons, and then starts
+  nothing. `implement park` records a blocked ticket as parked with its
+  blocker. Its uncommitted changes become its partial edits, which count
+  as claimed and are never committed with another ticket. It never
+  changes authorization. `implement independence` records a check
+  covering dependencies, unresolved decisions and partial edits.
+  `implement start` and `next` refuse a ticket beside a parked one
+  without such a check, or one that depends on a parked ticket.
 - `src/actions/troubleshoot.ts` — the helper side of `troubleshoot`
   (issue #11). `troubleshoot start` records a failed check in
   `jflow/diagnoses.json` with a snapshot of the working tree: HEAD and a

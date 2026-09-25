@@ -167,6 +167,22 @@ describe("readProjectState", () => {
     expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: ["draft.ts"] } });
   });
 
+  it("counts a parked ticket's partial edits as claimed: their owner is recorded", () => {
+    const root = makeRoot();
+    initRepository(root);
+    writeFileSync(join(root, "printer.ts"), "half done\n");
+    writeRecord(root, "tickets", {
+      tickets: [{ id: "T1", title: "t", acceptanceCriteria: ["c"], dependsOn: [], status: "parked", parkedReason: "blocked" }],
+    });
+    writeRecord(root, "progress", {
+      executionAuthorized: false,
+      ticketChangesPresent: false,
+      changeOwnership: [{ path: "printer.ts", owner: "ticket", ticketId: "T1", note: "T1's partial edit, parked" }],
+    });
+
+    expect(readProjectState(root)).toMatchObject({ state: { unclaimedChanges: [] } });
+  });
+
   it("presumes changes made after the ticket's work began are the ticket's", () => {
     const root = makeRoot();
     initRepository(root);

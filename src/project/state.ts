@@ -3,6 +3,7 @@ import {
   type ObservedStateField,
   type WorkflowState,
 } from "../actions/resolve.js";
+import { parkedTickets } from "../actions/independence.js";
 import type { ValidationIssue } from "../workflow/types.js";
 import { admittedToReview, readRecord, type ProgressRecord } from "./records.js";
 import { readWorkingTree } from "./worktree.js";
@@ -32,7 +33,8 @@ type ObservedState = Pick<WorkflowState, ObservedStateField>;
 
 /**
  * A change is claimed when the developer kept it, when the assigned ticket
- * adopted it, or once the assigned ticket's work has begun. `implement`
+ * adopted it, when it is a parked ticket's partial edit (issue #12), or
+ * once the assigned ticket's work has begun. `implement`
  * cannot start while any change is unclaimed, so what appears after that is
  * presumed the ticket's. Git cannot tell the agent's edits from the
  * developer's own edits made mid-ticket: the ticket's commit (#10) carries
@@ -40,7 +42,11 @@ type ObservedState = Pick<WorkflowState, ObservedStateField>;
  * committed and left out; resume reconciliation (#22) checks it again.
  * This presumption makes `git.changesOwned` on `review` inert.
  */
-function observeWorkingTree(root: string, progress: ProgressRecord | undefined): ObservedState {
+function observeWorkingTree(
+  root: string,
+  progress: ProgressRecord | undefined,
+  parked: ReadonlySet<string> = new Set(),
+): ObservedState {
   const tree = readWorkingTree(root);
   if (tree.kind === "absent") return { gitRepositoryPresent: false, unclaimedChanges: [] };
   if (tree.kind === "unreadable") {
@@ -49,7 +55,12 @@ function observeWorkingTree(root: string, progress: ProgressRecord | undefined):
   if (progress?.ticketChangesPresent) return { gitRepositoryPresent: true, unclaimedChanges: [] };
   const claimed = new Set(
     (progress?.changeOwnership ?? [])
-      .filter((entry) => entry.owner === "developer" || entry.ticketId === progress?.assignedTicketId)
+      .filter(
+        (entry) =>
+          entry.owner === "developer" ||
+          entry.ticketId === progress?.assignedTicketId ||
+          (entry.ticketId !== undefined && parked.has(entry.ticketId)),
+      )
       .map((entry) => entry.path),
   );
   return {
@@ -79,6 +90,9 @@ export function readProjectState(root: string): ProjectStateResult {
   if (plan.kind === "malformed") return malformed(plan.path, plan.issues);
   const progress = readRecord(root, "progress");
   if (progress.kind === "malformed") return malformed(progress.path, progress.issues);
+  const tickets = readRecord(root, "tickets");
+  if (tickets.kind === "malformed") return malformed(tickets.path, tickets.issues);
+  const parked = new Set(tickets.kind === "present" ? parkedTickets(tickets.record).map((ticket) => ticket.id) : []);
 
   if (specification.kind === "absent" && plan.kind === "absent" && progress.kind === "absent") {
     return { kind: "uninitialized", state: createWorkflowState(observeWorkingTree(root, undefined)) };
@@ -100,7 +114,7 @@ export function readProjectState(root: string): ProjectStateResult {
       ...(recorded?.assignedTicketId === undefined
         ? {}
         : { assignedTicketId: recorded.assignedTicketId }),
-      ...observeWorkingTree(root, recorded),
+      ...observeWorkingTree(root, recorded, parked),
     },
   };
 }

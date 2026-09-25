@@ -67,8 +67,8 @@ first instead of asking on your own judgment. Write a boundary file outside
 the project with `kind`, `summary` and `excerpts`, then run
 `scripts/jflow escalate <boundary.json>`. The `kind` is one of:
 
-- `next-ticket`: before starting the next ticket under whole-plan
-  authorization.
+- `next-ticket`: asked for you by `implement next` before starting the
+  next ticket under whole-plan authorization; do not ask it yourself.
 - `fix-failed`: asked for you by `implement check` when the ticket's fix
   counter reaches its limit; do not ask it yourself for a `not-met`.
 - `review-dispute`: asked for you by `review record` when a blocking

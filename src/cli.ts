@@ -6,6 +6,7 @@ import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/con
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { completeTicket } from "./actions/completion.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
+import { nextTicket, parkTicket, recordIndependence, type IndependenceInput } from "./actions/progression.js";
 import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type ReviewInput } from "./actions/review.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
@@ -106,6 +107,9 @@ Usage:
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
   jflow implement complete [<ticket>]        [--root <dir>] [--config <file>]
   jflow implement fix <diagnosis> [--note <what was changed>] [--root <dir>]
+  jflow implement next                       [--root <dir>] [--config <file>]
+  jflow implement park <ticket> --blocker <what blocks it> [--root <dir>]
+  jflow implement independence <check.json>  [--root <dir>]
   jflow troubleshoot start <failure.json>    [--root <dir>]
   jflow troubleshoot record <diagnosis.json> [--root <dir>]
   jflow review start                         [--root <dir>] [--config <file>]
@@ -159,6 +163,16 @@ the project records, leaving out changes the developer kept or another
 ticket adopted. It never pushes, publishes or merges. "implement fix"
 records that the ticket in progress applied a diagnosis's recommended fix,
 under recorded execution authorization.
+"implement next" picks the next eligible ticket in plan order. Under
+whole-plan authorization it asks escalate at next-ticket and starts the
+ticket on proceed; otherwise it asks the developer without Jev. It returns
+needs-independence-check while a parked ticket has not been checked
+against, and waiting, with the reasons, when nothing can proceed.
+"implement park" parks the ticket in progress with its blocker and keeps
+its uncommitted changes as its partial edits; it never marks it done or
+changes authorization. "implement independence" records why a ready
+ticket may start beside the parked ones: ticketId, dependencies,
+decisions and partialEdits.
 "troubleshoot start" takes ticketId (default: the ticket in progress) and
 the failed check (source, text, exitCode), and records it with a snapshot
 of the working tree. "troubleshoot record" takes id, finding, evidence and
@@ -220,6 +234,7 @@ const KNOWN_OPTIONS = [
   "finding",
   "outcome",
   "recommendation",
+  "blocker",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -643,6 +658,19 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
 async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
+  if (subcommand === "park") {
+    const blocker = args.options["blocker"];
+    if (target === undefined || blocker === undefined) {
+      io.stderr(`implement park needs a ticket id and --blocker\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    return report(parkTicket(root, { ticketId: target, blocker }, { now: new Date().toISOString() }), io);
+  }
+  if (subcommand === "independence") {
+    const read = readDraft<IndependenceInput>(target, "implement independence", io);
+    if (!read.ok) return read.exit;
+    return report(recordIndependence(root, read.draft, { now: new Date().toISOString() }), io);
+  }
   if (subcommand === "fix") {
     if (target === undefined) {
       io.stderr(`implement fix needs a diagnosis id\n${USAGE}`);
@@ -651,14 +679,22 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
     const note = args.options["note"];
     return report(applyDiagnosis(root, { id: target, ...(note === undefined ? {} : { note }) }, { now: new Date().toISOString() }), io);
   }
-  if (subcommand !== "start" && subcommand !== "check" && subcommand !== "complete") {
-    io.stderr(`implement needs one of start, check, complete, fix\n${USAGE}`);
+  if (subcommand !== "start" && subcommand !== "check" && subcommand !== "complete" && subcommand !== "next") {
+    io.stderr(`implement needs one of start, check, complete, next, park, independence, fix\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);
   if (!built.ok) {
     io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
     return built.exit;
+  }
+  if (subcommand === "next") {
+    const result = await nextTicket(root, decisionDependencies(built.context, io));
+    io.stdout(`${JSON.stringify({ ok: result.kind !== "refused", ...result }, null, 2)}\n`);
+    // Waiting and asking are the developer's; a start or a check to make is the agent's.
+    return result.kind === "started" || result.kind === "needs-independence-check" || result.kind === "finished"
+      ? EXIT_OK
+      : EXIT_NEEDS_HUMAN;
   }
   if (subcommand === "start") {
     return report(startTicket(root, target === undefined ? {} : { ticketId: target }, built.context), io);

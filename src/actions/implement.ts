@@ -24,6 +24,7 @@ import {
 import { readProjectState } from "../project/state.js";
 import { hasText } from "../validation.js";
 import type { DelegationLimits } from "../workflow/types.js";
+import { independenceGap } from "./independence.js";
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 import { resolveAction, type ResolutionContext } from "./resolve.js";
 
@@ -110,7 +111,9 @@ function targetOf(
   }
   if (target === undefined) {
     return refuse(
-      progress.authorizationScope === "plan" ? "whole-plan authorization covers every ticket; name the ticket to start" : NO_TICKET,
+      progress.authorizationScope === "plan"
+        ? "under whole-plan authorization the next ticket starts through implement next, which asks escalate at next-ticket"
+        : NO_TICKET,
     );
   }
   return { ok: true, target };
@@ -129,6 +132,8 @@ export function startTicket(
   root: string,
   request: { readonly ticketId?: string },
   context: ResolutionContext,
+  /** Set only by `implement next`, once `escalate` let the ticket start (D44, issue #12). */
+  options: { readonly escalated?: boolean } = {},
 ): StartResult {
   const state = readProjectState(root);
   if (state.kind === "malformed") return unreadableState(state);
@@ -166,6 +171,14 @@ export function startTicket(
   if (waiting.length > 0) {
     return refuse(
       `ticket ${target} depends on ${waiting.map((entry) => `${entry.id} (${entry.status})`).join(", ")}, not yet done`,
+    );
+  }
+  const gap = independenceGap(tickets, progress, target);
+  if (gap !== undefined) return refuse(gap);
+  // Starting a new ticket under whole-plan authorization is a human-facing boundary; only next asks it.
+  if (progress.authorizationScope === "plan" && ticket.status !== "in-progress" && options.escalated !== true) {
+    return refuse(
+      `under whole-plan authorization ${target} starts through implement next, which asks escalate at next-ticket first`,
     );
   }
 
