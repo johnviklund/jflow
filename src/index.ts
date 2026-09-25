@@ -96,6 +96,8 @@ export {
   type UsableLesson,
 } from "./actions/lesson-use.js";
 
+export { wrapSession, type WrapDraft, type WrapResult } from "./actions/wrap.js";
+
 export {
   acceptPlan,
   authorizeExecution,
@@ -150,6 +152,7 @@ export {
   CONSEQUENTIAL_AREAS,
   CRITERION_VERDICTS,
   DECISION_STATUSES,
+  DISCREPANCY_SOURCES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
   LESSON_CHECK_OUTCOMES,
@@ -180,6 +183,7 @@ export {
   type CriterionJudgment,
   type CriterionVerdict,
   type DecisionStatus,
+  type DiscrepancySource,
   type FallbackScope,
   type FallbackStatus,
   type JevRecord,
@@ -202,6 +206,9 @@ export {
   type RecordKind,
   type RecordReadResult,
   type RecordValidation,
+  type ResumeDiscrepancy,
+  type ResumeLessons,
+  type ResumeOutcome,
   type ResumeRecord,
   type SpecificationDecision,
   type SpecificationRecord,

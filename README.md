@@ -202,6 +202,19 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   lesson scoped to jflow's workflow, its Jev questions or its policy is
   refused. Only the lessons
   record is written, so the interrupted action resumes as it was.
+- `src/actions/wrap.ts` — `wrap` (issue #21) writes `jflow/resume.json`, the
+  record a fresh session continues from without chat history. It carries
+  the agent's summary and next steps, plus what the records say: the plan
+  and its authorization, every ticket's outcome (the active ticket's fix
+  attempts, validation and review), parked tickets with their blockers,
+  open todos, lesson state, a Jev fallback waiting for approval, the
+  uncommitted paths, and `next`'s recommendation. It compares the
+  records with the repository (a done ticket's missing commit, an assigned
+  ticket that is not in progress, changes recorded but absent, changes no
+  one owns, a ticket that passed review but is not done, a done ticket
+  without a commit), carries over discrepancies recorded earlier, and adds
+  the agent's own findings. It reports every discrepancy and reconciles none.
+  It writes no other record and only reads Git.
 - `src/actions/lesson-use.ts` — using a retained lesson (issue #20). Only
   active lessons are offered (`learn active`). Each is re-checked against
   the task before use, and the check (applies, or skipped with the reason)
@@ -262,12 +275,12 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `learn`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `wrap`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `learn.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+  `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
   `troubleshoot.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
@@ -310,6 +323,9 @@ on the ChatGPT desktop app; see `skill/references/HOST.md`.
   gates or Jev's questions reads the lessons record, and a lesson scoped to
   the workflow is refused. An assessed lesson is active only on a recorded
   decision to retain it, and `learn` never changes an accepted decision.
+- `wrap` writes only the resume record. It reports discrepancies between
+  the records and the project without reconciling them, and never
+  commits, pushes, merges, publishes or cleans up, raw traces included.
 - Only a retained lesson is offered for use or can be checked as
   applying; a candidate or a superseded lesson never is. The agent cannot
   supersede a lesson the developer retained without `escalate`, and on

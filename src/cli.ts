@@ -13,6 +13,7 @@ import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/
 import { decideLesson, proposeLesson, type LessonDraft } from "./actions/learn.js";
 import { activeLessons, checkLesson, supersedeLesson } from "./actions/lesson-use.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
+import { wrapSession, type WrapDraft } from "./actions/wrap.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import {
   applyDiagnosis,
@@ -116,6 +117,8 @@ Usage:
   jflow learn supersede <id> --successor <lesson id or change> --evidence <what contradicts it>
                     --by agent|developer [--reason <the developer's words>] [--conflicts-with <decision id>]
                     [--task <the task>] [--stage <name>] [--root <dir>] [--config <file>]
+  jflow wrap <draft.json>                    [--root <dir>] [--config <file>]
+  jflow wrap show                            [--root <dir>]
   jflow decide ask <decision> <input.json>   [--root <dir>] [--config <file>]
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
@@ -186,6 +189,14 @@ lesson-conflict instead. On proceed a lesson the developer retained stays
 as they decided (only --by developer then supersedes it), and one that
 only touches an accepted decision is superseded. An option given twice
 keeps its last value.
+"wrap" writes jflow/resume.json from a draft holding summary, nextSteps
+and discrepancies (summary, ticketId) the agent found, plus what the
+records say: the plan and its authorization, ticket outcomes, parked
+tickets and blockers, open todos, lesson state and next's
+recommendation. Where the records and the repository disagree it reports
+the discrepancy (exit 1) and reconciles nothing. It writes no other
+record and never commits, pushes, merges, publishes or cleans up.
+"wrap show" prints the resume record.
 "next" also asks Jev's advisory next-action decision and reports it under
 "jev" with its envelope; a missing key is reported there, never skipped.
 "decide ask" asks a declared Jev decision over an input holding taskSummary,
@@ -1027,6 +1038,31 @@ async function runLearn(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
+function runWrap(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [target] = args.positional;
+  if (target === "show") {
+    const read = readRecord(root, "resume");
+    if (read.kind === "malformed") {
+      io.stdout(`${JSON.stringify(unreadable("resume", read), null, 2)}\n`);
+      return EXIT_UNREADABLE;
+    }
+    if (read.kind === "absent") return report({ ok: false, reason: "there is no resume record; wrap writes one" }, io);
+    return report({ ok: true, resume: read.record }, io);
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const read = readDraft<WrapDraft>(target, "wrap", io);
+  if (!read.ok) return read.exit;
+  const result = wrapSession(root, read.draft, built.context, { now: new Date().toISOString() });
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  // Discrepancies are the developer's to see; wrap reconciles none of them.
+  return result.ok && result.outcome.discrepancies.length === 0 ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 function runConflict(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
@@ -1153,6 +1189,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "learn":
       return runLearn(args, io);
+
+    case "wrap":
+      return runWrap(args, io);
 
     case "decide":
       return runDecide(args, io);

@@ -163,6 +163,16 @@ export function readWorkingTree(root: string): WorkingTree {
   };
 }
 
+/** Whether the repository has `commit`, read-only (`rev-parse --verify`). */
+export function commitExists(root: string, commit: string): boolean {
+  try {
+    readOnlyGit(root, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type TreeSnapshot =
   | { readonly kind: "absent" }
   | { readonly kind: "unreadable"; readonly message: string }

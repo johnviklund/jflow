@@ -470,6 +470,29 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(reused.code).toBe(EXIT_NEEDS_HUMAN);
   });
 
+  it("has wrap write the resume record, exit 1 on a discrepancy, and show it", async () => {
+    const h = harness({ state: { specificationAccepted: true } });
+    // Drafts live outside the project's working tree, as the skill writes them.
+    const drafts = harness();
+    drafts.writeFile("clean.json", JSON.stringify({ summary: "specified the importer", nextSteps: ["run plan"] }));
+    drafts.writeFile(
+      "found.json",
+      JSON.stringify({ summary: "specified the importer", discrepancies: [{ summary: "the spec names a file that does not exist" }] }),
+    );
+
+    const missing = await run(["wrap", "show"], h.root);
+    const clean = await run(["wrap", drafts.path("clean.json")], h.root);
+    const shown = await run(["wrap", "show"], h.root);
+    const found = await run(["wrap", drafts.path("found.json")], h.root);
+
+    expect(missing.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(clean.code).toBe(EXIT_OK);
+    expect(clean.json()).toMatchObject({ ok: true, outcome: { record: "jflow/resume.json", discrepancies: [] } });
+    expect(shown.json()).toMatchObject({ ok: true, resume: { summary: "specified the importer", nextSteps: ["run plan"], recommendation: { action: "plan" } } });
+    expect(found.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(found.json()).toMatchObject({ ok: true, outcome: { discrepancies: [{ source: "agent" }] } });
+  });
+
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
     const h = harness();
     h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));

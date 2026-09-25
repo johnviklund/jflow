@@ -528,13 +528,79 @@ export interface JevAssessment {
   readonly recordedAt: string;
 }
 
-/** What `wrap` leaves behind so the next session can resume (D15, user story 18). */
+export const DISCREPANCY_SOURCES = ["records", "agent"] as const;
+
+export type DiscrepancySource = (typeof DISCREPANCY_SOURCES)[number];
+
+/**
+ * Where the records and the project disagree, as `wrap` found it: by
+ * comparing the records with the repository, or by the agent's own
+ * observation. Reported, never reconciled (D15).
+ */
+export interface ResumeDiscrepancy {
+  readonly summary: string;
+  readonly ticketId?: string;
+  readonly source: DiscrepancySource;
+}
+
+/** A ticket's outcome as the session left it. */
+export interface ResumeOutcome {
+  readonly ticketId: string;
+  readonly title: string;
+  readonly status: TicketStatus;
+  readonly commit?: string;
+  /** Where the ticket in progress stands: fix attempts, validate and review. */
+  readonly note?: string;
+}
+
+/** Lesson ids by state (issues #19, #20). */
+export interface ResumeLessons {
+  readonly active: readonly string[];
+  /** Candidates: recorded, never applied, whether or not decided. */
+  readonly candidates: readonly string[];
+  /** The candidates still waiting for a decision (`learn decide`). */
+  readonly undecided: readonly string[];
+  /** Conflicting lessons waiting on the developer. */
+  readonly awaitingDeveloper: readonly string[];
+  /** Retained lessons that new evidence contradicted; re-check with evidence before use. */
+  readonly contradicted: readonly string[];
+  readonly superseded: readonly string[];
+}
+
+/**
+ * What `wrap` leaves behind so the next session can resume without chat
+ * history (D15, user story 18, issue #21). Everything but `summary` and
+ * `nextSteps` is derived from the other records when it is written.
+ */
 export interface ResumeRecord {
   readonly writtenAt: string;
   readonly summary: string;
   readonly activeTicketId?: string;
+  /** Open todos, each as `id: summary`. */
   readonly unresolvedTodos?: readonly string[];
   readonly nextSteps?: readonly string[];
+  readonly plan?: {
+    readonly title: string;
+    readonly status: PlanStatus;
+    readonly executionAuthorized: boolean;
+    readonly authorizationScope?: AuthorizationScope;
+    readonly authorizationNote?: string;
+  };
+  readonly outcomes?: readonly ResumeOutcome[];
+  readonly parkedTickets?: readonly { readonly ticketId: string; readonly blocker: string }[];
+  readonly lessons?: ResumeLessons;
+  /** What `next` recommended when the session ended. */
+  readonly recommendation?: { readonly action: string; readonly reason: string };
+  /** Present while jflow runs without Jev or waits for approval to (D16, D17). */
+  readonly jevFallback?: {
+    readonly status: FallbackStatus;
+    readonly pendingDecision?: string;
+    readonly scope?: FallbackScope;
+    readonly scopeId?: string;
+  };
+  /** Paths with uncommitted changes when the session ended; wrap commits none of them. */
+  readonly uncommittedChanges?: readonly string[];
+  readonly discrepancies?: readonly ResumeDiscrepancy[];
 }
 
 export const TODO_STATUSES = ["open", "promoted"] as const;
@@ -1684,10 +1750,145 @@ const validateResume: Validator<ResumeRecord> = (value, issues) => {
   const doc = requireObject(
     value,
     "",
-    ["writtenAt", "summary", "activeTicketId", "unresolvedTodos", "nextSteps"],
+    [
+      "writtenAt",
+      "summary",
+      "activeTicketId",
+      "unresolvedTodos",
+      "nextSteps",
+      "plan",
+      "outcomes",
+      "parkedTickets",
+      "lessons",
+      "recommendation",
+      "jevFallback",
+      "uncommittedChanges",
+      "discrepancies",
+    ],
     issues,
   );
   if (!doc) return undefined;
+
+  let jevFallback: ResumeRecord["jevFallback"];
+  if (doc["jevFallback"] !== undefined) {
+    const item = requireObject(doc["jevFallback"], "jevFallback", ["status", "pendingDecision", "scope", "scopeId"], issues);
+    if (item) {
+      jevFallback = withOptional<NonNullable<ResumeRecord["jevFallback"]>>(
+        {
+          status: validateEnumValue<FallbackStatus>(item["status"], "jevFallback.status", FALLBACK_STATUSES, issues) ?? "off",
+        },
+        {
+          pendingDecision: optionalString(item["pendingDecision"], "jevFallback.pendingDecision", issues),
+          scope:
+            item["scope"] === undefined
+              ? undefined
+              : validateEnumValue<FallbackScope>(item["scope"], "jevFallback.scope", FALLBACK_SCOPES, issues),
+          scopeId: optionalString(item["scopeId"], "jevFallback.scopeId", issues),
+        },
+      );
+    }
+  }
+
+  let plan: ResumeRecord["plan"];
+  if (doc["plan"] !== undefined) {
+    const item = requireObject(
+      doc["plan"],
+      "plan",
+      ["title", "status", "executionAuthorized", "authorizationScope", "authorizationNote"],
+      issues,
+    );
+    if (item) {
+      plan = withOptional<NonNullable<ResumeRecord["plan"]>>(
+        {
+          title: requireNonEmptyString(item["title"], "plan.title", issues),
+          status: validateEnumValue<PlanStatus>(item["status"], "plan.status", PLAN_STATUSES, issues) ?? "awaiting-acceptance",
+          executionAuthorized: requireBoolean(item["executionAuthorized"], "plan.executionAuthorized", issues),
+        },
+        {
+          authorizationScope:
+            item["authorizationScope"] === undefined
+              ? undefined
+              : validateEnumValue<AuthorizationScope>(
+                  item["authorizationScope"],
+                  "plan.authorizationScope",
+                  AUTHORIZATION_SCOPES,
+                  issues,
+                ),
+          authorizationNote: optionalString(item["authorizationNote"], "plan.authorizationNote", issues),
+        },
+      );
+    }
+  }
+
+  const outcomes = optionalList(doc["outcomes"], "outcomes", issues, (entry, path) => {
+    const item = requireObject(entry, path, ["ticketId", "title", "status", "commit", "note"], issues);
+    if (!item) return undefined;
+    return withOptional<ResumeOutcome>(
+      {
+        ticketId: requireNonEmptyString(item["ticketId"], `${path}.ticketId`, issues),
+        title: requireNonEmptyString(item["title"], `${path}.title`, issues),
+        status: validateEnumValue<TicketStatus>(item["status"], `${path}.status`, TICKET_STATUSES, issues) ?? "ready",
+      },
+      {
+        commit: optionalString(item["commit"], `${path}.commit`, issues),
+        note: optionalString(item["note"], `${path}.note`, issues),
+      },
+    );
+  });
+
+  const parkedTickets = optionalList(doc["parkedTickets"], "parkedTickets", issues, (entry, path) => {
+    const item = requireObject(entry, path, ["ticketId", "blocker"], issues);
+    if (!item) return undefined;
+    return {
+      ticketId: requireNonEmptyString(item["ticketId"], `${path}.ticketId`, issues),
+      blocker: requireNonEmptyString(item["blocker"], `${path}.blocker`, issues),
+    };
+  });
+
+  let lessons: ResumeLessons | undefined;
+  if (doc["lessons"] !== undefined) {
+    const item = requireObject(
+      doc["lessons"],
+      "lessons",
+      ["active", "candidates", "undecided", "awaitingDeveloper", "contradicted", "superseded"],
+      issues,
+    );
+    if (item) {
+      lessons = {
+        active: validateStringArray(item["active"], "lessons.active", issues),
+        candidates: validateStringArray(item["candidates"], "lessons.candidates", issues),
+        undecided: validateStringArray(item["undecided"], "lessons.undecided", issues),
+        awaitingDeveloper: validateStringArray(item["awaitingDeveloper"], "lessons.awaitingDeveloper", issues),
+        contradicted: validateStringArray(item["contradicted"], "lessons.contradicted", issues),
+        superseded: validateStringArray(item["superseded"], "lessons.superseded", issues),
+      };
+    }
+  }
+
+  let recommendation: ResumeRecord["recommendation"];
+  if (doc["recommendation"] !== undefined) {
+    const item = requireObject(doc["recommendation"], "recommendation", ["action", "reason"], issues);
+    if (item) {
+      recommendation = {
+        action: requireNonEmptyString(item["action"], "recommendation.action", issues),
+        reason: requireNonEmptyString(item["reason"], "recommendation.reason", issues),
+      };
+    }
+  }
+
+  const discrepancies = optionalList(doc["discrepancies"], "discrepancies", issues, (entry, path) => {
+    const item = requireObject(entry, path, ["summary", "ticketId", "source"], issues);
+    if (!item) return undefined;
+    return withOptional<ResumeDiscrepancy>(
+      {
+        summary: requireNonEmptyString(item["summary"], `${path}.summary`, issues),
+        source:
+          validateEnumValue<DiscrepancySource>(item["source"], `${path}.source`, DISCREPANCY_SOURCES, issues) ?? "agent",
+      },
+      { ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues) },
+    );
+  });
+
   return withOptional<ResumeRecord>(
     {
       writtenAt: requireTimestamp(doc["writtenAt"], "writtenAt", issues),
@@ -1697,9 +1898,35 @@ const validateResume: Validator<ResumeRecord> = (value, issues) => {
       activeTicketId: optionalString(doc["activeTicketId"], "activeTicketId", issues),
       unresolvedTodos: optionalStringArray(doc["unresolvedTodos"], "unresolvedTodos", issues),
       nextSteps: optionalStringArray(doc["nextSteps"], "nextSteps", issues),
+      plan,
+      outcomes,
+      parkedTickets,
+      lessons,
+      recommendation,
+      jevFallback,
+      uncommittedChanges: optionalStringArray(doc["uncommittedChanges"], "uncommittedChanges", issues),
+      discrepancies,
     },
   );
 };
+
+/** An optional array whose entries are each validated; absent stays absent. */
+function optionalList<T>(
+  value: unknown,
+  path: string,
+  issues: IssueCollector,
+  entry: (item: unknown, path: string) => T | undefined,
+): T[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    issues.add(path, "must be an array");
+    return undefined;
+  }
+  return value.flatMap((item, index) => {
+    const validated = entry(item, `${path}[${index}]`);
+    return validated === undefined ? [] : [validated];
+  });
+}
 
 const validateTodos: Validator<TodosRecord> = (value, issues) => {
   const doc = requireObject(value, "", ["items"], issues);
