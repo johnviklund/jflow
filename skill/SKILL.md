@@ -27,7 +27,8 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant, and Jev's advisory `next-action` answer. Writes no project record; see `actions/next.md`. |
 | `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
-| `scripts/jflow implement start\|check\|complete` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, and once review passes, record it done with its local commit; see `actions/implement.md`. |
+| `scripts/jflow implement start\|check\|complete\|fix` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, record a diagnosis's fix, and once review passes, record it done with its local commit; see `actions/implement.md`. |
+| `scripts/jflow troubleshoot start\|record` | Record a failed check, then its diagnosis and recommended fix, refused if the working tree changed meanwhile; see `actions/troubleshoot.md`. |
 | `scripts/jflow review start\|record\|decide` | Open review of a ticket `validate` admitted, record an independent reviewer's findings under the fixed disposition rule, and record the developer's decision on a disputed finding; see `actions/review.md`. |
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
 | `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
@@ -127,7 +128,8 @@ fix. A fix goes through an authorized `implement`.
 ## Layout
 
 - `actions/` — one method file per action. `status.md`, `next.md`,
-  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md` and `review.md` exist; the others are filled in
+  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+  `troubleshoot.md` exist; the others are filled in
   by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.

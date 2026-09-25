@@ -8,6 +8,6 @@ sections so the primary agent can read any of them the same way:
 3. **Method** — how to do the work the helper does not do.
 4. **Report** — what to tell the developer, and what to ask.
 
-Owned by: troubleshoot #11, learn #19, wrap #21, realign #31.
-`status.md`, `next.md`, `todo.md`, `brainstorm.md`, `plan.md`,
-`implement.md` and `review.md` are here.
+Owned by: learn #19, wrap #21, realign #31. `status.md`, `next.md`,
+`todo.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+`troubleshoot.md` are here.

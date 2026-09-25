@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { commitPaths, readChangedRecords, readOnlyGit, readWorkingTree } from "./worktree.js";
+import { commitPaths, readChangedRecords, readOnlyGit, readWorkingTree, snapshotWorkingTree } from "./worktree.js";
 
 const roots: string[] = [];
 
@@ -164,5 +164,39 @@ describe("commitPaths", () => {
 
   it("refuses to commit nothing", () => {
     expect(() => commitPaths(repository(), [], "empty")).toThrow(/nothing/);
+  });
+});
+
+describe("snapshotWorkingTree", () => {
+  it("records HEAD and the content of every changed path, so any edit shows as a difference", () => {
+    const root = repository();
+    writeFileSync(join(root, "tracked.txt"), "developer's edit\n");
+    writeFileSync(join(root, "new.txt"), "n\n");
+
+    const before = snapshotWorkingTree(root);
+    expect(before).toMatchObject({
+      kind: "present",
+      head: expect.stringMatching(/^[0-9a-f]{40}$/),
+      files: [
+        { path: "new.txt", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        { path: "tracked.txt", sha256: expect.any(String) },
+      ],
+    });
+    expect(snapshotWorkingTree(root)).toEqual(before);
+
+    writeFileSync(join(root, "tracked.txt"), "a diagnostic edit\n");
+    expect(snapshotWorkingTree(root)).not.toEqual(before);
+  });
+
+  it("records a deleted path without a hash, and has no head before the first commit", () => {
+    const root = repository();
+    rmSync(join(root, "tracked.txt"));
+    expect(snapshotWorkingTree(root)).toMatchObject({ files: [{ path: "tracked.txt" }] });
+    expect(snapshotWorkingTree(root)).not.toHaveProperty("files.0.sha256");
+
+    const empty = directory();
+    execFileSync("git", ["init", "--quiet"], { cwd: empty });
+    expect(snapshotWorkingTree(empty)).toEqual({ kind: "present", files: [] });
+    expect(snapshotWorkingTree(directory())).toEqual({ kind: "absent" });
   });
 });

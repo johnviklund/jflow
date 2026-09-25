@@ -546,6 +546,31 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     });
   });
 
+  it("troubleshoots a failed check without edits, then records the fix under the started ticket", async () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({ tickets: [{ id: "T1", title: "T1", acceptanceCriteria: ["parses an empty file"], dependsOn: [], status: "ready" }] }),
+    );
+    await run(["implement", "start"], h.root);
+    const drafts = join(h.root, ".jflow");
+    h.writeFile(".jflow/failure.json", JSON.stringify({ check: { source: "npm test", text: "1 failed", exitCode: 1 } }));
+    h.writeFile(".jflow/diagnosis.json", JSON.stringify({ id: "DIAG-1", finding: "empty input", evidence: ["src/p.ts:1"], recommendation: "return []" }));
+
+    const started = await run(["troubleshoot", "start", join(drafts, "failure.json")], h.root);
+    const recorded = await run(["troubleshoot", "record", join(drafts, "diagnosis.json")], h.root);
+    const fixed = await run(["implement", "fix", "DIAG-1", "--note", "returned []"], h.root);
+
+    expect(started.code).toBe(EXIT_OK);
+    expect(started.json()).toMatchObject({ ok: true, outcome: { diagnosis: { id: "DIAG-1", ticketId: "T1" } } });
+    expect(recorded.json()).toMatchObject({ ok: true, outcome: { diagnosis: { status: "diagnosed" } } });
+    expect(fixed.code).toBe(EXIT_OK);
+    expect(fixed.json()).toMatchObject({ ok: true, outcome: { diagnosis: { status: "applied", application: { ticketId: "T1" } } } });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

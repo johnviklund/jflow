@@ -225,6 +225,26 @@ const examples: ProjectRecords = {
       },
     ],
   },
+  diagnoses: {
+    diagnoses: [
+      {
+        id: "DIAG-1",
+        ticketId: "T2",
+        check: { source: "npm test -- parser", exitCode: 1, excerpt: "expected [] got undefined" },
+        status: "applied",
+        startedAt: "2026-09-20T14:00:00Z",
+        baseline: { head: "abc123", files: [{ path: "src/parse.ts", sha256: "f00d" }, { path: "old.ts" }] },
+        diagnosis: {
+          finding: "empty input returns early without a value",
+          evidence: ["src/parse.ts:12"],
+          recommendation: "return [] for empty input",
+          recordedAt: "2026-09-20T14:10:00Z",
+          treeCheck: "unchanged",
+        },
+        application: { ticketId: "T2", appliedAt: "2026-09-20T14:20:00Z" },
+      },
+    ],
+  },
 };
 
 describe("readRecord", () => {
@@ -667,6 +687,34 @@ describe("conflicts record", () => {
   });
 });
 
+describe("diagnoses", () => {
+  const base = { id: "DIAG-1", check: { source: "npm test", excerpt: "1 failed" }, startedAt: "2026-09-20T12:00:00Z" };
+  const diagnosis = {
+    finding: "f",
+    evidence: [],
+    recommendation: "r",
+    recordedAt: "2026-09-20T12:10:00Z",
+    treeCheck: "unchanged",
+  };
+
+  it.each([
+    ["a diagnosed entry without its diagnosis", { ...base, status: "diagnosed" }, "diagnoses[0].diagnosis"],
+    ["an applied entry without its application", { ...base, status: "applied", diagnosis }, "diagnoses[0].application"],
+    [
+      "an application on a fix not yet applied",
+      { ...base, status: "diagnosed", diagnosis, application: { ticketId: "T1", appliedAt: "2026-09-20T12:20:00Z" } },
+      "diagnoses[0].application",
+    ],
+    ["an unknown tree check", { ...base, status: "diagnosed", diagnosis: { ...diagnosis, treeCheck: "probably" } }, "diagnoses[0].diagnosis.treeCheck"],
+  ])("refuses %s", (_label, entry, path) => {
+    const result = validateRecord("diagnoses", { diagnoses: [entry] });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toContain(path);
+  });
+});
+
 describe("record types", () => {
   it("accept the minimal shape of each record", () => {
     const root = makeRoot();
@@ -693,6 +741,7 @@ describe("record types", () => {
       resume: { writtenAt: "2026-09-20T12:00:00Z", summary: "s" },
       todos: { items: [] },
       conflicts: { conflicts: [] },
+      diagnoses: { diagnoses: [] },
     };
 
     for (const kind of RECORD_KINDS) {

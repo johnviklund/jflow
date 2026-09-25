@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
-import { PROJECT_RECORD_DIRECTORY } from "./records.js";
+import { PROJECT_RECORD_DIRECTORY, type TreeEntry } from "./records.js";
 
 /**
  * The helper's only access to Git (issues #7, #10, SPEC.md confirmed
@@ -160,4 +161,37 @@ export function readWorkingTree(root: string): WorkingTree {
     kind: "present",
     changedPaths: changedPaths(root, topLevel, output).filter((path) => !path.startsWith(records)),
   };
+}
+
+export type TreeSnapshot =
+  | { readonly kind: "absent" }
+  | { readonly kind: "unreadable"; readonly message: string }
+  | {
+      readonly kind: "present";
+      /** The checked-out commit; absent before the first commit. */
+      readonly head?: string;
+      readonly files: readonly TreeEntry[];
+    };
+
+/**
+ * The working tree as it stands, precisely enough that any edit shows as a
+ * difference (issue #11): the commit checked out and a hash of each changed
+ * path's content. An unchanged path matches HEAD, so HEAD covers it. The
+ * records under `jflow/` are left out, as they are the helper's to write.
+ */
+export function snapshotWorkingTree(root: string): TreeSnapshot {
+  const tree = readWorkingTree(root);
+  if (tree.kind !== "present") return tree;
+  let head: string | undefined;
+  try {
+    head = readOnlyGit(root, ["rev-parse", "--verify", "--quiet", "HEAD"]).trim();
+  } catch {
+    head = undefined;
+  }
+  const files = tree.changedPaths.map((path): TreeEntry => {
+    const full = join(root, path);
+    if (!existsSync(full)) return { path };
+    return { path, sha256: createHash("sha256").update(readFileSync(full)).digest("hex") };
+  });
+  return head === undefined || head === "" ? { kind: "present", files } : { kind: "present", head, files };
 }

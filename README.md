@@ -88,6 +88,14 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
+- `src/actions/troubleshoot.ts` — the helper side of `troubleshoot`
+  (issue #11). `troubleshoot start` records a failed check in
+  `jflow/diagnoses.json` with a snapshot of the working tree: HEAD and a
+  hash of each changed path. `troubleshoot record` adds the finding,
+  evidence and recommended fix. It is refused if the tree changed in the
+  meantime, and names what changed. `implement fix` records the fix as
+  applied by the started ticket, under recorded authorization. `review
+  start` hands the ticket's diagnoses to the reviewer.
 - `src/actions/completion.ts` — completing a ticket (issue #10, D34).
   `implement complete` refuses a ticket until `validate` has found every
   criterion met and its review passed. It then records the ticket `done`
@@ -174,11 +182,13 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `escalate`, `implement`, `review`, `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `todo`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
+  `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md` and `review.md` so far),
+  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+  `troubleshoot.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in
@@ -195,7 +205,9 @@ on the ChatGPT desktop app; see `skill/references/HOST.md`.
   workflow package or configuration can disable that gate. A review by the
   primary agent or a recorded worker is refused, and review is refused
   until `validate` has found every criterion met.
-- `troubleshoot` and `review` can never edit code.
+- `troubleshoot` and `review` can never edit code. A diagnosis is
+  recorded only once the working tree is confirmed as it was, and its fix
+  only under an authorized `implement`.
 - `implement` and `review` require a local Git repository; `brainstorm` and
   `plan` do not. jflow runs read-only Git commands, apart from a ticket's
   own local commit. It never initializes a repository or discards changes,

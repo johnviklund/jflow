@@ -22,7 +22,7 @@ import type { ValidationIssue } from "../workflow/types.js";
 /**
  * The authoritative project record store (SPEC.md D14, issue #3). Plans,
  * tickets, progress, lessons, Jev fallback status, the wrap resume record,
- * todo items and conflicts live as one JSON file each under a
+ * todo items, conflicts and diagnoses live as one JSON file each under a
  * version-controlled `jflow/` directory, so a fresh conversation recovers full context from files alone.
  *
  * Records keep summaries and trace references only (D23): every schema is
@@ -47,6 +47,7 @@ export const RECORD_KINDS = [
   "resume",
   "todos",
   "conflicts",
+  "diagnoses",
 ] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -470,6 +471,52 @@ export interface ConflictsRecord {
   readonly conflicts: readonly ConflictEntry[];
 }
 
+export const DIAGNOSIS_STATUSES = ["diagnosing", "diagnosed", "applied"] as const;
+
+export type DiagnosisStatus = (typeof DIAGNOSIS_STATUSES)[number];
+
+/** Whether the helper confirmed troubleshoot left the working tree as it was; without Git it cannot. */
+export const TREE_CHECKS = ["unchanged", "unverified"] as const;
+
+export type TreeCheck = (typeof TREE_CHECKS)[number];
+
+/** A changed path's content when troubleshooting began; no hash means it was deleted. */
+export interface TreeEntry {
+  readonly path: string;
+  readonly sha256?: string;
+}
+
+/**
+ * A failed check's diagnosis (D8, issue #11). `troubleshoot` records the
+ * failure, a snapshot of the working tree, and then its finding, the
+ * evidence and a recommended fix, having edited nothing. The fix itself is
+ * made by an authorized `implement` and recorded as `applied`.
+ */
+export interface DiagnosisEntry {
+  readonly id: string;
+  /** The ticket whose check failed, if one was assigned. */
+  readonly ticketId?: string;
+  /** The failed check: its command, exit code and an excerpt of its output. */
+  readonly check: { readonly source: string; readonly exitCode?: number; readonly excerpt: string };
+  readonly status: DiagnosisStatus;
+  readonly startedAt: string;
+  /** The working tree when troubleshooting began; absent without a Git repository. */
+  readonly baseline?: { readonly head?: string; readonly files: readonly TreeEntry[] };
+  readonly diagnosis?: {
+    readonly finding: string;
+    readonly evidence: readonly string[];
+    readonly recommendation: string;
+    readonly recordedAt: string;
+    readonly treeCheck: TreeCheck;
+  };
+  /** The authorized implement that applied the recommended fix. */
+  readonly application?: { readonly ticketId: string; readonly appliedAt: string; readonly note?: string };
+}
+
+export interface DiagnosesRecord {
+  readonly diagnoses: readonly DiagnosisEntry[];
+}
+
 export interface ProjectRecords {
   readonly specification: SpecificationRecord;
   readonly plan: PlanRecord;
@@ -480,6 +527,7 @@ export interface ProjectRecords {
   readonly resume: ResumeRecord;
   readonly todos: TodosRecord;
   readonly conflicts: ConflictsRecord;
+  readonly diagnoses: DiagnosesRecord;
 }
 
 export type RecordReadResult<K extends RecordKind> =
@@ -1413,6 +1461,127 @@ const validateConflicts: Validator<ConflictsRecord> = (value, issues) => {
   return { conflicts };
 };
 
+const validateDiagnoses: Validator<DiagnosesRecord> = (value, issues) => {
+  const doc = requireObject(value, "", ["diagnoses"], issues);
+  if (!doc) return undefined;
+  const diagnoses: DiagnosisEntry[] = [];
+  if (!Array.isArray(doc["diagnoses"])) {
+    issues.add("diagnoses", "must be an array of diagnoses");
+    return { diagnoses };
+  }
+  const ids = new Set<string>();
+  doc["diagnoses"].forEach((entry, index) => {
+    const path = `diagnoses[${index}]`;
+    const item = requireObject(
+      entry,
+      path,
+      ["id", "ticketId", "check", "status", "startedAt", "baseline", "diagnosis", "application"],
+      issues,
+    );
+    if (!item) return;
+    const id = requireNonEmptyString(item["id"], `${path}.id`, issues);
+    if (ids.has(id)) issues.add(`${path}.id`, `duplicate diagnosis id "${id}"`);
+    ids.add(id);
+    const status =
+      validateEnumValue<DiagnosisStatus>(item["status"], `${path}.status`, DIAGNOSIS_STATUSES, issues) ?? "diagnosing";
+
+    const check = requireObject(item["check"], `${path}.check`, ["source", "exitCode", "excerpt"], issues);
+    const exitCode = check?.["exitCode"];
+    if (exitCode !== undefined && !Number.isInteger(exitCode)) issues.add(`${path}.check.exitCode`, "must be an integer");
+
+    let baseline: DiagnosisEntry["baseline"];
+    if (item["baseline"] !== undefined) {
+      const tree = requireObject(item["baseline"], `${path}.baseline`, ["head", "files"], issues);
+      if (tree) {
+        const files: TreeEntry[] = [];
+        if (!Array.isArray(tree["files"])) issues.add(`${path}.baseline.files`, "must be an array");
+        else {
+          tree["files"].forEach((file, fileIndex) => {
+            const at = `${path}.baseline.files[${fileIndex}]`;
+            const f = requireObject(file, at, ["path", "sha256"], issues);
+            if (!f) return;
+            files.push(
+              withOptional<TreeEntry>(
+                { path: requireNonEmptyString(f["path"], `${at}.path`, issues) },
+                { sha256: optionalString(f["sha256"], `${at}.sha256`, issues) },
+              ),
+            );
+          });
+        }
+        baseline = withOptional<NonNullable<DiagnosisEntry["baseline"]>>(
+          { files },
+          { head: optionalString(tree["head"], `${path}.baseline.head`, issues) },
+        );
+      }
+    }
+
+    let diagnosis: DiagnosisEntry["diagnosis"];
+    if (item["diagnosis"] !== undefined) {
+      const d = requireObject(
+        item["diagnosis"],
+        `${path}.diagnosis`,
+        ["finding", "evidence", "recommendation", "recordedAt", "treeCheck"],
+        issues,
+      );
+      if (d) {
+        const treeCheck =
+          validateEnumValue<TreeCheck>(d["treeCheck"], `${path}.diagnosis.treeCheck`, TREE_CHECKS, issues) ?? "unverified";
+        diagnosis = {
+          finding: requireNonEmptyString(d["finding"], `${path}.diagnosis.finding`, issues),
+          evidence: validateStringArray(d["evidence"], `${path}.diagnosis.evidence`, issues),
+          recommendation: requireNonEmptyString(d["recommendation"], `${path}.diagnosis.recommendation`, issues),
+          recordedAt: requireTimestamp(d["recordedAt"], `${path}.diagnosis.recordedAt`, issues),
+          treeCheck,
+        };
+      }
+    }
+    if (status !== "diagnosing" && diagnosis === undefined) {
+      issues.add(`${path}.diagnosis`, "a diagnosed or applied entry must record its diagnosis");
+    }
+
+    let application: DiagnosisEntry["application"];
+    if (item["application"] !== undefined) {
+      const a = requireObject(item["application"], `${path}.application`, ["ticketId", "appliedAt", "note"], issues);
+      if (a) {
+        application = withOptional<NonNullable<DiagnosisEntry["application"]>>(
+          {
+            ticketId: requireNonEmptyString(a["ticketId"], `${path}.application.ticketId`, issues),
+            appliedAt: requireTimestamp(a["appliedAt"], `${path}.application.appliedAt`, issues),
+          },
+          { note: optionalString(a["note"], `${path}.application.note`, issues) },
+        );
+      }
+    }
+    if ((status === "applied") !== (application !== undefined)) {
+      issues.add(`${path}.application`, "must be present exactly when the fix was applied");
+    }
+
+    diagnoses.push(
+      withOptional<DiagnosisEntry>(
+        {
+          id,
+          check: withOptional<DiagnosisEntry["check"]>(
+            {
+              source: requireNonEmptyString(check?.["source"], `${path}.check.source`, issues),
+              excerpt: typeof check?.["excerpt"] === "string" ? check["excerpt"] : "",
+            },
+            { exitCode: typeof exitCode === "number" ? exitCode : undefined },
+          ),
+          status,
+          startedAt: requireTimestamp(item["startedAt"], `${path}.startedAt`, issues),
+        },
+        {
+          ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues),
+          baseline,
+          diagnosis,
+          application,
+        },
+      ),
+    );
+  });
+  return { diagnoses };
+};
+
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
   specification: validateSpecification,
   plan: validatePlan,
@@ -1423,6 +1592,7 @@ const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } =
   resume: validateResume,
   todos: validateTodos,
   conflicts: validateConflicts,
+  diagnoses: validateDiagnoses,
 };
 
 /** Walks the whole document so a credential cannot hide in a nested field (D14, D23). */

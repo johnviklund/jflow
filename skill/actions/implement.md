@@ -31,7 +31,10 @@ implementing it: without recorded authorization, ask. If the block is
      (`actions/review.md`). Report what was done and the evidence.
    - `returned-to-fix`: fix what `criteria` shows as `not-met`, or add the
      check a criterion lacks. Then go back to step 3. `fix.attempts` says
-     how many fixes have already failed.
+     how many fixes have already failed. If the cause of a failed check is
+     not clear, diagnose it first with `troubleshoot`
+     (`actions/troubleshoot.md`). Once its fix is made, record it with
+     `scripts/jflow implement fix <id>` before checking again.
    - `needs-check`: run the commands in `missingChecks`, add their output
      and go back to step 4. This is not a fix attempt.
    - exit 1 with `askHuman` (`awaiting-developer`, the fix limit, or Jev

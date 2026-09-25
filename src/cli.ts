@@ -9,6 +9,13 @@ import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./a
 import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type ReviewInput } from "./actions/review.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
+import {
+  applyDiagnosis,
+  recordDiagnosis,
+  startDiagnosis,
+  type DiagnosisFinding,
+  type DiagnosisStart,
+} from "./actions/troubleshoot.js";
 import { fetchTransport, type JevTransport } from "./jev/client.js";
 import {
   adviseNext,
@@ -98,6 +105,9 @@ Usage:
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
   jflow implement complete [<ticket>]        [--root <dir>] [--config <file>]
+  jflow implement fix <diagnosis> [--note <what was changed>] [--root <dir>]
+  jflow troubleshoot start <failure.json>    [--root <dir>]
+  jflow troubleshoot record <diagnosis.json> [--root <dir>]
   jflow review start                         [--root <dir>] [--config <file>]
   jflow review record <review.json>          [--root <dir>] [--config <file>]
   jflow review decide <ticket> --finding <id> --outcome upheld|withdrawn --note <the developer's words>
@@ -146,7 +156,14 @@ commits or marks the ticket done. "implement complete" does, once the
 ticket passed validate and review: it records the ticket done and, unless
 commitOnSuccess is off, makes one local commit of the ticket's changes and
 the project records, leaving out changes the developer kept or another
-ticket adopted. It never pushes, publishes or merges.
+ticket adopted. It never pushes, publishes or merges. "implement fix"
+records that the ticket in progress applied a diagnosis's recommended fix,
+under recorded execution authorization.
+"troubleshoot start" takes ticketId (default: the ticket in progress) and
+the failed check (source, text, exitCode), and records it with a snapshot
+of the working tree. "troubleshoot record" takes id, finding, evidence and
+recommendation. It is refused if the working tree changed meanwhile:
+troubleshoot never edits code.
 "review start" opens review of the assigned ticket once validate found
 every criterion met, and returns the reviewer's context, the review model
 and the agents that may not review. "review record" takes ticketId,
@@ -626,8 +643,16 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
 async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
+  if (subcommand === "fix") {
+    if (target === undefined) {
+      io.stderr(`implement fix needs a diagnosis id\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    const note = args.options["note"];
+    return report(applyDiagnosis(root, { id: target, ...(note === undefined ? {} : { note }) }, { now: new Date().toISOString() }), io);
+  }
   if (subcommand !== "start" && subcommand !== "check" && subcommand !== "complete") {
-    io.stderr(`implement needs one of start, check, complete\n${USAGE}`);
+    io.stderr(`implement needs one of start, check, complete, fix\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);
@@ -647,6 +672,27 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   const read = readDraft<CheckInput>(target, "implement check", io);
   if (!read.ok) return read.exit;
   return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io)), io);
+}
+
+function runTroubleshoot(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const now = new Date().toISOString();
+  switch (subcommand) {
+    case "start": {
+      const read = readDraft<DiagnosisStart>(target, "troubleshoot start", io);
+      if (!read.ok) return read.exit;
+      return report(startDiagnosis(root, read.draft, { now }), io);
+    }
+    case "record": {
+      const read = readDraft<DiagnosisFinding>(target, "troubleshoot record", io);
+      if (!read.ok) return read.exit;
+      return report(recordDiagnosis(root, read.draft, { now }), io);
+    }
+    default:
+      io.stderr(`troubleshoot needs one of start, record\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
 }
 
 async function runReview(args: ParsedArgs, io: CliIo): Promise<number> {
@@ -804,6 +850,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "review":
       return runReview(args, io);
+
+    case "troubleshoot":
+      return runTroubleshoot(args, io);
 
     case "ticket":
       return runTicket(args, io);

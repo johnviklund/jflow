@@ -12,6 +12,7 @@ import {
   validateRecord,
   writeRecord,
   type ConsequentialArea,
+  type DiagnosisEntry,
   type FindingDispute,
   type FindingKind,
   type ProgressRecord,
@@ -37,6 +38,7 @@ import {
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 import { resolveAction, type ResolutionContext } from "./resolve.js";
 import { recordTodo } from "./todo.js";
+import { readTicketDiagnoses } from "./troubleshoot.js";
 
 /**
  * The helper's part of `review` (issue #9, D31-D33, D47, D48, D51): the gate
@@ -69,6 +71,8 @@ export interface StartedReview {
   readonly stageModel?: StageModelConfiguration;
   /** The previous review, whose blocking findings a re-review checks again. */
   readonly previousReview?: TicketReview;
+  /** Diagnoses of the ticket's failed checks, as evidence (issue #11). */
+  readonly diagnoses: readonly DiagnosisEntry[];
   readonly fix: { readonly attempts: number; readonly limit: number };
 }
 
@@ -152,6 +156,8 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
   const { ticket, progress } = working;
   const validation = progress.validations?.[ticket.id];
   if (validation === undefined || !admittedToReview(progress, ticket.id)) return refuse(notAdmitted(progress, ticket.id));
+  const diagnosed = readTicketDiagnoses(root, ticket.id);
+  if (!diagnosed.ok) return diagnosed;
   const evidence = `${EVIDENCE_DIRECTORY}/${encodeURIComponent(ticket.id)}.json`;
   const previousReview = progress.reviews?.[ticket.id];
   return {
@@ -163,6 +169,7 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
       implementers: implementersOf(progress, ticket.id),
       ...(resolution.stageModel === undefined ? {} : { stageModel: resolution.stageModel }),
       ...(previousReview === undefined ? {} : { previousReview }),
+      diagnoses: diagnosed.diagnoses,
       fix: { attempts: progress.fixAttempts?.[ticket.id] ?? 0, limit: fixLimit(context) },
     },
   };

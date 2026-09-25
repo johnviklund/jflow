@@ -65,6 +65,8 @@ that holds only:
 - the ticket's changes, as the reviewer reads them from the working tree
   itself (for example `git diff`);
 - the recorded verification evidence and the `validation` verdicts;
+- `diagnoses`: each failed check's diagnosis and whether its fix was
+  applied;
 - on a re-review, `previousReview`'s blocking findings, to check again.
 
 Do not give it the conversation, your reasoning, or your own view of the
