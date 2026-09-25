@@ -18,6 +18,7 @@ import {
   type JevTransport,
   type RequestFrame,
 } from "./client.js";
+import { recordFailure, recordRecovery } from "./fallback.js";
 import { buildEvidencePacket, sharingLimitsFrom, type EvidenceExcerpt, type EvidencePacket } from "./evidence.js";
 import { ensureLocalDirectory } from "./traces.js";
 
@@ -104,7 +105,16 @@ export interface DecisionDependencies {
   readonly now: () => string;
   /** Loads a declared decision's question; defaults to the shipped question file. */
   readonly readQuestion?: (decision: string) => DecisionQuestion;
+  /** Waits between retries; defaults to a real timer. Injected by tests. */
+  readonly sleep?: (ms: number) => Promise<void>;
+  /** The stage asking, for a fallback approved for one stage (issue #18). */
+  readonly stage?: string;
 }
+
+/** The first retry waits this long; each later one twice as long as the one before. */
+const RETRY_BACKOFF_MS = 1000;
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** What one decision is asked over; the packet is bounded from it (D22). */
 export interface DecisionInput {
@@ -116,7 +126,18 @@ export interface DecisionInput {
 export type AskDecisionResult =
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "needs-configuration"; readonly askHuman: string; readonly mayProceedWithoutJev: false }
-  | { readonly kind: "failed"; readonly failure: JevFailure }
+  | {
+      readonly kind: "failed";
+      readonly failure: JevFailure;
+      /** Calls made, the first included; a failure that is not temporary is never retried. */
+      readonly attempts: number;
+      /**
+       * `approved`: the developer approved continuing without Jev here, so the
+       * agent's own assessment decides (`jev assess`). `awaiting-approval`: the
+       * developer is asked first.
+       */
+      readonly fallback: "approved" | "awaiting-approval";
+    }
   | { readonly kind: "answered"; readonly envelope: DecisionEnvelope };
 
 /** Routes an answer by its question's acceptance, its confidence and the decision's authority. */
@@ -214,17 +235,35 @@ export async function askDecision(
   const knownSecrets = dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [];
   const packet = buildEvidencePacket({ decision, ...input }, sharingLimitsFrom(configuration), { knownSecrets });
   const timeoutMs = configuration.settings["jev.timeoutMs"];
-  const result = await askJev(
-    { question, evidence: packet },
-    {
-      root,
-      apiKey: dependencies.apiKey,
-      transport: dependencies.transport,
-      timeoutMs: typeof timeoutMs === "number" ? timeoutMs : 30000,
-      now: dependencies.now,
-    },
-  );
-  if (result.kind !== "answered") return result;
+  const retryCount = configuration.settings["jev.retryCount"];
+  const retries = typeof retryCount === "number" ? retryCount : 2;
+  const sleep = dependencies.sleep ?? realSleep;
+  const options = {
+    root,
+    apiKey: dependencies.apiKey,
+    transport: dependencies.transport,
+    timeoutMs: typeof timeoutMs === "number" ? timeoutMs : 30000,
+    now: dependencies.now,
+  };
+  // A temporary failure is retried with growing backoff; any other failure is surfaced at once (D16).
+  let result = await askJev({ question, evidence: packet }, options);
+  let attempts = 1;
+  while (result.kind === "failed" && result.failure.retryable && attempts <= retries) {
+    await sleep(RETRY_BACKOFF_MS * 2 ** (attempts - 1));
+    result = await askJev({ question, evidence: packet }, options);
+    attempts += 1;
+  }
+  if (result.kind === "needs-configuration") return result;
+  if (result.kind === "failed") {
+    const recorded = recordFailure(root, decision, result.failure, {
+      now: dependencies.now(),
+      ...(dependencies.stage === undefined ? {} : { stage: dependencies.stage }),
+    });
+    if (!recorded.ok) return { kind: "refused", reason: recorded.reason };
+    return { kind: "failed", failure: result.failure, attempts, fallback: recorded.fallback };
+  }
+  const recovered = recordRecovery(root, decision, { now: dependencies.now() });
+  if (!recovered.ok) return { kind: "refused", reason: recovered.reason };
 
   const { summary } = result;
   const routed = routeAnswer(workflowPackage, question, summary);

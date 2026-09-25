@@ -25,6 +25,9 @@ An agent assigned work within a workflow stage using that stage's configured mod
 **Independent review**:
 Assessment by a separate reviewer agent that did not implement the changes. The reviewer may use the same model as the implementer; self-review does not qualify.
 
+**Jev fallback**:
+Continuing without Jev after its retries are exhausted, only with the developer's recorded approval for the current ticket or stage, or the whole plan when they broaden it. Where Jev gives no usable answer, the primary agent's recorded evidence assessment decides an advisory judgment; a binding one stays the developer's.
+
 **Integrated review**:
 The independent review of a whole plan once every ticket is done, checking how the tickets work together and the plan's acceptance criteria. A plan with one ticket has its ticket review cover both scopes instead.
 

@@ -643,6 +643,30 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(finished.json()).toMatchObject({ ok: true, outcome: { assignment: { status: "finished" } } });
   });
 
+  it("retries a failing Jev, then waits for the developer's approval to go on without it, shown in status", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" } });
+    const sent: string[] = [];
+    const down: NonNullable<CliIo["jev"]> = {
+      env: { JFLOW_JEV_API_KEY: KEY },
+      transport: async (request) => {
+        sent.push(request.body);
+        return { status: 503, body: "overloaded" };
+      },
+      sleep: async () => undefined,
+    };
+    h.writeFile(".jflow/input.json", JSON.stringify({ taskSummary: "what next", candidates: [], excerpts: [] }));
+
+    const asked = await run(["decide", "ask", "next-action", join(h.root, ".jflow", "input.json")], h.root, {}, down);
+    const approved = await run(["jev", "approve", "--scope", "ticket", "--note", "go on without it for T1"], h.root);
+    const status = await run(["status"], h.root);
+
+    expect(sent).toHaveLength(3);
+    expect(asked.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(asked.json()).toMatchObject({ decision: { kind: "failed", attempts: 3, fallback: "awaiting-approval" } });
+    expect(approved.json()).toMatchObject({ ok: true, outcome: { fallback: { status: "approved", scope: "ticket", scopeId: "T1" } } });
+    expect(JSON.stringify(status.json())).toContain('"status": "approved"'.replace(": ", ":"));
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

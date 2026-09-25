@@ -88,6 +88,19 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
+- `src/jev/fallback.ts`, `assessment.ts` — Jev failure and fallback
+  (issue #18, D16, D17). `askDecision` retries a temporary failure
+  `jev.retryCount` times (default 2) with doubling backoff and the finite
+  `jev.timeoutMs`. It never retries an authentication or invalid-request
+  error. A decision still unanswered sets the fallback to
+  `awaiting-approval` with the pending decision. `jev approve` records the
+  developer's approval for the ticket in progress, one stage, or the whole
+  plan when they broaden it. `status` shows the fallback. The next answer
+  returns to normal use, and every change is logged in the Jev record's
+  history. `jev assess` records the primary agent's evidence assessment
+  where an answer was not relied on, or was missing for the failure on
+  record under an approved fallback. A consequential case, or any binding
+  decision, goes to the developer. The retry count is separate from `review.fixRetryLimit`.
 - `src/actions/workers.ts` — stage workers (issue #15, D18-D20). `worker
   assign` records a worker before it runs in `jflow/workers.json`: its
   stage, declared role, agent and the model reported for it. The helper

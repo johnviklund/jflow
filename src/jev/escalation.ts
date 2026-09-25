@@ -149,7 +149,9 @@ export async function askEscalation(
         askHuman: humanAskAt(
           kind,
           summary,
-          `Jev could not be asked: ${result.failure.error}; continuing without Jev needs your approval.`,
+          result.fallback === "approved"
+            ? `Jev could not be asked after ${result.attempts} attempt${result.attempts === 1 ? "" : "s"}: ${result.failure.error}; continuing without Jev is approved, and without Jev whether to ask you here is yours to decide.`
+            : `Jev could not be asked after ${result.attempts} attempt${result.attempts === 1 ? "" : "s"}: ${result.failure.error}; continuing without Jev needs your approval (jev approve).`,
         ),
         decision,
       };

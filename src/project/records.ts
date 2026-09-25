@@ -399,7 +399,8 @@ export interface LessonsRecord {
   readonly lessons: readonly LessonRecord[];
 }
 
-export const FALLBACK_SCOPES = ["ticket", "stage"] as const;
+/** `plan` is only ever the developer's explicit broadening (D17, issue #18). */
+export const FALLBACK_SCOPES = ["ticket", "stage", "plan"] as const;
 
 export type FallbackScope = (typeof FALLBACK_SCOPES)[number];
 
@@ -426,7 +427,35 @@ export interface JevRecord {
     readonly approvedAt?: string;
     /** A reference to the local trace, never its content (D23). */
     readonly traceReference?: string;
+    /** The developer's words of approval, recorded as said. */
+    readonly approvalNote?: string;
   };
+  /** Every change of fallback status, so leaving and returning to Jev is on record (issue #18). */
+  readonly history?: readonly { readonly status: FallbackStatus; readonly at: string; readonly note: string }[];
+  /** The primary agent's own assessments where Jev's answer was uncertain or unusable (issue #18). */
+  readonly assessments?: readonly JevAssessment[];
+}
+
+export const ASSESSMENT_STATUSES = ["resolved", "escalated"] as const;
+
+export type AssessmentStatus = (typeof ASSESSMENT_STATUSES)[number];
+
+/**
+ * The primary agent's evidence assessment where Jev gave no usable answer:
+ * an uncertain one (its envelope) or none at all (the failure's trace).
+ * `escalated` went to the developer under the escalation rules.
+ */
+export interface JevAssessment {
+  readonly id: string;
+  readonly decision: string;
+  readonly envelope?: string;
+  readonly traceReference?: string;
+  readonly assessment: string;
+  readonly evidence: readonly string[];
+  readonly resolution: string;
+  readonly consequential: boolean;
+  readonly status: AssessmentStatus;
+  readonly recordedAt: string;
 }
 
 /** What `wrap` leaves behind so the next session can resume (D15, user story 18). */
@@ -1344,12 +1373,12 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
 };
 
 const validateJev: Validator<JevRecord> = (value, issues) => {
-  const doc = requireObject(value, "", ["fallback"], issues);
+  const doc = requireObject(value, "", ["fallback", "history", "assessments"], issues);
   if (!doc) return undefined;
   const fallback = requireObject(
     doc["fallback"],
     "fallback",
-    ["status", "pendingDecision", "reason", "scope", "scopeId", "approvedAt", "traceReference"],
+    ["status", "pendingDecision", "reason", "scope", "scopeId", "approvedAt", "traceReference", "approvalNote"],
     issues,
   );
   if (!fallback) return undefined;
@@ -1381,6 +1410,71 @@ const validateJev: Validator<JevRecord> = (value, issues) => {
   if (status === "off" && scope !== undefined) {
     issues.add("fallback.scope", "must be absent when no fallback is in effect");
   }
+  const scopeId = optionalString(fallback["scopeId"], "fallback.scopeId", issues);
+  // A ticket or stage approval names which one; the whole plan only by explicit broadening, naming none.
+  if ((scope === "ticket" || scope === "stage") && scopeId === undefined) {
+    issues.add("fallback.scopeId", `a ${scope}-scoped approval must name the ${scope}`);
+  }
+  if (scope === "plan" && scopeId !== undefined) issues.add("fallback.scopeId", "must be absent for the whole plan");
+
+  let history: JevRecord["history"];
+  if (doc["history"] !== undefined) {
+    const entries: { status: FallbackStatus; at: string; note: string }[] = [];
+    history = entries;
+    if (!Array.isArray(doc["history"])) issues.add("history", "must be an array");
+    else {
+      doc["history"].forEach((entry, index) => {
+        const at = `history[${index}]`;
+        const item = requireObject(entry, at, ["status", "at", "note"], issues);
+        if (!item) return;
+        entries.push({
+          status: validateEnumValue<FallbackStatus>(item["status"], `${at}.status`, FALLBACK_STATUSES, issues) ?? "off",
+          at: requireTimestamp(item["at"], `${at}.at`, issues),
+          note: requireNonEmptyString(item["note"], `${at}.note`, issues),
+        });
+      });
+    }
+  }
+
+  let assessments: JevAssessment[] | undefined;
+  if (doc["assessments"] !== undefined) {
+    const entries: JevAssessment[] = [];
+    assessments = entries;
+    if (!Array.isArray(doc["assessments"])) issues.add("assessments", "must be an array");
+    else {
+      doc["assessments"].forEach((entry, index) => {
+        const at = `assessments[${index}]`;
+        const item = requireObject(
+          entry,
+          at,
+          ["id", "decision", "envelope", "traceReference", "assessment", "evidence", "resolution", "consequential", "status", "recordedAt"],
+          issues,
+        );
+        if (!item) return;
+        const evidence = validateStringArray(item["evidence"], `${at}.evidence`, issues);
+        if (evidence.length === 0) issues.add(`${at}.evidence`, "an assessment rests on evidence");
+        entries.push(
+          withOptional<JevAssessment>(
+            {
+              id: requireNonEmptyString(item["id"], `${at}.id`, issues),
+              decision: requireNonEmptyString(item["decision"], `${at}.decision`, issues),
+              assessment: requireNonEmptyString(item["assessment"], `${at}.assessment`, issues),
+              evidence,
+              resolution: requireNonEmptyString(item["resolution"], `${at}.resolution`, issues),
+              consequential: requireBoolean(item["consequential"], `${at}.consequential`, issues),
+              status:
+                validateEnumValue<AssessmentStatus>(item["status"], `${at}.status`, ASSESSMENT_STATUSES, issues) ?? "escalated",
+              recordedAt: requireTimestamp(item["recordedAt"], `${at}.recordedAt`, issues),
+            },
+            {
+              envelope: optionalString(item["envelope"], `${at}.envelope`, issues),
+              traceReference: optionalString(item["traceReference"], `${at}.traceReference`, issues),
+            },
+          ),
+        );
+      });
+    }
+  }
 
   return {
     fallback: withOptional<JevRecord["fallback"]>(
@@ -1389,15 +1483,18 @@ const validateJev: Validator<JevRecord> = (value, issues) => {
         pendingDecision,
         reason: optionalString(fallback["reason"], "fallback.reason", issues),
         scope,
-        scopeId: optionalString(fallback["scopeId"], "fallback.scopeId", issues),
+        scopeId,
         approvedAt: optionalTimestamp(fallback["approvedAt"], "fallback.approvedAt", issues),
         traceReference: optionalString(
           fallback["traceReference"],
           "fallback.traceReference",
           issues,
         ),
+        approvalNote: optionalString(fallback["approvalNote"], "fallback.approvalNote", issues),
       },
     ),
+    ...(history === undefined ? {} : { history }),
+    ...(assessments === undefined ? {} : { assessments }),
   };
 };
 

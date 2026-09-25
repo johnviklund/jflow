@@ -245,13 +245,14 @@ export async function validateTicket(
       if (result.kind === "refused") return result;
       if (result.kind === "needs-configuration" || result.kind === "failed") {
         const why = result.kind === "failed" ? `Jev could not be asked: ${result.failure.error}` : result.askHuman;
+        // validate is binding and judges the agent's own work (D38, D47): without Jev its verdicts are the developer's.
+        const next =
+          result.kind === "failed" && result.fallback === "approved"
+            ? "Continuing without Jev is approved, but validate is binding, so each criterion's verdict is yours (ticket override --by developer)."
+            : "Continuing without Jev needs your approval.";
         return {
           kind: result.kind,
-          askHuman: humanAskAt(
-            "continue-without-jev",
-            `Ticket ${ticket.id} cannot be validated`,
-            `${why} Continuing without Jev needs your approval.`,
-          ),
+          askHuman: humanAskAt("continue-without-jev", `Ticket ${ticket.id} cannot be validated`, `${why} ${next}`),
         };
       }
       criteria.push(judgmentFrom(criterion, result.envelope));

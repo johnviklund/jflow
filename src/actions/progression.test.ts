@@ -84,6 +84,7 @@ function dependencies(h: ProjectHarness, transport: JevTransport): DecisionDepen
     apiKey: { status: "configured", source: "environment", key: "jev-test-key-0123456789" },
     transport,
     now: () => now,
+    sleep: async () => undefined,
   };
 }
 

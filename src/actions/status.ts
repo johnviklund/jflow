@@ -1,4 +1,7 @@
+import { readRecord, type JevRecord } from "../project/records.js";
 import { readProjectState } from "../project/state.js";
+
+const NO_FALLBACK: JevRecord["fallback"] = { status: "off" };
 import {
   resolveAction,
   type ResolutionContext,
@@ -22,6 +25,8 @@ export type StatusReport =
       readonly project: "uninitialized" | "initialized";
       readonly state: WorkflowState;
       readonly actions: readonly ActionStatus[];
+      /** Whether the workflow runs with Jev or without it, and under what approval (D16, D17, issue #18). */
+      readonly jev: { readonly fallback: JevRecord["fallback"] };
     }
   | { readonly project: "malformed"; readonly path: string; readonly problem: string };
 
@@ -35,6 +40,15 @@ export function runStatus(root: string, context: ResolutionContext): StatusRepor
     return { project: "malformed", path: read.path, problem: read.message };
   }
 
+  const jev = readRecord(root, "jev");
+  if (jev.kind === "malformed") {
+    return {
+      project: "malformed",
+      path: jev.path,
+      problem: jev.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+    };
+  }
+
   const actions = context.workflowPackage.actions.map((action): ActionStatus => {
     const resolution = resolveAction({ action: action.name }, read.state, context);
     return resolution.status === "blocked"
@@ -42,5 +56,10 @@ export function runStatus(root: string, context: ResolutionContext): StatusRepor
       : { name: action.name, status: "eligible", unmet: [] };
   });
 
-  return { project: read.kind, state: read.state, actions };
+  return {
+    project: read.kind,
+    state: read.state,
+    actions,
+    jev: { fallback: jev.kind === "present" ? jev.record.fallback : NO_FALLBACK },
+  };
 }

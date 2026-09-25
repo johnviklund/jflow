@@ -33,6 +33,8 @@ import {
   type DecisionInput,
 } from "./jev/decisions.js";
 import { askEscalation, type Boundary } from "./jev/escalation.js";
+import { assessWithoutJev, type AssessmentInput } from "./jev/assessment.js";
+import { approveFallback } from "./jev/fallback.js";
 import { overrideCriterion, validateTicket, type ValidationInput, type TicketValidationResult } from "./jev/ticket-validation.js";
 import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
@@ -78,6 +80,8 @@ export interface CliIo {
   readonly jev?: {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly transport: JevTransport;
+    /** Waits between retries; a real timer unless a test injects one. */
+    readonly sleep?: (ms: number) => Promise<void>;
   };
 }
 
@@ -104,7 +108,7 @@ Usage:
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
-  jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
+  jflow escalate <boundary.json>             [--stage <name>] [--root <dir>] [--config <file>]
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
   jflow implement complete [<ticket>]        [--root <dir>] [--config <file>]
@@ -129,6 +133,8 @@ Usage:
                     --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
   jflow conflict raise <draft.json>          [--root <dir>]
   jflow conflict decide <id> --note <the developer's words> [--root <dir>]
+  jflow jev approve --scope ticket|stage|plan [--stage <name>] --note <the developer's words> [--root <dir>]
+  jflow jev assess <assessment.json>         [--stage <name>] [--root <dir>]
   jflow traces list  [--root <dir>]
   jflow traces clean [--root <dir>]
   jflow help
@@ -226,6 +232,19 @@ specification-acceptance, plan-acceptance) always ask and never reach Jev.
 workflow-rules, permissions) and, for a technical disagreement,
 investigation (finding, evidence, conclusive); a consequential or
 inconclusive one waits for the developer and never reaches Jev.
+A Jev call that fails temporarily is retried jev.retryCount times with
+growing backoff; an authentication or invalid-request error is not.
+Once it cannot be answered, continuing without Jev waits for the
+developer: "jev approve" records their approval for the ticket in
+progress, a named stage, or, only when they broaden it, the whole plan.
+The implement, ticket and review commands ask as their own stage; pass
+--stage to decide ask and escalate so a stage approval applies there.
+Without a usable answer a binding decision (escalate, validate) is the
+developer's, approval or not. "jev assess"
+records your own evidence assessment where Jev's answer was uncertain
+(envelope) or missing (traceReference): decision, assessment, evidence,
+resolution and consequential. A consequential case, or a binding decision
+below its threshold, goes to the developer. "status" shows the fallback.
 "traces clean" deletes the local Jev traces under .jflow/traces; run it only
 when the developer asks. Project records keep their summaries.
 `;
@@ -256,6 +275,7 @@ const KNOWN_OPTIONS = [
   "outcome",
   "recommendation",
   "blocker",
+  "stage",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -354,13 +374,15 @@ function exitCodeFor(outcome: DispatchOutcome): number {
   }
 }
 
-function decisionDependencies(context: ResolutionContext, io: CliIo): DecisionDependencies {
+function decisionDependencies(context: ResolutionContext, io: CliIo, stage?: string): DecisionDependencies {
   const jev = io.jev ?? { env: process.env, transport: fetchTransport };
   return {
     context,
     apiKey: resolveJevApiKey({ env: jev.env }),
     transport: jev.transport,
     now: () => new Date().toISOString(),
+    ...(jev.sleep === undefined ? {} : { sleep: jev.sleep }),
+    ...(stage === undefined ? {} : { stage }),
   };
 }
 
@@ -572,7 +594,7 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
       }
       const read = readDraft<DecisionInput>(inputPath, "decide ask", io);
       if (!read.ok) return read.exit;
-      const result = await askDecision(root, target, read.draft, decisionDependencies(built.context, io));
+      const result = await askDecision(root, target, read.draft, decisionDependencies(built.context, io, args.options["stage"]));
       const decision = reportDecision(result);
       io.stdout(`${JSON.stringify({ ok: result.kind === "answered", decision }, null, 2)}\n`);
       return result.kind === "answered" ? EXIT_OK : EXIT_NEEDS_HUMAN;
@@ -640,7 +662,7 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
     io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
     return built.exit;
   }
-  const dependencies = decisionDependencies(built.context, io);
+  const dependencies = decisionDependencies(built.context, io, "implement");
   if (subcommand === "validate") {
     const read = readDraft<ValidationInput>(target, "ticket validate", io);
     if (!read.ok) return read.exit;
@@ -710,7 +732,7 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
     return built.exit;
   }
   if (subcommand === "next") {
-    const result = await nextTicket(root, decisionDependencies(built.context, io));
+    const result = await nextTicket(root, decisionDependencies(built.context, io, "implement"));
     io.stdout(`${JSON.stringify({ ok: result.kind !== "refused", ...result }, null, 2)}\n`);
     // Waiting and asking are the developer's; a start or a check to make is the agent's.
     return result.kind === "started" || result.kind === "needs-independence-check" || result.kind === "finished"
@@ -728,7 +750,7 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   const read = readDraft<CheckInput>(target, "implement check", io);
   if (!read.ok) return read.exit;
-  return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io)), io);
+  return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io, "implement")), io);
 }
 
 function runWorker(args: ParsedArgs, io: CliIo): number {
@@ -793,7 +815,7 @@ async function runPlanReview(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   if (subcommand === "start") return report(startPlanReview(root, built.context), io);
 
-  const dependencies = decisionDependencies(built.context, io);
+  const dependencies = decisionDependencies(built.context, io, "review");
   let result;
   if (subcommand === "record") {
     const read = readDraft<{ reviewer: ReviewInput["reviewer"]; findings: FindingInput[] }>(target, "review plan record", io);
@@ -826,7 +848,7 @@ async function runReview(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   if (subcommand === "start") return report(startReview(root, built.context), io);
 
-  const dependencies = decisionDependencies(built.context, io);
+  const dependencies = decisionDependencies(built.context, io, "review");
   let result;
   if (subcommand === "record") {
     const read = readDraft<ReviewInput>(target, "review record", io);
@@ -857,7 +879,7 @@ async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   const read = readDraft<Boundary>(args.positional[0], "escalate", io);
   if (!read.ok) return read.exit;
-  const result = await askEscalation(root, read.draft, decisionDependencies(built.context, io));
+  const result = await askEscalation(root, read.draft, decisionDependencies(built.context, io, args.options["stage"]));
   io.stdout(`${JSON.stringify({ ok: result.kind !== "refused", ...result }, null, 2)}\n`);
   return result.kind !== "refused" && !result.ask ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
@@ -885,6 +907,36 @@ function runConflict(args: ParsedArgs, io: CliIo): number {
     }
     default:
       io.stderr(`conflict needs one of raise, decide\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
+function runJev(args: ParsedArgs, io: CliIo): number {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const now = new Date().toISOString();
+  const stage = args.options["stage"];
+  switch (subcommand) {
+    case "approve": {
+      const scope = args.options["scope"];
+      if (scope !== "ticket" && scope !== "stage" && scope !== "plan") {
+        io.stderr(`jev approve needs --scope ticket|stage|plan\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(
+        approveFallback(root, { scope, note: args.options["note"] ?? "", ...(stage === undefined ? {} : { stage }) }, { now }),
+        io,
+      );
+    }
+    case "assess": {
+      const read = readDraft<AssessmentInput>(target, "jev assess", io);
+      if (!read.ok) return read.exit;
+      const result = assessWithoutJev(root, read.draft, { now, ...(stage === undefined ? {} : { stage }) });
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+    default:
+      io.stderr(`jev needs one of approve, assess\n${USAGE}`);
       return EXIT_NEEDS_HUMAN;
   }
 }
@@ -979,6 +1031,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "conflict":
       return runConflict(args, io);
+
+    case "jev":
+      return runJev(args, io);
 
     case "traces":
       return runTraces(args, io);

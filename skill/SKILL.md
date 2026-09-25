@@ -25,6 +25,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | --- | --- |
 | `scripts/jflow status` | Where the project stands and which actions could run now. Always safe. |
 | `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant, and Jev's advisory `next-action` answer. Writes no project record; see `actions/next.md`. |
+| `scripts/jflow jev approve\|assess` | Record the developer's approval to continue without Jev for a scope, and your own evidence assessment where Jev's answer was uncertain or missing; see `references/DECISIONS.md`. |
 | `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
 | `scripts/jflow implement start\|check\|complete\|fix\|next\|park\|independence` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, record a diagnosis's fix, and once review passes, record it done with its local commit. Under whole-plan authorization, move to the next ticket, park a blocked one, and record independence checks; see `actions/implement.md`. |

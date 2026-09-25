@@ -24,12 +24,49 @@ helper also bounds the packet.
 
 - `decision.kind` is `needs-configuration`: ask the developer the
   `askHuman` question. Do not go on as if Jev had answered.
-- `failed`: report the failure. What happens next is the developer's.
+- `failed`: Jev could not answer. The helper already retried a temporary
+  failure (`attempts`), and never retries an authentication or
+  invalid-request error. See "When Jev cannot answer".
 - `refused`: the name is not a declared decision. Do not invent one.
 - `answered`: read `route`.
 
 Every answer is stored as an envelope under `.jflow/envelopes/`. Quote its
 `envelope` id whenever you report the answer.
+
+## When Jev cannot answer
+
+A failed decision sets the Jev fallback, which `scripts/jflow status`
+shows. Act on `fallback`:
+
+- `awaiting-approval`: tell the developer what failed and that continuing
+  without Jev needs their approval. Wait. Record their answer with
+  `scripts/jflow jev approve --scope ticket|stage|plan [--stage <name>]
+  --note "<their words>"`. Use `ticket` for the ticket in progress or
+  `stage` for one named stage. Use `plan` only when they said the whole
+  plan. Never widen what they said.
+- `approved`: continuing without Jev is approved here. Do not ask for
+  approval again within its scope. Decide an advisory decision from your
+  own evidence, and record it (below). A binding decision (`escalate`,
+  `validate`) without a usable answer stays the developer's: `escalate`
+  still asks at its boundary, and `validate`'s verdicts are theirs
+  (`ticket override --by developer`).
+
+When an answer is not relied on (below its threshold, or to wording not
+yet accepted), or is missing under an approved fallback, record your
+assessment. A missing answer's `traceReference` is the one the fallback
+shows in `status`. Write a file outside the
+project with `decision`, `envelope` (uncertain) or `traceReference`
+(missing), `assessment`, `evidence`, `resolution` and `consequential`.
+Then run `scripts/jflow jev assess <assessment.json>`. Set `consequential`
+when the case touches requirements, scope, workflow rules or permissions.
+A consequential case, or a binding decision, comes back with `askHuman`:
+put it to the developer, with your resolution as the recommendation, and
+wait. `implement`, `ticket` and `review` commands ask as their own stage. Pass
+`--stage` to `decide ask`, `escalate` and `jev assess` when a stage
+approval applies there.
+
+Jev is asked again at every decision. The first answer ends the fallback,
+and the helper records the recovery.
 
 ## Routes
 
