@@ -525,6 +525,43 @@ function validateQuestionFile(
   return issues.count === before ? version : undefined;
 }
 
+/** A question wording proposed for a declared decision, checked as its question file would be. */
+export interface ProposedQuestion {
+  readonly decision: string;
+  readonly version: number;
+  readonly status: QuestionStatus;
+  readonly prompt: string;
+  readonly answers: readonly string[];
+  readonly reasons: readonly string[];
+}
+
+export type ProposedQuestionResult =
+  | { readonly ok: true; readonly question: ProposedQuestion }
+  | { readonly ok: false; readonly issues: readonly ValidationIssue[] };
+
+/**
+ * Validates a proposed question for `decision` by the rules its question
+ * file follows (issue #27): replay asks Jev only with wording the package
+ * could ship. Nothing is written.
+ */
+export function validateProposedQuestion(value: unknown, decision: string): ProposedQuestionResult {
+  const issues = new IssueCollector();
+  validateQuestionFile(JSON.stringify(value ?? null), "proposed question", decision, issues);
+  if (!issues.ok) return { ok: false, issues: issues.issues };
+  const file = value as ProposedQuestion;
+  return {
+    ok: true,
+    question: {
+      decision,
+      version: file.version,
+      status: file.status,
+      prompt: file.prompt,
+      answers: file.answers,
+      reasons: file.reasons,
+    },
+  };
+}
+
 function validateDecision(
   value: unknown,
   name: string,

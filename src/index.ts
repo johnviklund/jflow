@@ -7,7 +7,10 @@
 
 export {
   loadShippedWorkflowPackage,
+  validateProposedQuestion,
   validateWorkflowPackage,
+  type ProposedQuestion,
+  type ProposedQuestionResult,
   type QuestionFileReader,
   type ValidationOptions,
   type ValidationResult,
@@ -310,6 +313,16 @@ export {
   type EscalationResult,
   type HardRule,
 } from "./jev/escalation.js";
+
+export {
+  replayDecision,
+  type ReplayChange,
+  type ReplayDirection,
+  type ReplayProposal,
+  type ReplayReport,
+  type ReplayResult,
+  type ReplayTally,
+} from "./jev/replay.js";
 
 export {
   decideConflict,

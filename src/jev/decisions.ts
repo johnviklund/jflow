@@ -14,6 +14,7 @@ import {
   loadDecisionQuestion,
   REQUEST_FRAME,
   type DecisionQuestion,
+  type JevClientOptions,
   type JevFailure,
   type JevTransport,
   type RequestFrame,
@@ -217,6 +218,18 @@ function questionLoader(dependencies: DecisionDependencies): (decision: string) 
   return dependencies.readQuestion ?? ((name) => loadDecisionQuestion(dependencies.context.workflowPackage, name));
 }
 
+/** How one Jev call is made from the configuration: key, transport, timeout and clock. */
+export function jevClientOptions(root: string, dependencies: DecisionDependencies): JevClientOptions {
+  const timeoutMs = dependencies.context.configuration.settings["jev.timeoutMs"];
+  return {
+    root,
+    apiKey: dependencies.apiKey,
+    transport: dependencies.transport,
+    timeoutMs: typeof timeoutMs === "number" ? timeoutMs : 30000,
+    now: dependencies.now,
+  };
+}
+
 export async function askDecision(
   root: string,
   decision: string,
@@ -234,17 +247,10 @@ export async function askDecision(
   const question = questionLoader(dependencies)(decision);
   const knownSecrets = dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [];
   const packet = buildEvidencePacket({ decision, ...input }, sharingLimitsFrom(configuration), { knownSecrets });
-  const timeoutMs = configuration.settings["jev.timeoutMs"];
   const retryCount = configuration.settings["jev.retryCount"];
   const retries = typeof retryCount === "number" ? retryCount : 2;
   const sleep = dependencies.sleep ?? realSleep;
-  const options = {
-    root,
-    apiKey: dependencies.apiKey,
-    transport: dependencies.transport,
-    timeoutMs: typeof timeoutMs === "number" ? timeoutMs : 30000,
-    now: dependencies.now,
-  };
+  const options = jevClientOptions(root, dependencies);
   // A temporary failure is retried with growing backoff; any other failure is surfaced at once (D16).
   let result = await askJev({ question, evidence: packet }, options);
   let attempts = 1;

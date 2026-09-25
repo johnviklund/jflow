@@ -97,6 +97,31 @@ scripts/jflow decide choose <envelope> --action <a> --by workflow|agent|develope
   and breaks the record.
 - On `ask-human` the choice is the developer's. Record it that way.
 
+## Replaying a proposal
+
+Before the developer accepts a changed question wording or threshold,
+show them what it would change. Write the proposed question file outside
+the project, in the same form as `workflow/questions/<decision>.json` with
+`status` `proposed`. Then run
+`scripts/jflow replay <decision> --question <file>`, or
+`--threshold <n>`, or both. A question is re-asked over every stored
+envelope of that decision. A threshold alone re-routes the stored answers
+without asking Jev. The report gives:
+- `changed` and `unchanged`;
+- `directions` (answer from → to), `routeChanges` and `reasonChanges`;
+- the same per boundary kind (`byKind`) and per reason code
+  (`byReasonCode`);
+- each change with its envelope id.
+
+Report those numbers as they are. Replay does not say whether the
+proposal is better, and it does not accept it. Only the developer
+accepts a wording or threshold (D37), and replay changes no question or
+policy file. `nothingToReplay` (exit 1) means there was nothing to test the proposal
+against: no stored envelopes, or Jev could not be asked about any. Say
+so, and do not present that as a pass. `failed` lists the envelopes Jev
+could not be asked about, and `unreadable` the ones that could not be
+read.
+
 ## Escalating at a boundary
 
 Whenever the workflow could stop and ask the developer, ask `escalate`

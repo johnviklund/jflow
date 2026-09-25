@@ -36,6 +36,7 @@ import {
   type DecisionInput,
 } from "./jev/decisions.js";
 import { askEscalation, type Boundary } from "./jev/escalation.js";
+import { replayDecision, type ReplayProposal } from "./jev/replay.js";
 import { assessWithoutJev, type AssessmentInput } from "./jev/assessment.js";
 import { approveFallback } from "./jev/fallback.js";
 import { overrideCriterion, validateTicket, type ValidationInput, type TicketValidationResult } from "./jev/ticket-validation.js";
@@ -123,6 +124,8 @@ Usage:
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
+  jflow replay <decision> [--question <question.json>] [--threshold <0-1>]
+                    [--root <dir>] [--config <file>]
   jflow escalate <boundary.json>             [--stage <name>] [--root <dir>] [--config <file>]
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
@@ -204,6 +207,15 @@ candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
 choose" records the chosen action: it must be permitted by the workflow,
 and setting Jev's answer aside needs --reason and --evidence.
+"replay" tests a proposed question file and/or confidence threshold for
+one declared decision against its stored envelopes. A question is re-asked
+over each stored packet; a threshold alone re-routes the stored answers
+without asking Jev. It reports how many answers, routes and reason codes
+would change and in which direction, by boundary kind and by reason code,
+each change linked to its envelope.
+It writes only traces: no envelope, record, question or policy file, and
+it decides nothing. A decision with no stored envelopes is reported as
+nothing to replay (exit 1).
 "implement start" starts one ticket under recorded execution
 authorization: the authorized ticket, or under whole-plan authorization
 the one named. It refuses while another ticket is in progress and reports
@@ -323,6 +335,8 @@ const KNOWN_OPTIONS = [
   "task",
   "successor",
   "conflicts-with",
+  "question",
+  "threshold",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -1063,6 +1077,34 @@ function runWrap(args: ParsedArgs, io: CliIo): number {
   return result.ok && result.outcome.discrepancies.length === 0 ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
 
+async function runReplay(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [decision] = args.positional;
+  const { question, threshold } = args.options;
+  if (
+    decision === undefined ||
+    (question === undefined && threshold === undefined) ||
+    (threshold !== undefined && (threshold.trim() === "" || Number.isNaN(Number(threshold))))
+  ) {
+    io.stderr(`replay needs a decision and --question and/or --threshold (a number from 0 to 1)\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  let proposal: ReplayProposal = threshold === undefined ? {} : { threshold: Number(threshold) };
+  if (question !== undefined) {
+    const read = readDraft<unknown>(question, "replay --question", io);
+    if (!read.ok) return read.exit;
+    proposal = { ...proposal, question: read.draft };
+  }
+  const result = await replayDecision(root, decision, proposal, decisionDependencies(built.context, io));
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok && result.report.nothingToReplay === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 function runConflict(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
@@ -1198,6 +1240,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "escalate":
       return runEscalate(args, io);
+
+    case "replay":
+      return runReplay(args, io);
 
     case "implement":
       return runImplement(args, io);

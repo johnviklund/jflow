@@ -214,7 +214,12 @@ function parseAnswer(body: unknown, question: DecisionQuestion): ParsedAnswer {
 }
 
 export async function askJev(
-  call: { readonly question: DecisionQuestion; readonly evidence: EvidencePacket },
+  call: {
+    readonly question: DecisionQuestion;
+    readonly evidence: EvidencePacket;
+    /** The frame to ask in; replay passes a stored envelope's own (issue #27). */
+    readonly frame?: RequestFrame;
+  },
   options: JevClientOptions,
 ): Promise<JevCallResult> {
   if (options.apiKey.status === "missing") {
@@ -225,7 +230,7 @@ export async function askJev(
   const key = options.apiKey.key;
   // Whatever the caller passed, the key itself never leaves in the evidence.
   const evidence = JSON.parse(redact(JSON.stringify(call.evidence), [key])) as EvidencePacket;
-  const body = jevRequestBody(question, evidence);
+  const body = jevRequestBody(question, evidence, call.frame);
   const requestedAt = options.now();
   const traceName = `${requestedAt.replace(/[:.]/g, "-")}-${question.decision}-${randomBytes(3).toString("hex")}`;
   const headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };

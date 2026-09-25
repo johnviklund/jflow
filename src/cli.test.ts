@@ -493,6 +493,27 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(found.json()).toMatchObject({ ok: true, outcome: { discrepancies: [{ source: "agent" }] } });
   });
 
+  it("has replay re-ask stored envelopes under a proposed threshold, and say when there is nothing to replay", async () => {
+    const h = harness();
+    h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));
+    await run(["escalate", "boundary.json"], h.root, {}, jev("proceed", "routine"));
+
+    const replayed = await run(["replay", "escalate", "--threshold", "1"], h.root, {}, jev("proceed", "routine"));
+    const nothing = await run(["replay", "validate", "--threshold", "0.5"], h.root, {}, jev("met", "evidence-satisfies"));
+    const unproposed = await run(["replay", "escalate"], h.root);
+    const blank = await run(["replay", "escalate", "--threshold", " "], h.root);
+
+    expect(replayed.code).toBe(EXIT_OK);
+    expect(replayed.json()).toMatchObject({
+      ok: true,
+      report: { decision: "escalate", replayed: 1, changed: 1, routeChanges: [{ from: "act", to: "ask-human", count: 1 }] },
+    });
+    expect(nothing.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(nothing.json()).toMatchObject({ ok: true, report: { envelopes: 0, nothingToReplay: expect.any(String) } });
+    expect(unproposed.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(blank.code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
     const h = harness();
     h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));

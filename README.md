@@ -269,13 +269,24 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
     evidence is settled by rule without asking Jev. The outcome is
     `progress.validations[ticket]`. Setting a verdict aside records the
     choice on its envelope and settles again.
+  - `replay.ts` is minimal replay (issue #27, D46). A proposed question
+    file for one declared decision is re-asked over every stored envelope
+    of that decision, in its stored frame, and routed as if accepted. A
+    proposed confidence threshold alone re-routes the stored answers
+    without asking Jev. The report counts the answers, routes and reason
+    codes that would change, and in which direction, by boundary kind and
+    by reason code, each change linked to its envelope. `classify`'s
+    content kinds join the breakdown with #29.
+    Replay writes only traces: no envelope, record, fallback status,
+    question or policy file. A decision with no envelopes is reported as
+    nothing to replay.
   - `traces.ts` keeps traces under `.jflow/traces/` (the directory carries
     its own `.gitignore`) until `jflow traces clean`.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `learn`, `wrap`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `wrap`, `decide`, `escalate`, `replay`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
@@ -289,8 +300,8 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   human-ask events raised. Test scaffolding, not library API.
 
 The other workflow actions, the remaining Jev decisions' call sites, and
-question-file proposals with replay (the rest of compound learning) are
-not implemented yet. Nothing has been run
+question-file proposals are not implemented yet; replay, which gates them,
+is. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
