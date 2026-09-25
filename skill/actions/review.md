@@ -36,8 +36,9 @@ and never replaces it.
    `recommendation`. The helper refuses a review whose blocking finding
    could reach the fix limit without one.
 4. `scripts/jflow review record <review.json>`. Act on `review.disposition`:
-   - `passed`: the ticket has passed review. Report it. Leave it
-     `in-progress`, and do not commit or mark it done yourself.
+   - `passed`: the ticket has passed review. Report it, then complete it
+     with `scripts/jflow implement complete` (`actions/implement.md`,
+     step 5). Do not commit or mark it done yourself.
    - `returned-to-fix`: go back to `implement` and fix every `blocking`
      finding. The ticket's validation is cleared, so the fix goes through
      `implement check` again before it is re-reviewed. `fix.attempts`

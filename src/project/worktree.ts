@@ -5,14 +5,19 @@ import { join, relative, sep } from "node:path";
 import { PROJECT_RECORD_DIRECTORY } from "./records.js";
 
 /**
- * The helper's only access to Git (issue #7, SPEC.md confirmed default 1).
- * Every Git command jflow runs goes through `readOnlyGit`, which admits read-only
- * subcommands and nothing else, so no code path can initialize a
- * repository, discard a change, or stage or commit pre-existing work. The
- * local commit (D34) widens this list deliberately, in the issue that owns it.
+ * The helper's only access to Git (issues #7, #10, SPEC.md confirmed
+ * default 1). Every Git command jflow runs goes through this module.
+ * `readOnlyGit` admits read-only subcommands and nothing else. The one
+ * write is `commitPaths`, the ticket's local commit (D34): it stages and
+ * commits the paths it is given and builds its own arguments, so no code
+ * path can initialize a repository, discard a change, absorb work it was
+ * not given, or push, publish or merge.
  */
 
 const READ_ONLY_SUBCOMMANDS = ["status", "rev-parse"] as const;
+
+/** The only writes: making a ticket's local commit. Never push, merge or anything that discards. */
+const COMMIT_SUBCOMMANDS = ["add", "commit"] as const;
 
 export function readOnlyGit(root: string, args: readonly string[]): string {
   const [subcommand] = args;
@@ -20,6 +25,14 @@ export function readOnlyGit(root: string, args: readonly string[]): string {
     throw new Error(
       `jflow runs read-only Git commands only (${READ_ONLY_SUBCOMMANDS.join(", ")}); refused "git ${args.join(" ")}"`,
     );
+  }
+  return git(root, args);
+}
+
+function git(root: string, args: readonly string[]): string {
+  const [subcommand] = args;
+  if (!([...READ_ONLY_SUBCOMMANDS, ...COMMIT_SUBCOMMANDS] as readonly string[]).includes(subcommand ?? "")) {
+    throw new Error(`jflow never runs "git ${args.join(" ")}"`);
   }
   return execFileSync("git", [...args], {
     cwd: root,
@@ -79,6 +92,49 @@ function isInside(path: string): boolean {
   return path !== "" && path !== ".." && !path.startsWith(`..${sep}`);
 }
 
+/** Changed paths under the project, relative to it and in portable form. */
+function changedPaths(root: string, topLevel: string, output: string): string[] {
+  const project = realpathSync(root);
+  const changed = new Set<string>();
+  for (const path of parsePorcelain(output)) {
+    const local = relative(project, join(topLevel, path));
+    if (!isInside(local)) continue;
+    changed.add(local.split(sep).join("/"));
+  }
+  return [...changed].sort();
+}
+
+const statusOf = (root: string, pathspec: string) =>
+  readOnlyGit(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", pathspec]);
+
+/**
+ * The changed project records under `jflow/`, which `readWorkingTree`
+ * leaves out; a ticket's commit carries them with its changes (D34).
+ */
+export function readChangedRecords(root: string): string[] {
+  const topLevel = readOnlyGit(root, ["rev-parse", "--show-toplevel"]).trim();
+  return changedPaths(root, topLevel, statusOf(root, PROJECT_RECORD_DIRECTORY));
+}
+
+/**
+ * Commits exactly `paths` (relative to `root`) as one local commit and
+ * returns its hash. `--only` takes each path from the working tree and
+ * leaves every other path, staged or not, as it was. Never pushes, publishes
+ * or merges.
+ */
+export function commitPaths(root: string, paths: readonly string[], message: string): string {
+  if (paths.length === 0) throw new Error("there is nothing to commit");
+  try {
+    // Intent to add makes new files known to Git without staging their content: a
+    // refused commit leaves only empty entries for them. --only commits the working tree.
+    git(root, ["add", "--intent-to-add", "--", ...paths]);
+    git(root, ["commit", "--quiet", "--only", "--message", message, "--", ...paths]);
+  } catch (error) {
+    throw new Error(errorText(error));
+  }
+  return readOnlyGit(root, ["rev-parse", "HEAD"]).trim();
+}
+
 /**
  * Reads the working tree at `root` without changing it. A directory Git does
  * not recognize is `absent`; a `.git` Git cannot read is `unreadable`.
@@ -94,20 +150,14 @@ export function readWorkingTree(root: string): WorkingTree {
 
   let output: string;
   try {
-    output = readOnlyGit(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."]);
+    output = statusOf(root, ".");
   } catch (error) {
     return { kind: "unreadable", message: errorText(error) };
   }
 
-  const project = realpathSync(root);
   const records = `${PROJECT_RECORD_DIRECTORY}/`;
-  const changedPaths = new Set<string>();
-  for (const path of parsePorcelain(output)) {
-    const local = relative(project, join(topLevel, path));
-    if (!isInside(local)) continue;
-    const portable = local.split(sep).join("/");
-    if (portable.startsWith(records)) continue;
-    changedPaths.add(portable);
-  }
-  return { kind: "present", changedPaths: [...changedPaths].sort() };
+  return {
+    kind: "present",
+    changedPaths: changedPaths(root, topLevel, output).filter((path) => !path.startsWith(records)),
+  };
 }

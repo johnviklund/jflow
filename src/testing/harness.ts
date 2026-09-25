@@ -141,7 +141,14 @@ export function createProjectHarness(options: HarnessOptions = {}): ProjectHarne
   const context: ResolutionContext = { workflowPackage, configuration: configResult.configuration };
 
   const root = mkdtempSync(join(tmpdir(), "jflow-project-"));
-  if (options.gitRepository) execFileSync("git", ["init", "--quiet"], { cwd: root });
+  if (options.gitRepository) {
+    execFileSync("git", ["init", "--quiet"], { cwd: root });
+    // A local identity so a ticket's commit (#10) can be made; never the developer's configuration.
+    const identity = [["user.name", "jflow test"], ["user.email", "test@example.com"], ["commit.gpgsign", "false"]] as const;
+    for (const [key, value] of identity) {
+      execFileSync("git", ["config", key, value], { cwd: root });
+    }
+  }
   if (options.state) seedRecords(root, createWorkflowState(options.state));
 
   const events: HumanAskEvent[] = [];

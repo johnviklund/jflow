@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readOnlyGit, readWorkingTree } from "./worktree.js";
+import { commitPaths, readChangedRecords, readOnlyGit, readWorkingTree } from "./worktree.js";
 
 const roots: string[] = [];
 
@@ -105,6 +105,9 @@ describe("readOnlyGit", () => {
     ["stash"],
     ["rm", "tracked.txt"],
     ["commit", "-am", "absorbed"],
+    ["add", "."],
+    ["push"],
+    ["merge", "main"],
     ["-C", "/elsewhere", "status"],
   ])("refuses %s: jflow never initializes, discards or absorbs changes", (...args) => {
     const root = repository();
@@ -116,5 +119,50 @@ describe("readOnlyGit", () => {
 
   it("runs a read-only command", () => {
     expect(readOnlyGit(repository(), ["rev-parse", "--is-inside-work-tree"]).trim()).toBe("true");
+  });
+});
+
+describe("readChangedRecords", () => {
+  it("lists the changed records under jflow/ that readWorkingTree leaves out", () => {
+    const root = repository();
+    mkdirSync(join(root, "jflow"));
+    writeFileSync(join(root, "jflow", "progress.json"), "{}\n");
+    writeFileSync(join(root, "other.txt"), "o\n");
+
+    expect(readChangedRecords(root)).toEqual(["jflow/progress.json"]);
+  });
+});
+
+describe("commitPaths", () => {
+  const git = (root: string, ...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+
+  it("commits exactly the named paths, leaving every other change, staged or not, where it was", () => {
+    const root = repository();
+    writeFileSync(join(root, "gone.txt"), "g\n");
+    git(root, "add", "gone.txt");
+    git(root, "commit", "--quiet", "-m", "add gone");
+    writeFileSync(join(root, "tracked.txt"), "ticket\n");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src", "new.ts"), "n\n");
+    rmSync(join(root, "gone.txt"));
+    writeFileSync(join(root, "mine.txt"), "developer\n");
+    writeFileSync(join(root, "staged.txt"), "developer staged\n");
+    git(root, "add", "staged.txt");
+
+    const hash = commitPaths(root, ["gone.txt", "src/new.ts", "tracked.txt"], "T1: Parser");
+
+    expect(hash).toBe(git(root, "rev-parse", "HEAD").trim());
+    expect(git(root, "show", "--name-status", "--format=%s", "HEAD").trim().split("\n")).toEqual([
+      "T1: Parser",
+      "",
+      "D\tgone.txt",
+      "A\tsrc/new.ts",
+      "M\ttracked.txt",
+    ]);
+    expect(git(root, "status", "--porcelain=v1")).toBe("A  staged.txt\n?? mine.txt\n");
+  });
+
+  it("refuses to commit nothing", () => {
+    expect(() => commitPaths(repository(), [], "empty")).toThrow(/nothing/);
   });
 });

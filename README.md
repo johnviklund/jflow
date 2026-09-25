@@ -88,9 +88,23 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
-- `src/project/worktree.ts` — the helper's only access to Git (issue #7).
-  It admits read-only subcommands only (`status`, `rev-parse`), so no path
-  initializes a repository, discards a change or stages pre-existing work.
+- `src/actions/completion.ts` — completing a ticket (issue #10, D34).
+  `implement complete` refuses a ticket until `validate` has found every
+  criterion met and its review passed. It then records the ticket `done`
+  and, with `commitOnSuccess` on (the default), makes one local commit of
+  the ticket's changed paths and the changed records under `jflow/`. Paths
+  the developer kept or another ticket adopted are left out, and so is
+  anything the developer staged. When Git refuses the commit, the records
+  are restored. The commit names its ticket in a `Jflow-Ticket` trailer,
+  so no record is left to write after it. The ticket's adopted changes are
+  released. A ticket-scope authorization ends with the ticket; whole-plan
+  authorization continues.
+- `src/project/worktree.ts` — the helper's only access to Git (issues #7,
+  #10). Everything goes through `readOnlyGit` (`status`, `rev-parse`)
+  except `commitPaths`, the ticket's commit. It runs `add
+  --intent-to-add` and `commit --only` on the paths it is given, so no path
+  initializes a repository, discards a change, absorbs pre-existing work,
+  or pushes, publishes or merges.
   It reads the working tree's uncommitted changes, leaving out `jflow/`.
   `state.ts` reports the changes with no recorded owner, and `implement`
   and `review` pause on them (`git.changesOwned`) until
@@ -172,9 +186,8 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   human-ask events raised. Test scaffolding, not library API.
 
 The other workflow actions, the other four Jev decisions' wording and call
-sites, the local commit, and
-compound learning are not implemented yet. Nothing has been run on the
-ChatGPT desktop app; see `skill/references/HOST.md`.
+sites, and compound learning are not implemented yet. Nothing has been run
+on the ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
 
@@ -184,12 +197,15 @@ ChatGPT desktop app; see `skill/references/HOST.md`.
   until `validate` has found every criterion met.
 - `troubleshoot` and `review` can never edit code.
 - `implement` and `review` require a local Git repository; `brainstorm` and
-  `plan` do not. jflow runs read-only Git commands only. It never
-  initializes a repository or discards changes, and never absorbs
-  pre-existing uncommitted changes. Changes with no recorded owner pause
+  `plan` do not. jflow runs read-only Git commands, apart from a ticket's
+  own local commit. It never initializes a repository or discards changes,
+  and never absorbs pre-existing uncommitted changes. Changes with no recorded owner pause
   `implement` and `review` until the developer names one, and a workflow
   package cannot drop that pause.
 - Plan acceptance and execution authorization are distinct state flags.
+- A ticket is committed and recorded done only after it passes `validate`
+  and review. The commit holds only its changes and the records. jflow
+  never pushes, publishes or merges.
 - A stage worker model never falls back implicitly — the fallback must name an
   explicit model, otherwise jflow asks.
 - The Jev API key is read from `JFLOW_JEV_API_KEY` or host secret storage, and

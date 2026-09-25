@@ -195,7 +195,9 @@ export function startTicket(
 export function readWorkingTicket(
   root: string,
   ticketId: unknown,
-): { readonly ok: true; readonly ticket: TicketRecord; readonly progress: ProgressRecord } | Refusal {
+):
+  | { readonly ok: true; readonly ticket: TicketRecord; readonly progress: ProgressRecord; readonly tickets: TicketsRecord }
+  | Refusal {
   const read = readRecords(root);
   if (!read.ok) return read;
   const { progress, tickets } = read.records;
@@ -207,7 +209,7 @@ export function readWorkingTicket(
   if (ticket.status !== "in-progress" || progress.assignedTicketId !== ticket.id) {
     return refuse(`ticket ${ticket.id} has not been started; run implement start first`);
   }
-  return { ok: true, ticket, progress };
+  return { ok: true, ticket, progress, tickets };
 }
 
 export interface FixFailure {

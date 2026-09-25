@@ -37,6 +37,19 @@ implementing it: without recorded authorization, ask. If the block is
    - exit 1 with `askHuman` (`awaiting-developer`, the fix limit, or Jev
      unavailable): put its reasons to the developer, with your
      recommendation, and wait. Do not try another fix first.
+5. Once `review` has passed the ticket (`actions/review.md`), run
+   `scripts/jflow implement complete`. The helper refuses a ticket that has
+   not passed `validate` and review. Otherwise it records the ticket
+   `done`. Unless `commitOnSuccess` is off, it also makes one local commit
+   of the ticket's changes and the records under `jflow/`.
+   - `commit.paths` is what went in. `leftOut` is what stayed out: the
+     developer's changes, and any another ticket adopted.
+   - If the ticket had to edit a file the developer owns, ask the
+     developer before completing. Their file is left out whole.
+   - `authorization` is `ended` when the next ticket needs the developer's
+     authorization, and `continues` under whole-plan authorization.
+   - If Git refuses the commit (a failing hook, say), the ticket is not
+     complete. Quote the reason, fix the cause, and run `complete` again.
 
 **Method**
 
@@ -63,13 +76,16 @@ helper keeps that counter; never count attempts yourself. Do not change a
 test or a criterion to make it pass. Setting a verdict aside goes through
 `ticket override` with evidence (`references/DECISIONS.md`).
 
-Never commit, and never mark the ticket done. The ticket stays
-`in-progress` until it passes review. When review returns it to fix, fix
-every blocking finding, then go through step 3 again. If the
-conversation loses the ticket partway through, start it again and redo it
-from its definition.
+Never commit yourself, and never mark the ticket done; `implement
+complete` does both after review. Never push, publish or merge. Each needs
+the developer's separate, explicit authorization, and a passed review or a
+local commit is not one. The ticket stays `in-progress` until it passes
+review. When review returns it to fix, fix every blocking finding, then go
+through step 3 again. If the conversation loses the ticket partway
+through, start it again and redo it from its definition.
 
 **Report**: which ticket you worked on. Each criterion with its verdict.
-The checks you ran and their results. Where the ticket went next (review,
+The checks you ran and their results. On completion, the commit hash and
+what it left out. Where the ticket went next (review,
 another fix, or a question for the developer). Anything you recorded as a
 todo.

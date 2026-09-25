@@ -530,6 +530,20 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     });
     expect(decided.code).toBe(EXIT_NEEDS_HUMAN);
     expect(decided.json()).toMatchObject({ ok: false, reason: expect.stringContaining("not waiting") });
+
+    const refused = await run(["implement", "complete"], h.root);
+    expect(refused.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(refused.json()).toMatchObject({ ok: false, reason: expect.stringContaining("validate") });
+
+    await run(["implement", "check", "evidence.json"], h.root, {}, jev("met", "evidence-satisfies"));
+    h.writeFile("clean.json", JSON.stringify({ ticketId: "T1", reviewer: { agent: "reviewer-2" }, findings: [] }));
+    await run(["review", "record", "clean.json"], h.root);
+    const completed = await run(["implement", "complete"], h.root);
+    expect(completed.code).toBe(EXIT_OK);
+    expect(completed.json()).toMatchObject({
+      ok: true,
+      outcome: { ticket: { id: "T1", status: "done" }, commit: { hash: expect.any(String) }, authorization: "ended" },
+    });
   });
 
   it("escalates a consequential conflict and records the developer's decision", async () => {

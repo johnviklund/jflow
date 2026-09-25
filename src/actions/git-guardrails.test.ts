@@ -85,4 +85,13 @@ describe("the helper's access to Git", () => {
     // `git --version`. Anything new that spawns a process must justify itself here.
     expect(spawning).toEqual(["host/capabilities.ts", "project/worktree.ts"]);
   });
+
+  it("writes to Git only to make a ticket's local commit, and never pushes, publishes or merges", () => {
+    const worktree = readFileSync(join(source, "project", "worktree.ts"), "utf8");
+    const writes = [...worktree.matchAll(/\bgit\(root, \["([a-z-]+)"/g)].map((match) => match[1]);
+
+    // Every other command goes through readOnlyGit, which admits status and rev-parse only.
+    expect(writes.sort()).toEqual(["add", "commit"]);
+    expect(worktree).not.toMatch(/"(push|merge|pull|fetch|remote|tag|rebase|reset)"/);
+  });
 });

@@ -35,9 +35,10 @@ type ObservedState = Pick<WorkflowState, ObservedStateField>;
  * adopted it, or once the assigned ticket's work has begun. `implement`
  * cannot start while any change is unclaimed, so what appears after that is
  * presumed the ticket's. Git cannot tell the agent's edits from the
- * developer's own edits made mid-ticket; the ticket's commit (#10) and
- * resume reconciliation (#22) own that distinction. Until then this
- * presumption makes `git.changesOwned` on `review` inert.
+ * developer's own edits made mid-ticket: the ticket's commit (#10) carries
+ * every change the developer did not keep, and lists the paths it
+ * committed and left out; resume reconciliation (#22) checks it again.
+ * This presumption makes `git.changesOwned` on `review` inert.
  */
 function observeWorkingTree(root: string, progress: ProgressRecord | undefined): ObservedState {
   const tree = readWorkingTree(root);

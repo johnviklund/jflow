@@ -27,7 +27,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow next` | One recommended action with its reason, plus what only the developer can grant, and Jev's advisory `next-action` answer. Writes no project record; see `actions/next.md`. |
 | `scripts/jflow decide ask\|show\|choose` | Ask a declared Jev decision, read its envelope, and record the chosen action; see `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
-| `scripts/jflow implement start\|check` | Start the one authorized ticket, then check it through the `validate` gate and the ticket's fix counter; see `actions/implement.md`. |
+| `scripts/jflow implement start\|check\|complete` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, and once review passes, record it done with its local commit; see `actions/implement.md`. |
 | `scripts/jflow review start\|record\|decide` | Open review of a ticket `validate` admitted, record an independent reviewer's findings under the fixed disposition rule, and record the developer's decision on a disputed finding; see `actions/review.md`. |
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
 | `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
@@ -100,7 +100,10 @@ parts only the agent can honour.
 `brainstorm` and `plan` need no repository. `implement` and `review` need
 one, and the helper blocks them without it. Never run `git init`,
 `reset`, `checkout`, `restore`, `clean`, `stash` or `rm` on the developer's
-behalf, and never stage or commit their changes. If the developer wants a
+behalf, and never stage or commit their changes. The only commit is
+`implement complete`'s: the ticket's own changes and the records. Never
+push, publish or merge. Each needs the developer's separate, explicit
+authorization. If the developer wants a
 repository or a clean tree, they do it.
 
 When `run implement` is blocked on `git.changesOwned`, the working tree

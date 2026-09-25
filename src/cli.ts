@@ -4,6 +4,7 @@ import { resolve as resolvePath } from "node:path";
 import { claimChanges } from "./actions/changes.js";
 import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
+import { completeTicket } from "./actions/completion.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type ReviewInput } from "./actions/review.js";
@@ -96,6 +97,7 @@ Usage:
   jflow escalate <boundary.json>             [--root <dir>] [--config <file>]
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
+  jflow implement complete [<ticket>]        [--root <dir>] [--config <file>]
   jflow review start                         [--root <dir>] [--config <file>]
   jflow review record <review.json>          [--root <dir>] [--config <file>]
   jflow review decide <ticket> --finding <id> --outcome upheld|withdrawn --note <the developer's words>
@@ -140,7 +142,11 @@ records it under .jflow/evidence, asks validate, and counts a not-met on
 the ticket's one fix counter; at the limit it asks escalate, and an
 attempt that could reach the limit needs the recommendation. Its
 "workers" lists the sub-agents that worked on the ticket. It never
-commits or marks the ticket done.
+commits or marks the ticket done. "implement complete" does, once the
+ticket passed validate and review: it records the ticket done and, unless
+commitOnSuccess is off, makes one local commit of the ticket's changes and
+the project records, leaving out changes the developer kept or another
+ticket adopted. It never pushes, publishes or merges.
 "review start" opens review of the assigned ticket once validate found
 every criterion met, and returns the reviewer's context, the review model
 and the agents that may not review. "review record" takes ticketId,
@@ -620,8 +626,8 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
 async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
-  if (subcommand !== "start" && subcommand !== "check") {
-    io.stderr(`implement needs one of start, check\n${USAGE}`);
+  if (subcommand !== "start" && subcommand !== "check" && subcommand !== "complete") {
+    io.stderr(`implement needs one of start, check, complete\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);
@@ -631,6 +637,12 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   if (subcommand === "start") {
     return report(startTicket(root, target === undefined ? {} : { ticketId: target }, built.context), io);
+  }
+  if (subcommand === "complete") {
+    return report(
+      completeTicket(root, target === undefined ? {} : { ticketId: target }, built.context, { now: new Date().toISOString() }),
+      io,
+    );
   }
   const read = readDraft<CheckInput>(target, "implement check", io);
   if (!read.ok) return read.exit;
