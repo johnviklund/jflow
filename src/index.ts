@@ -102,6 +102,13 @@ export {
 export { wrapSession, type WrapDraft, type WrapResult } from "./actions/wrap.js";
 
 export {
+  NO_RECOMMENDATION,
+  recommendModel,
+  type SelectionDraft,
+  type SelectionResult,
+} from "./actions/model-selection.js";
+
+export {
   acceptPlan,
   authorizeExecution,
   writePlan,
@@ -209,6 +216,7 @@ export {
   type RecordKind,
   type RecordReadResult,
   type RecordValidation,
+  type RejectedRecommendation,
   type ResumeDiscrepancy,
   type ResumeLessons,
   type ResumeOutcome,
@@ -278,6 +286,7 @@ export {
   ENVELOPE_DIRECTORY,
   adviseNext,
   askDecision,
+  askDecisionRejectingUnlisted,
   assignmentEvidence,
   lessonRetentionEvidence,
   listEnvelopes,
@@ -300,6 +309,7 @@ export {
   type DecisionRoute,
   type NextAdvice,
   type ProposedAssignment,
+  type UnlistedAnswer,
 } from "./jev/decisions.js";
 
 export {

@@ -514,6 +514,32 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(blank.code).toBe(EXIT_NEEDS_HUMAN);
   });
 
+  it("has worker recommend ask model-selection over the stage's options, and worker assign record following it", async () => {
+    const h = harness();
+    const drafts = harness();
+    drafts.writeFile(
+      "config.json",
+      JSON.stringify({ stageModels: { implement: { model: "worker-a", efforts: ["low", "high"] } } }),
+    );
+    drafts.writeFile("draft.json", JSON.stringify({ stage: "implement", role: "implementer", ticketId: "T1", task: "parse dates" }));
+    const config = ["--config", drafts.path("config.json")];
+
+    const recommended = await run(["worker", "recommend", drafts.path("draft.json"), ...config], h.root, {}, jev("worker-a @ high", "needs-higher-effort"));
+    const envelope = (recommended.json()["outcome"] as { decision: { envelope: string } }).decision.envelope;
+    drafts.writeFile(
+      "assign.json",
+      JSON.stringify({ stage: "implement", role: "implementer", agent: "worker-1", model: "worker-a", effort: "high", ticketId: "T1", selection: { envelope } }),
+    );
+    const assigned = await run(["worker", "assign", drafts.path("assign.json"), ...config], h.root);
+    const unkeyed = await run(["worker", "recommend", drafts.path("draft.json"), ...config], h.root);
+
+    expect(recommended.code).toBe(EXIT_OK);
+    expect(recommended.json()).toMatchObject({ ok: true, outcome: { kind: "recommended", recommendation: { model: "worker-a", effort: "high" } } });
+    expect(assigned.code).toBe(EXIT_OK);
+    expect(assigned.json()).toMatchObject({ ok: true, outcome: { assignment: { effort: "high", selection: envelope } } });
+    expect(unkeyed.code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
     const h = harness();
     h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));

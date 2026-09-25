@@ -106,6 +106,9 @@ export type ReplayResult =
   | { readonly ok: false; readonly reason: string; readonly issues?: readonly ValidationIssue[] }
   | { readonly ok: false; readonly askHuman: string };
 
+/** Decisions whose choices are built per call rather than read from the question file (issue #28). */
+const CHOICES_PER_CALL: ReadonlySet<string> = new Set(["model-selection"]);
+
 /** Where an envelope was asked: the boundary kind for `escalate`. */
 function kindOf(envelope: DecisionEnvelope): string {
   return envelope.decision === "escalate" ? escalationOf(envelope).boundary : "all";
@@ -231,8 +234,10 @@ export async function replayDecision(
       };
     } else {
       // Asked once per envelope; a failure is reported, never retried into a fallback.
+      // model-selection's choices are the stage's options, built per call: keep the ones the envelope was asked with.
+      const question = CHOICES_PER_CALL.has(decision) ? { ...proposed, answers: envelope.request.question.answers } : proposed;
       const result = await askJev(
-        { question: proposed, evidence: envelope.request.packet, frame: envelope.request.frame },
+        { question, evidence: envelope.request.packet, frame: envelope.request.frame },
         jevClientOptions(root, dependencies),
       );
       if (result.kind === "needs-configuration") return { ok: false, askHuman: result.askHuman };

@@ -181,6 +181,18 @@ describe("resolveConfiguration stage models", () => {
     });
   });
 
+  it("takes a stage's efforts as a list of distinct names model-selection chooses among (issue #28)", () => {
+    const ok = resolve({ stageModels: { implement: { model: "worker-a", efforts: ["low", "high"] } } });
+    expect(ok.ok && ok.configuration.stageModels["implement"]).toEqual({ model: "worker-a", efforts: ["low", "high"] });
+
+    for (const efforts of [[], ["low", "low"], ["low", " "], "high"]) {
+      const result = resolve({ stageModels: { implement: { model: "worker-a", efforts } } });
+      expect(result.ok, JSON.stringify(efforts)).toBe(false);
+      if (result.ok) continue;
+      expect(result.issues[0]?.path).toBe("stageModels.implement.efforts");
+    }
+  });
+
   it("rejects a per-stage primary conversational model override", () => {
     const result = resolve({
       stageModels: { implement: { model: "worker-a", primaryModel: "other" } },

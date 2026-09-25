@@ -8,7 +8,7 @@ workflow package:
 | `next-action` | advisory | by `next`, every time |
 | `assignment` | advisory | before running stage workers you proposed |
 | `lesson-retention` | advisory | by `learn propose`, for every candidate project lesson |
-| `model-selection` | advisory | owned by its own issue |
+| `model-selection` | advisory | by `worker recommend`, before a stage worker runs |
 | `classify` | advisory | owned by its own issue |
 | `escalate` | binding | at every human-facing boundary, through `scripts/jflow escalate` |
 | `validate` | binding | after a ticket's checks run, through `scripts/jflow ticket validate` |
@@ -105,7 +105,8 @@ the project, in the same form as `workflow/questions/<decision>.json` with
 `status` `proposed`. Then run
 `scripts/jflow replay <decision> --question <file>`, or
 `--threshold <n>`, or both. A question is re-asked over every stored
-envelope of that decision. A threshold alone re-routes the stored answers
+envelope of that decision. For `model-selection`, whose choices are the
+stage's options, each envelope keeps the options it was asked with. A threshold alone re-routes the stored answers
 without asking Jev. The report gives:
 - `changed` and `unchanged`;
 - `directions` (answer from → to), `routeChanges` and `reasonChanges`;

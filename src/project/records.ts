@@ -741,13 +741,34 @@ export interface WorkerAssignment {
   /** The model the worker runs on, as the primary agent reported it. */
   readonly model: string;
   readonly substitution?: { readonly unavailableModel: string; readonly reason: string };
+  /** The effort it runs at, one the stage configures (issue #28). */
+  readonly effort?: string;
+  /** The `model-selection` envelope the choice was recorded on, when one was asked. */
+  readonly selection?: string;
   readonly status: WorkerStatus;
   readonly startedAt: string;
   readonly finishedAt?: string;
 }
 
+/**
+ * A `model-selection` recommendation outside the stage's configured set,
+ * rejected by the workflow (D49, issue #28). No worker starts on it.
+ */
+export interface RejectedRecommendation {
+  readonly stage: string;
+  readonly role: string;
+  readonly ticketId?: string;
+  readonly answer: string;
+  /** The options Jev was given. */
+  readonly options: readonly string[];
+  /** The trace of the call that returned it. */
+  readonly traceReference: string;
+  readonly rejectedAt: string;
+}
+
 export interface WorkersRecord {
   readonly assignments: readonly WorkerAssignment[];
+  readonly rejections?: readonly RejectedRecommendation[];
 }
 
 export interface ProjectRecords {
@@ -2208,7 +2229,7 @@ const validateDiagnoses: Validator<DiagnosesRecord> = (value, issues) => {
 };
 
 const validateWorkers: Validator<WorkersRecord> = (value, issues) => {
-  const doc = requireObject(value, "", ["assignments"], issues);
+  const doc = requireObject(value, "", ["assignments", "rejections"], issues);
   if (!doc) return undefined;
   const assignments: WorkerAssignment[] = [];
   if (!Array.isArray(doc["assignments"])) {
@@ -2221,7 +2242,7 @@ const validateWorkers: Validator<WorkersRecord> = (value, issues) => {
     const item = requireObject(
       entry,
       path,
-      ["id", "stage", "role", "agent", "ticketId", "model", "substitution", "status", "startedAt", "finishedAt"],
+      ["id", "stage", "role", "agent", "ticketId", "model", "substitution", "effort", "selection", "status", "startedAt", "finishedAt"],
       issues,
     );
     if (!item) return;
@@ -2254,11 +2275,32 @@ const validateWorkers: Validator<WorkersRecord> = (value, issues) => {
           status,
           startedAt: requireTimestamp(item["startedAt"], `${path}.startedAt`, issues),
         },
-        { ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues), substitution, finishedAt },
+        {
+          ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues),
+          substitution,
+          effort: optionalString(item["effort"], `${path}.effort`, issues),
+          selection: optionalString(item["selection"], `${path}.selection`, issues),
+          finishedAt,
+        },
       ),
     );
   });
-  return { assignments };
+  const rejections = optionalList(doc["rejections"], "rejections", issues, (entry, path) => {
+    const item = requireObject(entry, path, ["stage", "role", "ticketId", "answer", "options", "traceReference", "rejectedAt"], issues);
+    if (!item) return undefined;
+    return withOptional<RejectedRecommendation>(
+      {
+        stage: requireNonEmptyString(item["stage"], `${path}.stage`, issues),
+        role: requireNonEmptyString(item["role"], `${path}.role`, issues),
+        answer: requireNonEmptyString(item["answer"], `${path}.answer`, issues),
+        options: validateStringArray(item["options"], `${path}.options`, issues),
+        traceReference: requireNonEmptyString(item["traceReference"], `${path}.traceReference`, issues),
+        rejectedAt: requireTimestamp(item["rejectedAt"], `${path}.rejectedAt`, issues),
+      },
+      { ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues) },
+    );
+  });
+  return rejections === undefined ? { assignments } : { assignments, rejections };
 };
 
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {

@@ -200,6 +200,11 @@ describe("the main conversational model", () => {
       ok: false,
       reason: expect.stringContaining("primary"),
     });
+    // Refused before any question about configuration: there is no model to ask about for the primary agent.
+    expect(assignWorker(h.root, { ...IMPLEMENTER, agent: "primary" }, h.context, { now })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("primary"),
+    });
   });
 
   it("is never switched between stages: resolution hands out worker models only", () => {

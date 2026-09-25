@@ -15,6 +15,7 @@ import { activeLessons, checkLesson, supersedeLesson } from "./actions/lesson-us
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import { wrapSession, type WrapDraft } from "./actions/wrap.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
+import { recommendModel, type SelectionDraft } from "./actions/model-selection.js";
 import {
   applyDiagnosis,
   recordDiagnosis,
@@ -34,6 +35,7 @@ import {
   type ChoiceMaker,
   type DecisionDependencies,
   type DecisionInput,
+  type DecisionReport,
 } from "./jev/decisions.js";
 import { askEscalation, type Boundary } from "./jev/escalation.js";
 import { replayDecision, type ReplayProposal } from "./jev/replay.js";
@@ -144,6 +146,7 @@ Usage:
   jflow review plan record <review.json>     [--root <dir>] [--config <file>]
   jflow review plan decide --finding <id> --outcome upheld|withdrawn --note <the developer's words>
                     [--root <dir>] [--config <file>]
+  jflow worker recommend <draft.json>        [--root <dir>] [--config <file>]
   jflow worker assign <assignment.json>      [--root <dir>] [--config <file>]
   jflow worker finish <id>                   [--root <dir>]
   jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
@@ -269,8 +272,17 @@ the stage declares), agent, model and ticketId. The model must be the
 stage's configured one; when that is unavailable, add unavailable (model,
 reason) and run only the configured fallback. With no model or no
 fallback configured it asks and records nothing. It refuses the primary
-agent and more workers than the stage allows at once. "worker finish"
+agent and more workers than the stage allows at once. Where the stage
+configures efforts, effort (one of them) is required. "worker finish"
 frees the place.
+"worker recommend" asks Jev's advisory model-selection decision over
+stage, role, ticketId, task and optional unavailable. The options are the
+model the stage may run now at each configured effort. It returns the
+recommended model and effort, no-recommendation, single-option (nothing
+to choose, Jev not asked) or rejected: an answer outside the options,
+recorded in the workers record, on which no worker starts. Pass the
+envelope to "worker assign" as selection (envelope, and by, reason and
+evidence when setting it aside) to record following or overriding it.
 "ticket validate" asks the binding validate decision once per accepted
 criterion over ticketId, evidence (kind check or claim, source, text,
 exitCode) and checks (the ticket's commands). The validation's disposition
@@ -466,6 +478,11 @@ async function runRequest(request: string, options: ParsedArgs["options"], io: C
       : undefined;
   io.stdout(`${JSON.stringify(jev === undefined ? { request, outcome, humanAsks } : { request, outcome, humanAsks, jev }, null, 2)}\n`);
   return exitCodeFor(outcome);
+}
+
+/** A decision that could not be asked waits on the developer: a missing key, or a failure awaiting approval. */
+function decisionWaits(decision: DecisionReport): boolean {
+  return decision.kind === "needs-configuration" || (decision.kind === "failed" && decision.fallback === "awaiting-approval");
 }
 
 /** Prints a helper result; a refusal needs the developer. */
@@ -814,7 +831,7 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io, "implement")), io);
 }
 
-function runWorker(args: ParsedArgs, io: CliIo): number {
+async function runWorker(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
   const now = new Date().toISOString();
@@ -825,14 +842,23 @@ function runWorker(args: ParsedArgs, io: CliIo): number {
     }
     return report(finishWorker(root, target, { now }), io);
   }
-  if (subcommand !== "assign") {
-    io.stderr(`worker needs one of assign, finish\n${USAGE}`);
+  if (subcommand !== "assign" && subcommand !== "recommend") {
+    io.stderr(`worker needs one of recommend, assign, finish\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);
   if (!built.ok) {
     io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
     return built.exit;
+  }
+  if (subcommand === "recommend") {
+    const draft = readDraft<SelectionDraft>(target, "worker recommend", io);
+    if (!draft.ok) return draft.exit;
+    const result = await recommendModel(root, draft.draft, decisionDependencies(built.context, io));
+    io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+    // Nothing configured, a missing key or a failure awaiting approval each wait on the developer.
+    const waits = !result.ok || "askHuman" in result.outcome || ("decision" in result.outcome && decisionWaits(result.outcome.decision));
+    return waits ? EXIT_NEEDS_HUMAN : EXIT_OK;
   }
   const read = readDraft<WorkerDraft>(target, "worker assign", io);
   if (!read.ok) return read.exit;
@@ -961,11 +987,7 @@ async function runLearn(args: ParsedArgs, io: CliIo): Promise<number> {
       const result = await proposeLesson(root, read.draft, decisionDependencies(built.context, io, args.options["stage"]));
       io.stdout(`${JSON.stringify(result, null, 2)}\n`);
       // A conflict's ask, a missing key or a failure awaiting approval each wait on the developer.
-      const waits =
-        !result.ok ||
-        result.outcome.askHuman !== undefined ||
-        result.outcome.advice.kind === "needs-configuration" ||
-        (result.outcome.advice.kind === "failed" && result.outcome.advice.fallback === "awaiting-approval");
+      const waits = !result.ok || result.outcome.askHuman !== undefined || decisionWaits(result.outcome.advice);
       return waits ? EXIT_NEEDS_HUMAN : EXIT_OK;
     }
     case "decide": {

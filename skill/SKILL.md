@@ -30,7 +30,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow replay <decision> --question <file> \| --threshold <n>` | Re-ask Jev over a decision's stored envelopes with a proposed question or threshold, and report what would change; it decides nothing. See `references/DECISIONS.md`. |
 | `scripts/jflow escalate <boundary.json>` | Ask the binding `escalate` decision at a human-facing boundary: exit 0 proceeds with no ask, exit 1 returns `askHuman`; see `references/DECISIONS.md`. |
 | `scripts/jflow implement start\|check\|complete\|fix\|next\|park\|independence` | Start the one authorized ticket, check it through the `validate` gate and the ticket's fix counter, record a diagnosis's fix, and once review passes, record it done with its local commit. Under whole-plan authorization, move to the next ticket, park a blocked one, and record independence checks; see `actions/implement.md`. |
-| `scripts/jflow worker assign\|finish` | Record a stage worker before it runs, on its stage's configured model, within the stage's roles and delegation limits, and free its place when it is done; see "Stage workers". |
+| `scripts/jflow worker recommend\|assign\|finish` | Ask Jev's advisory `model-selection` for a model and effort from the stage's configured options, record a stage worker before it runs, on its stage's configured model, within the stage's roles and delegation limits, and free its place when it is done; see "Stage workers". |
 | `scripts/jflow troubleshoot start\|record` | Record a failed check, then its diagnosis and recommended fix, refused if the working tree changed meanwhile; see `actions/troubleshoot.md`. |
 | `scripts/jflow review start\|record\|decide`, `review plan start\|record\|decide` | Open review of a ticket `validate` admitted, record an independent reviewer's findings under the fixed disposition rule, and record the developer's decision on a disputed finding. `review plan` is the integrated review a multi-ticket plan needs before it is complete; see `actions/review.md`. |
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
@@ -127,6 +127,30 @@ write an assignment file outside the project with `stage`, `role`,
   worker again.
 - A role the stage does not declare, or more workers than the stage
   allows at once, is refused. Choose within them.
+- Where the stage configures `efforts`, add `"effort"`: one of them.
+
+Before assigning a worker on a stage with more than one option, ask for
+a recommendation. Write a draft outside the project with `stage`, `role`,
+`ticketId`, `task` (what the worker will do, in a sentence) and
+`unavailable` if the host reported the model unavailable. Then run
+`scripts/jflow worker recommend <draft.json>`. Read `outcome.kind`:
+
+- `recommended`: weigh the model and effort against the task. Then
+  assign with `"selection": {"envelope": "<id>"}`. One envelope answers
+  one assignment: the same stage, role and ticket. To choose another
+  option, add `"reason"` and `"evidence"` to `selection`. A reason
+  without evidence is refused. If the route is `ask-human`, the
+  developer chooses: add `"by": "developer"` and their words as
+  `reason`.
+- `no-recommendation`: choose an option yourself and assign without
+  `selection`. If the decision could not be asked, follow
+  `references/DECISIONS.md`.
+- `single-option`: there is nothing to choose, and Jev was not asked.
+  With no `efforts` configured a stage always has one option.
+- `rejected`: Jev named something outside the options. The helper
+  recorded the rejection, and no worker starts on it. Choose from
+  `options` yourself.
+- `askHuman` (exit 1): as for `worker assign`.
 
 The limits count within one unit of work, the ticket. Run
 `scripts/jflow worker finish <id>` when the worker is done, or if it

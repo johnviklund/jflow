@@ -12,6 +12,8 @@ export interface StageModelConfiguration {
   readonly model: string;
   /** Explicit fallback; jflow never substitutes a model implicitly (SPEC.md D20). */
   readonly fallbackModel?: string;
+  /** The efforts a worker may run at; `model-selection` recommends one (D49, issue #28). */
+  readonly efforts?: readonly string[];
 }
 
 export type SettingValue = boolean | number | string;
@@ -29,7 +31,7 @@ export type ConfigurationResult =
 
 const TOP_LEVEL_KEYS = ["primaryModel", "stageModels", "settings"] as const;
 
-const STAGE_MODEL_KEYS = new Set(["model", "fallbackModel"]);
+const STAGE_MODEL_KEYS = new Set(["model", "fallbackModel", "efforts"]);
 
 /** Placeholders that would amount to an implicit, unapproved substitution. */
 const IMPLICIT_FALLBACK_PLACEHOLDERS = new Set(["auto", "any", "default", "*"]);
@@ -195,11 +197,25 @@ function validateStageModels(
       }
     }
 
+    const efforts = entry["efforts"];
+    if (efforts !== undefined) {
+      if (
+        !Array.isArray(efforts) ||
+        efforts.length === 0 ||
+        efforts.some((effort) => typeof effort !== "string" || effort.trim() === "") ||
+        new Set(efforts).size !== efforts.length
+      ) {
+        issues.push({ path: `${stagePath}.efforts`, message: "must be a non-empty list of distinct effort names" });
+        rejected = true;
+      }
+    }
+
     if (rejected || typeof model !== "string") continue;
 
     stageModels[stage] = {
       model,
       ...(typeof fallback === "string" ? { fallbackModel: fallback } : {}),
+      ...(Array.isArray(efforts) ? { efforts: efforts as string[] } : {}),
     };
   }
 

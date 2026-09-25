@@ -107,6 +107,8 @@ export interface JevFailure {
   /** A temporary failure (rate limit, overload, server error, timeout) that #18 may retry. */
   readonly retryable: boolean;
   readonly traceReference: string;
+  /** An answer Jev gave that is not one of the question's choices (issue #28). */
+  readonly unlisted?: string;
 }
 
 export type JevCallResult =
@@ -183,7 +185,7 @@ type ParsedAnswer =
       readonly reasonCode: string;
       readonly confidence?: number;
     }
-  | { readonly ok: false; readonly error: string };
+  | { readonly ok: false; readonly error: string; readonly unlisted?: string };
 
 type AnswerEntry = { choice?: unknown; confidence?: unknown };
 
@@ -199,7 +201,10 @@ function parseAnswer(body: unknown, question: DecisionQuestion): ParsedAnswer {
         };
   };
   const answer = closedChoice(question.decision, question.answers);
-  if (!answer.ok) return answer;
+  if (!answer.ok) {
+    const given = document?.answers?.[question.decision]?.choice;
+    return typeof given === "string" && given.trim() !== "" ? { ...answer, unlisted: given } : answer;
+  }
   // An answer without its reason code cannot be grouped or replayed (D35).
   const reason = closedChoice(reasonKey(question), question.reasons);
   if (!reason.ok) return reason;
@@ -291,7 +296,14 @@ export async function askJev(
   if (!answer.ok) {
     return {
       kind: "failed",
-      failure: { decision: question.decision, status, error: answer.error, retryable: false, traceReference },
+      failure: {
+        decision: question.decision,
+        status,
+        error: answer.error,
+        retryable: false,
+        traceReference,
+        ...(answer.unlisted === undefined ? {} : { unlisted: answer.unlisted }),
+      },
     };
   }
   return {

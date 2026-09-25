@@ -1,16 +1,22 @@
 {
   "decision": "model-selection",
   "version": 2,
-  "status": "skeleton",
+  "status": "accepted",
   "ownedBy": "#28",
-  "prompt": "Skeleton (D37): given a stage-worker assignment and the configured model set for that stage, which model and effort are recommended? Wording proposed in #28 for explicit acceptance.",
+  "prompt": "You are recommending a model and effort for one stage worker in a jflow workflow. The packet gives the stage, the worker's role, the ticket, a summary of the task, and the options the developer configured for this stage, each a model and an effort. Recommend the option whose effort fits the task: the lowest effort that can do it well, and a higher one when the task is large, ambiguous or risky. Answer with exactly one of the listed options, or no-recommendation when none fits or the packet does not show enough to choose. Never name a model that is not listed. Your answer is advisory: the primary agent may set it aside with a recorded reason, and it grants no authorization.",
   "answers": [
     "recommend",
     "no-recommendation"
   ],
   "reasons": [
-    "fits-stage",
-    "no-suitable-model",
+    "fits-task",
+    "lower-effort-suffices",
+    "needs-higher-effort",
+    "no-suitable-option",
     "insufficient-evidence"
-  ]
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-25T00:00:00Z",
+    "note": "Accept as written (developer, answering the #28 wording proposal for model-selection)"
+  }
 }

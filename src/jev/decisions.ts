@@ -141,6 +141,17 @@ export type AskDecisionResult =
     }
   | { readonly kind: "answered"; readonly envelope: DecisionEnvelope };
 
+/**
+ * Jev answered with something that is not one of the choices it was given,
+ * and the caller rejects that rather than treat it as a failure (issue
+ * #28). Nothing is recorded as a Jev outage.
+ */
+export interface UnlistedAnswer {
+  readonly kind: "unlisted";
+  readonly answer: string;
+  readonly traceReference: string;
+}
+
 /** Routes an answer by its question's acceptance, its confidence and the decision's authority. */
 export function routeAnswer(
   workflowPackage: WorkflowPackage,
@@ -236,6 +247,32 @@ export async function askDecision(
   input: DecisionInput,
   dependencies: DecisionDependencies,
 ): Promise<AskDecisionResult> {
+  const result = await ask(root, decision, input, dependencies, false);
+  if (result.kind === "unlisted") throw new Error("an unlisted answer is only returned when asked for");
+  return result;
+}
+
+/**
+ * `askDecision` for a decision whose choices are built per call (issue
+ * #28): an answer outside them comes back as `unlisted` for the caller to
+ * reject and record, instead of setting the Jev fallback.
+ */
+export async function askDecisionRejectingUnlisted(
+  root: string,
+  decision: string,
+  input: DecisionInput,
+  dependencies: DecisionDependencies,
+): Promise<AskDecisionResult | UnlistedAnswer> {
+  return ask(root, decision, input, dependencies, true);
+}
+
+async function ask(
+  root: string,
+  decision: string,
+  input: DecisionInput,
+  dependencies: DecisionDependencies,
+  rejectUnlisted: boolean,
+): Promise<AskDecisionResult | UnlistedAnswer> {
   const { workflowPackage, configuration } = dependencies.context;
   const declaration = workflowPackage.decisions[decision];
   const policy = workflowPackage.policy[decision];
@@ -260,6 +297,9 @@ export async function askDecision(
     attempts += 1;
   }
   if (result.kind === "needs-configuration") return result;
+  if (result.kind === "failed" && rejectUnlisted && result.failure.unlisted !== undefined) {
+    return { kind: "unlisted", answer: result.failure.unlisted, traceReference: result.failure.traceReference };
+  }
   if (result.kind === "failed") {
     const recorded = recordFailure(root, decision, result.failure, {
       now: dependencies.now(),

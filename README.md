@@ -114,6 +114,21 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   agent, whose model jflow never switches. Recorded workers count as a
   ticket's implementers, so none of them reviews it. A test keeps the skill, the workflow package, the
   README and the helper's usage free of specific model names.
+- `src/actions/model-selection.ts` — Jev's advisory `model-selection`
+  (issue #28, D49). `worker recommend` builds the options from what the
+  stage may run now: its configured model, or only its configured
+  fallback when the host reported the model unavailable (D20), at each
+  effort in `stageModels.<stage>.efforts`; with no efforts there is one
+  option and nothing to ask. It asks Jev with those options
+  as the only choices, beside `no-recommendation`. An answer outside them
+  is rejected and recorded in the workers record, and no worker starts on
+  it. It is not a Jev outage. `worker assign` with `selection` records
+  following the recommendation, or setting it aside with a reason and
+  evidence, on its envelope, plus the effort and envelope on the
+  assignment. The envelope must be for the same stage, role and ticket,
+  unused, and hold a recommendation. The choice is written only once the
+  assignment is known to be valid. Where efforts are configured, an
+  assignment needs one of them. Replay keeps each envelope's own options.
 - `src/actions/plan-review.ts` — the integrated review of a plan (issue
   #13, D9). `planCompletion` holds a multi-ticket plan incomplete until
   every ticket is done or withdrawn and an integrated review has passed.
@@ -299,7 +314,7 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, the remaining Jev decisions' call sites, and
+The other workflow actions, `classify`'s call sites, and
 question-file proposals are not implemented yet; replay, which gates them,
 is. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
