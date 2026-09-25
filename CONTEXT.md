@@ -25,6 +25,9 @@ An agent assigned work within a workflow stage using that stage's configured mod
 **Independent review**:
 Assessment by a separate reviewer agent that did not implement the changes. The reviewer may use the same model as the implementer; self-review does not qualify.
 
+**Integrated review**:
+The independent review of a whole plan once every ticket is done, checking how the tickets work together and the plan's acceptance criteria. A plan with one ticket has its ticket review cover both scopes instead.
+
 **Brainstorm**:
 The jflow action for investigating an idea or problem and defining what to build.
 _Avoid_: what, as an action name

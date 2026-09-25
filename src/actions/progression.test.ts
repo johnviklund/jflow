@@ -311,8 +311,19 @@ describe("waiting", () => {
     expect(ticketsOf(h)["T4"]).toMatchObject({ status: "ready" });
   });
 
-  it("reports the plan finished when every ticket is done or withdrawn", async () => {
-    const h = project([ticket("T1", "done"), ticket("T2", "withdrawn")]);
+  it("reports the plan finished when every ticket is done or withdrawn and the plan's review passed", async () => {
+    const h = project([ticket("T1", "done"), ticket("T2", "withdrawn")], {
+      ...WHOLE_PLAN,
+      planReview: {
+        scope: "single-ticket",
+        ticketId: "T1",
+        tickets: ["T1"],
+        reviewer: { agent: "reviewer-1" },
+        disposition: "passed",
+        findings: [],
+        reviewedAt: now,
+      },
+    });
 
     expect(await nextTicket(h.root, dependencies(h, jev()))).toMatchObject({ kind: "finished" });
   });

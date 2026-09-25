@@ -99,7 +99,10 @@ Under whole-plan authorization, once a ticket is complete, run
   start beside it once checked. Do the check below.
 - `waiting` (exit 1): nothing can safely proceed. Report each of
   `reasons` to the developer and wait. Start nothing.
-- `finished`: every ticket is done or withdrawn. `wrap` comes next.
+- `needs-plan-review`: every ticket is done, and the plan waits for its
+  integrated review (`actions/review.md`).
+- `finished`: every ticket is done or withdrawn, and the plan's review
+  has passed. `wrap` comes next.
 
 Park a ticket when something outside it blocks it: a question only the
 developer can answer, a missing dependency, or an unresolved conflict. A

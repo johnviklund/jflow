@@ -8,7 +8,8 @@ import { completeTicket } from "./actions/completion.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { nextTicket, parkTicket, recordIndependence, type IndependenceInput } from "./actions/progression.js";
 import { unreadable } from "./actions/refusal.js";
-import { decideFinding, recordReview, startReview, type ReviewInput } from "./actions/review.js";
+import { decideFinding, recordReview, startReview, type FindingInput, type ReviewInput } from "./actions/review.js";
+import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import {
   applyDiagnosis,
@@ -116,6 +117,10 @@ Usage:
   jflow review record <review.json>          [--root <dir>] [--config <file>]
   jflow review decide <ticket> --finding <id> --outcome upheld|withdrawn --note <the developer's words>
                     [--recommendation <next step>] [--root <dir>] [--config <file>]
+  jflow review plan start                    [--root <dir>] [--config <file>]
+  jflow review plan record <review.json>     [--root <dir>] [--config <file>]
+  jflow review plan decide --finding <id> --outcome upheld|withdrawn --note <the developer's words>
+                    [--root <dir>] [--config <file>]
   jflow ticket validate <evidence.json>      [--root <dir>] [--config <file>]
   jflow ticket override <id> --criterion <n> --verdict met|not-met|insufficient-evidence
                     --by agent|developer --reason <why> [--evidence <what it rests on>] [--root <dir>]
@@ -189,6 +194,12 @@ to fix and through validate again; an improvement becomes a todo; a
 dispute is settled by evidence, asked of escalate, or, when it touches
 requirements, scope, workflow rules or permissions, put to the developer.
 "review decide" records the developer's decision on a disputed finding.
+"review plan" is the integrated review of a multi-ticket plan once every
+ticket is done or withdrawn: "start" returns every ticket, the plan's
+acceptance criteria and the agents that may not review; "record" takes
+reviewer and findings under the same rule; "decide" settles a disputed
+finding. A blocking finding holds the plan, and the developer decides the
+new work. A one-ticket plan's ticket review covers the plan.
 "ticket validate" asks the binding validate decision once per accepted
 criterion over ticketId, evidence (kind check or claim, source, text,
 exitCode) and checks (the ticket's commands). The validation's disposition
@@ -731,11 +742,44 @@ function runTroubleshoot(args: ParsedArgs, io: CliIo): number {
   }
 }
 
+async function runPlanReview(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [, subcommand, target] = args.positional;
+  if (subcommand !== "start" && subcommand !== "record" && subcommand !== "decide") {
+    io.stderr(`review plan needs one of start, record, decide\n${USAGE}`);
+    return EXIT_NEEDS_HUMAN;
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  if (subcommand === "start") return report(startPlanReview(root, built.context), io);
+
+  const dependencies = decisionDependencies(built.context, io);
+  let result;
+  if (subcommand === "record") {
+    const read = readDraft<{ reviewer: ReviewInput["reviewer"]; findings: FindingInput[] }>(target, "review plan record", io);
+    if (!read.ok) return read.exit;
+    result = await recordPlanReview(root, read.draft, dependencies);
+  } else {
+    const { finding, outcome, note } = args.options;
+    if (finding === undefined || (outcome !== "upheld" && outcome !== "withdrawn")) {
+      io.stderr(`review plan decide needs --finding <id> and --outcome upheld|withdrawn\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    result = await decidePlanFinding(root, { finding, outcome, note: note ?? "" }, dependencies);
+  }
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok && result.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 async function runReview(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
+  if (subcommand === "plan") return runPlanReview(args, io);
   if (subcommand !== "start" && subcommand !== "record" && subcommand !== "decide") {
-    io.stderr(`review needs one of start, record, decide\n${USAGE}`);
+    io.stderr(`review needs one of start, record, decide, plan\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);

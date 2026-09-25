@@ -88,6 +88,20 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   the ticket to fix clears its validation and counts on the shared fix
   counter. `review decide` records the developer's ruling on a dispute.
   The latest review is kept in `progress.reviews`.
+- `src/actions/plan-review.ts` — the integrated review of a plan (issue
+  #13, D9). `planCompletion` holds a multi-ticket plan incomplete until
+  every ticket is done or withdrawn and an integrated review has passed.
+  `implement next` returns `needs-plan-review` until then, and `next`
+  recommends it. `review plan start|record|decide` reuses ticket review's
+  finding rule, dispute handling and reviewer check, against the
+  implementers of every ticket. A blocking finding holds the plan and asks
+  the developer, since the fix is new work in the plan. A one-ticket
+  plan's passing ticket review is recorded as the plan review too
+  (`progress.planReview`, scope `single-ticket`), and no second review is
+  taken. A plan review counts only while the tickets it covered are the
+  plan's tickets. A blocked plan takes a new review only after the
+  tickets change, or once the developer withdraws the finding in their
+  words.
 - `src/actions/progression.ts`, `independence.ts` — whole-plan progress
   (issue #12, D29, D30). `implement next` picks the next eligible ticket
   in plan order. Under whole-plan authorization it asks `escalate` at

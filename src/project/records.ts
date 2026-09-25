@@ -308,6 +308,8 @@ export interface ProgressRecord {
   readonly implementers?: Readonly<Record<string, readonly string[]>>;
   /** The latest review per ticket (issue #9). */
   readonly reviews?: Readonly<Record<string, TicketReview>>;
+  /** The latest review of the plan as a whole (issue #13). */
+  readonly planReview?: PlanReview;
   /** The latest independence check per ticket that may start beside a parked one (issue #12). */
   readonly independenceChecks?: Readonly<Record<string, IndependenceCheck>>;
   /** Owners the developer gave pre-existing uncommitted changes, one entry per path. */
@@ -316,6 +318,24 @@ export interface ProgressRecord {
     readonly lastReconciledAt?: string;
     readonly discrepancies: readonly ReconciliationDiscrepancy[];
   };
+}
+
+/**
+ * The review of the plan as a whole (D9, issue #13). `integrated` is the
+ * review across a multi-ticket plan's tickets, checking their interactions
+ * and the plan's acceptance criteria; `single-ticket` records that a
+ * one-ticket plan's ticket review covered both scopes.
+ */
+export const PLAN_REVIEW_SCOPES = ["integrated", "single-ticket"] as const;
+
+export type PlanReviewScope = (typeof PLAN_REVIEW_SCOPES)[number];
+
+export interface PlanReview extends TicketReview {
+  readonly scope: PlanReviewScope;
+  /** The tickets the review covered; it counts only while they are the plan's tickets. */
+  readonly tickets: readonly string[];
+  /** The ticket whose review covered the plan, for `single-ticket`. */
+  readonly ticketId?: string;
 }
 
 /**
@@ -828,6 +848,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "implementers",
       "reviews",
       "independenceChecks",
+      "planReview",
       "changeOwnership",
       "reconciliation",
     ],
@@ -913,6 +934,25 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       for (const [ticketId, entry] of Object.entries(doc["reviews"])) {
         const review = validateTicketReview(entry, `reviews.${ticketId}`, issues);
         if (review) reviews[ticketId] = review;
+      }
+    }
+  }
+
+  let planReview: PlanReview | undefined;
+  if (doc["planReview"] !== undefined) {
+    if (!isRecord(doc["planReview"])) {
+      issues.add("planReview", "must be an object");
+    } else {
+      const { scope: rawScope, ticketId: rawTicket, tickets: rawTickets, ...review } = doc["planReview"];
+      const covered = validateStringArray(rawTickets, "planReview.tickets", issues);
+      const scope = validateEnumValue<PlanReviewScope>(rawScope, "planReview.scope", PLAN_REVIEW_SCOPES, issues);
+      const ticketId = optionalString(rawTicket, "planReview.ticketId", issues);
+      if ((scope === "single-ticket") !== (ticketId !== undefined)) {
+        issues.add("planReview.ticketId", "names the ticket exactly when a single-ticket review covered the plan");
+      }
+      const reviewed = validateTicketReview(review, "planReview", issues);
+      if (reviewed && scope) {
+        planReview = { ...reviewed, scope, tickets: covered, ...(ticketId === undefined ? {} : { ticketId }) };
       }
     }
   }
@@ -1044,6 +1084,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       implementers,
       reviews,
       independenceChecks,
+      planReview,
       reconciliation,
     },
   );

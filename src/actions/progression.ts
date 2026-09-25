@@ -15,6 +15,7 @@ import { readWorkingTree } from "../project/worktree.js";
 import { hasText } from "../validation.js";
 import { readWorkingTicket, startTicket, type StartedTicket } from "./implement.js";
 import { independenceGap, parkedDependency, parkedTickets, partialEdits } from "./independence.js";
+import { isOpen, planCompletion } from "./plan-review.js";
 import { refuse, unreadable, type Refusal } from "./refusal.js";
 
 /**
@@ -42,6 +43,7 @@ export type NextResult =
   | { readonly kind: "ask"; readonly ticket: string; readonly askHuman: EscalationAsk; readonly escalation?: string }
   | { readonly kind: "needs-independence-check"; readonly candidates: readonly string[]; readonly parked: readonly ParkedSummary[] }
   | { readonly kind: "waiting"; readonly reasons: readonly string[] }
+  | { readonly kind: "needs-plan-review"; readonly reason: string }
   | { readonly kind: "finished" }
   | { readonly kind: "refused"; readonly reason: string };
 
@@ -71,7 +73,6 @@ function summarizeParked(records: Records): readonly ParkedSummary[] {
   }));
 }
 
-const isOpen = (ticket: TicketRecord) => ticket.status !== "done" && ticket.status !== "withdrawn";
 
 /** Why each open ticket cannot start now, for a report that starts nothing. */
 function waitingReasons(tickets: TicketsRecord): readonly string[] {
@@ -98,7 +99,10 @@ export async function nextTicket(root: string, dependencies: DecisionDependencie
   if (active !== undefined) {
     return { kind: "refused", reason: `ticket ${active.id} is in progress; it passes review or is parked before the next starts` };
   }
-  if (!tickets.tickets.some(isOpen)) return { kind: "finished" };
+  if (!tickets.tickets.some(isOpen)) {
+    const completion = planCompletion(tickets, progress);
+    return completion.complete ? { kind: "finished" } : { kind: "needs-plan-review", reason: completion.reason };
+  }
 
   const done = new Set(tickets.tickets.filter((ticket) => ticket.status === "done").map((ticket) => ticket.id));
   const ready = tickets.tickets.filter((ticket) => ticket.status === "ready" && ticket.dependsOn.every((id) => done.has(id)));

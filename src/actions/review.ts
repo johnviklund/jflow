@@ -73,6 +73,10 @@ export interface StartedReview {
   readonly previousReview?: TicketReview;
   /** Diagnoses of the ticket's failed checks, as evidence (issue #11). */
   readonly diagnoses: readonly DiagnosisEntry[];
+  /** What this review covers: the ticket, and for a one-ticket plan the plan too (D9, issue #13). */
+  readonly scopes: readonly ("ticket" | "plan")[];
+  /** The plan's acceptance criteria, when this review covers the plan. */
+  readonly planCriteria?: readonly string[];
   readonly fix: { readonly attempts: number; readonly limit: number };
 }
 
@@ -127,6 +131,14 @@ function implementersOf(progress: ProgressRecord, ticketId: string): readonly st
   return [PRIMARY_AGENT, ...(progress.implementers?.[ticketId] ?? [])];
 }
 
+/** The plan's one ticket, when it has exactly one that is not withdrawn (D9). */
+export function singleTicketPlan(root: string): { readonly ok: true; readonly ticketId?: string } | Refusal {
+  const read = readRecord(root, "tickets");
+  if (read.kind === "malformed") return unreadable("tickets", read);
+  const live = read.kind === "present" ? read.record.tickets.filter((ticket) => ticket.status !== "withdrawn") : [];
+  return live.length === 1 ? { ok: true, ticketId: live[0]!.id } : { ok: true };
+}
+
 /** Why a ticket may not be reviewed now. */
 function notAdmitted(progress: ProgressRecord, ticketId: string): string {
   switch (progress.reviews?.[ticketId]?.disposition) {
@@ -158,6 +170,11 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
   if (validation === undefined || !admittedToReview(progress, ticket.id)) return refuse(notAdmitted(progress, ticket.id));
   const diagnosed = readTicketDiagnoses(root, ticket.id);
   if (!diagnosed.ok) return diagnosed;
+  const single = singleTicketPlan(root);
+  if (!single.ok) return single;
+  const coversPlan = single.ticketId === ticket.id;
+  const specification = readRecord(root, "specification");
+  if (specification.kind === "malformed") return unreadable("specification", specification);
   const evidence = `${EVIDENCE_DIRECTORY}/${encodeURIComponent(ticket.id)}.json`;
   const previousReview = progress.reviews?.[ticket.id];
   return {
@@ -170,9 +187,16 @@ export function startReview(root: string, context: ResolutionContext): StartRevi
       ...(resolution.stageModel === undefined ? {} : { stageModel: resolution.stageModel }),
       ...(previousReview === undefined ? {} : { previousReview }),
       diagnoses: diagnosed.diagnoses,
+      scopes: coversPlan ? ["ticket", "plan"] : ["ticket"],
+      ...(coversPlan ? { planCriteria: specification.kind === "present" ? specification.record.acceptanceCriteria : [] } : {}),
       fix: { attempts: progress.fixAttempts?.[ticket.id] ?? 0, limit: fixLimit(context) },
     },
   };
+}
+
+/** Why the drafted findings cannot be recorded, if they cannot. */
+export function findingsProblem(findings: readonly FindingInput[]): string | undefined {
+  return findings.map(findingProblem).find((entry) => entry !== undefined);
 }
 
 /** Checks one finding as drafted; returns why it cannot be recorded, if it cannot. */
@@ -201,15 +225,15 @@ function findingProblem(finding: FindingInput, index: number): string | undefine
 /** Whether a finding as drafted may end up blocking the ticket. */
 const mayBlock = (finding: FindingInput) => BLOCKING_KINDS.includes(finding.kind) && finding.dispute?.conclusive !== true;
 
-/** The ticket's next state: any blocking finding returns it to fix, else any open dispute waits, else it passed. */
-function reviewDisposition(findings: readonly ReviewFinding[]): ReviewDisposition {
+/** The next state: any blocking finding returns the work to fix, else any open dispute waits, else it passed. */
+export function reviewDisposition(findings: readonly ReviewFinding[]): ReviewDisposition {
   if (findings.some((finding) => finding.disposition === "blocking")) return "returned-to-fix";
   if (findings.some((finding) => finding.disposition === "awaiting-developer")) return "awaiting-developer";
   return "passed";
 }
 
-const describeFinding = (ticketId: string, finding: { readonly id: string; readonly kind: string; readonly summary: string }) =>
-  `Review finding ${finding.id} (${finding.kind}) on ticket ${ticketId}: ${finding.summary}`;
+const describeFinding = (subject: string, finding: { readonly id: string; readonly kind: string; readonly summary: string }) =>
+  `Review finding ${finding.id} (${finding.kind}) on ${subject}: ${finding.summary}`;
 
 interface DisposedFinding {
   readonly finding: ReviewFinding;
@@ -219,7 +243,7 @@ interface DisposedFinding {
 /** Disposes of one finding by D33's rule; only a dispute can reach the developer, and only a non-consequential one reaches Jev. */
 async function disposeFinding(
   root: string,
-  ticketId: string,
+  subject: string,
   input: FindingInput,
   id: string,
   dependencies: DecisionDependencies,
@@ -230,7 +254,7 @@ async function disposeFinding(
   if (input.kind === "improvement") {
     const filed = recordTodo(
       root,
-      { summary: base.summary, detail: [`review of ticket ${ticketId}`, ...evidence].join("; ") },
+      { summary: base.summary, detail: [`review of ${subject}`, ...evidence].join("; ") },
       { now },
     );
     if (!filed.ok) return filed;
@@ -240,7 +264,7 @@ async function disposeFinding(
   if (draft === undefined) return { ok: true, disposed: { finding: { ...base, disposition: "blocking" }, asks: [] } };
 
   const dispute: FindingDispute = { reason: draft.reason.trim(), evidence: (draft.evidence ?? []).filter(hasText) };
-  const described = describeFinding(ticketId, base);
+  const described = describeFinding(subject, base);
   const touches = draft.touches ?? [];
   if (touches.length > 0) {
     const raised = raiseConflict(root, { summary: `${described}; disputed: ${dispute.reason}`, touches }, { now });
@@ -286,6 +310,76 @@ async function disposeFinding(
   };
 }
 
+/**
+ * Disposes of each drafted finding by D33's rule, numbering them F1, F2, …
+ * `subject` names what was reviewed ("ticket T1", "the integrated plan").
+ */
+export async function disposeFindings(
+  root: string,
+  subject: string,
+  findings: readonly FindingInput[],
+  dependencies: DecisionDependencies,
+): Promise<{ readonly ok: true; readonly findings: readonly ReviewFinding[]; readonly asks: readonly string[] } | Refusal> {
+  const disposed: DisposedFinding[] = [];
+  for (const [index, finding] of findings.entries()) {
+    const result = await disposeFinding(root, subject, finding, `F${index + 1}`, dependencies);
+    if (!result.ok) return result;
+    disposed.push(result.disposed);
+  }
+  return { ok: true, findings: disposed.map((entry) => entry.finding), asks: disposed.flatMap((entry) => entry.asks) };
+}
+
+/** The reviewing agent as drafted, or why it cannot review: named, and none of `implementers`. */
+export function reviewerOf(
+  drafted: Reviewer | undefined,
+  implementers: readonly string[],
+  subject: string,
+): { readonly ok: true; readonly reviewer: Reviewer } | Refusal {
+  const agent = typeof drafted?.agent === "string" ? drafted.agent.trim() : "";
+  if (agent === "") return refuse("name the reviewing agent; review needs a reviewer distinct from the implementer");
+  if (implementers.includes(agent)) {
+    return refuse(
+      `${agent} implemented ${subject}; review by an implementing agent never satisfies the gate, even on another model, so spawn a distinct reviewer with a fresh context`,
+    );
+  }
+  const model = drafted?.model?.trim();
+  return { ok: true, reviewer: { agent, ...(hasText(model) ? { model } : {}) } };
+}
+
+/**
+ * Applies the developer's decision to a disputed finding waiting for them:
+ * `upheld` makes it blocking, `withdrawn` sets it aside. Returns the review
+ * settled again, and the conflict to resolve with the same words, if any.
+ */
+export function decideDispute<R extends TicketReview>(
+  review: R,
+  decision: { readonly finding: string; readonly outcome: string; readonly note: string },
+  subject: string,
+): { readonly ok: true; readonly review: R; readonly conflict?: string } | Refusal {
+  if (!hasText(decision.note)) return refuse("the dispute is the developer's to decide; record it in their words");
+  if (decision.outcome !== "upheld" && decision.outcome !== "withdrawn") {
+    return refuse(`a disputed finding is upheld or withdrawn, not "${String(decision.outcome)}"`);
+  }
+  const target = review.findings.find((finding) => finding.id === decision.finding);
+  if (target === undefined) {
+    return refuse(`no finding "${decision.finding}" on ${subject}; findings are ${review.findings.map((f) => f.id).join(", ") || "none"}`);
+  }
+  if (target.disposition !== "awaiting-developer" || target.dispute === undefined) {
+    return refuse(`finding ${target.id} is ${target.disposition}, not waiting for the developer`);
+  }
+  const decided: ReviewFinding = {
+    ...target,
+    disposition: decision.outcome === "upheld" ? "blocking" : "withdrawn",
+    dispute: { ...target.dispute, resolution: { by: "developer", note: decision.note.trim() } },
+  };
+  const findings = review.findings.map((finding) => (finding.id === target.id ? decided : finding));
+  return {
+    ok: true,
+    review: { ...review, findings, disposition: reviewDisposition(findings) },
+    ...(target.dispute.conflict === undefined ? {} : { conflict: target.dispute.conflict }),
+  };
+}
+
 interface ReviewWrite {
   readonly progress: ProgressRecord;
   readonly ticketId: string;
@@ -307,10 +401,16 @@ async function writeReview(
   dependencies: DecisionDependencies,
 ): Promise<ReviewResult> {
   const { [ticketId]: _cleared, ...validations } = progress.validations ?? {};
+  const single = singleTicketPlan(root);
+  if (!single.ok) return single;
   const next = validateRecord("progress", {
     ...progress,
     reviews: { ...progress.reviews, [ticketId]: review },
     ...(returned ? { validations } : {}),
+    // A one-ticket plan's review covers the plan too (D9); no second review follows.
+    ...(single.ticketId === ticketId && review.disposition === "passed"
+      ? { planReview: { ...review, scope: "single-ticket", ticketId, tickets: [ticketId] } }
+      : {}),
   });
   if (!next.ok) return refuse("the review cannot be recorded", next.issues);
   writeRecord(root, "progress", next.record);
@@ -367,32 +467,21 @@ export async function recordReview(
   const { ticket, progress } = working;
   if (!admittedToReview(progress, ticket.id)) return refuse(notAdmitted(progress, ticket.id));
 
-  const agent = typeof input.reviewer?.agent === "string" ? input.reviewer.agent.trim() : "";
-  if (agent === "") return refuse("name the reviewing agent; review needs a reviewer distinct from the implementer");
-  if (implementersOf(progress, ticket.id).includes(agent)) {
-    return refuse(
-      `${agent} implemented ticket ${ticket.id}; review by an implementing agent never satisfies the gate, even on another model, so spawn a distinct reviewer with a fresh context`,
-    );
-  }
+  const reviewer = reviewerOf(input.reviewer, implementersOf(progress, ticket.id), `ticket ${ticket.id}`);
+  if (!reviewer.ok) return reviewer;
   const findings = Array.isArray(input.findings) ? input.findings : [];
-  const problem = findings.map(findingProblem).find((entry) => entry !== undefined);
+  const problem = findingsProblem(findings);
   if (problem !== undefined) return refuse(problem);
   if (findings.some(mayBlock) && nextFailureReachesLimit(progress, ticket.id, dependencies.context) && !hasText(input.recommendation)) {
     return refuse("a blocking finding here reaches the fix limit; record the review with a recommendation for the developer");
   }
 
-  const disposed: DisposedFinding[] = [];
-  for (const [index, finding] of findings.entries()) {
-    const result = await disposeFinding(root, ticket.id, finding, `F${index + 1}`, dependencies);
-    if (!result.ok) return result;
-    disposed.push(result.disposed);
-  }
-  const reviewed = disposed.map((entry) => entry.finding);
-  const model = input.reviewer.model?.trim();
+  const disposed = await disposeFindings(root, `ticket ${ticket.id}`, findings, dependencies);
+  if (!disposed.ok) return disposed;
   const review: TicketReview = {
-    reviewer: { agent, ...(hasText(model) ? { model } : {}) },
-    disposition: reviewDisposition(reviewed),
-    findings: reviewed,
+    reviewer: reviewer.reviewer,
+    disposition: reviewDisposition(disposed.findings),
+    findings: disposed.findings,
     reviewedAt: dependencies.now(),
   };
   // Disposing may have written todos and conflicts; the progress record is re-read before the review lands.
@@ -406,7 +495,7 @@ export async function recordReview(
       review,
       returned: review.disposition === "returned-to-fix",
       ...(input.recommendation === undefined ? {} : { recommendation: input.recommendation }),
-      asks: disposed.flatMap((entry) => entry.asks),
+      asks: disposed.asks,
     },
     dependencies,
   );
@@ -424,37 +513,20 @@ export async function decideFinding(
   decision: FindingDecision,
   dependencies: DecisionDependencies,
 ): Promise<ReviewResult> {
-  if (!hasText(decision.note)) return refuse("the dispute is the developer's to decide; record it in their words");
-  if (decision.outcome !== "upheld" && decision.outcome !== "withdrawn") {
-    return refuse(`a disputed finding is upheld or withdrawn, not "${String(decision.outcome)}"`);
-  }
   const working = readWorkingTicket(root, decision.ticketId);
   if (!working.ok) return working;
   const { ticket, progress } = working;
   const review = progress.reviews?.[ticket.id];
   if (review === undefined) return refuse(`ticket ${ticket.id} has no review`);
-  const target = review.findings.find((finding) => finding.id === decision.finding);
-  if (target === undefined) {
-    return refuse(`no finding "${decision.finding}" on ticket ${ticket.id}; findings are ${review.findings.map((f) => f.id).join(", ") || "none"}`);
-  }
-  if (target.disposition !== "awaiting-developer" || target.dispute === undefined) {
-    return refuse(`finding ${target.id} is ${target.disposition}, not waiting for the developer`);
-  }
-
-  const note = decision.note.trim();
-  const decided: ReviewFinding = {
-    ...target,
-    disposition: decision.outcome === "upheld" ? "blocking" : "withdrawn",
-    dispute: { ...target.dispute, resolution: { by: "developer", note } },
-  };
-  const findings = review.findings.map((finding) => (finding.id === target.id ? decided : finding));
-  const next: TicketReview = { ...review, findings, disposition: reviewDisposition(findings) };
+  const decided = decideDispute(review, decision, `ticket ${ticket.id}`);
+  if (!decided.ok) return decided;
+  const next = decided.review;
   const returned = next.disposition === "returned-to-fix" && review.disposition !== "returned-to-fix";
   if (returned && nextFailureReachesLimit(progress, ticket.id, dependencies.context) && !hasText(decision.recommendation)) {
     return refuse("upholding this finding reaches the fix limit; record the decision with a recommendation for the developer");
   }
-  if (target.dispute.conflict !== undefined) {
-    const resolved = decideConflict(root, target.dispute.conflict, { note, now: dependencies.now() });
+  if (decided.conflict !== undefined) {
+    const resolved = decideConflict(root, decided.conflict, { note: decision.note.trim(), now: dependencies.now() });
     if (!resolved.ok) return resolved;
   }
   return writeReview(

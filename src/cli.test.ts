@@ -596,6 +596,23 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(next.json()).toMatchObject({ ok: true, kind: "started", ticket: { id: "T2" } });
   });
 
+  it("reviews a finished multi-ticket plan as a whole before it is complete", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true }, gitRepository: true });
+    const ticket = (id: string) => ({ id, title: id, acceptanceCriteria: [`${id} works`], dependsOn: [], status: "done" });
+    h.writeFile("jflow/tickets.json", JSON.stringify({ tickets: [ticket("T1"), ticket("T2")] }));
+    h.writeFile(".jflow/plan-review.json", JSON.stringify({ reviewer: { agent: "plan-reviewer" }, findings: [] }));
+
+    const started = await run(["review", "plan", "start"], h.root);
+    const recorded = await run(["review", "plan", "record", join(h.root, ".jflow", "plan-review.json")], h.root);
+    const again = await run(["review", "plan", "start"], h.root);
+
+    expect(started.code).toBe(EXIT_OK);
+    expect(started.json()).toMatchObject({ ok: true, outcome: { tickets: [{ id: "T1" }, { id: "T2" }], planCriteria: ["seeded"] } });
+    expect(recorded.code).toBe(EXIT_OK);
+    expect(recorded.json()).toMatchObject({ ok: true, review: { scope: "integrated", disposition: "passed" } });
+    expect(again.json()).toMatchObject({ ok: false, reason: expect.stringContaining("complete") });
+  });
+
   it("escalates a consequential conflict and records the developer's decision", async () => {
     const h = harness();
     h.writeFile("conflict.json", JSON.stringify({ summary: "review wants an excluded flag", touches: ["scope"] }));

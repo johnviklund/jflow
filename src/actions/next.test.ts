@@ -136,7 +136,9 @@ describe("next", () => {
   });
 
   it.each([
-    ["every ticket is done", ["done", "withdrawn"], "wrap", false],
+    ["every ticket is withdrawn", ["withdrawn", "withdrawn"], "wrap", false],
+    ["every ticket is done but the plan awaits its integrated review", ["done", "done"], "review", false],
+    ["the one ticket left is done but the plan was never reviewed", ["done", "withdrawn"], "review", false],
     ["only parked tickets remain", ["done", "parked"], "implement", true],
   ] as const)("recommends the right step when %s", (_label, statuses, action, needsDeveloper) => {
     const h = harness({

@@ -1,4 +1,5 @@
-import { readRecord, type RecordKind, type RecordReadResult, type TodoItem } from "../project/records.js";
+import { EMPTY_PROGRESS, readRecord, type RecordKind, type RecordReadResult, type TodoItem } from "../project/records.js";
+import { planCompletion } from "./plan-review.js";
 import { resolveAction, type ResolutionContext, type UnmetPrerequisite } from "./resolve.js";
 import { runStatus, type ActionStatus } from "./status.js";
 
@@ -57,6 +58,8 @@ export function runNext(root: string, context: ResolutionContext): NextReport {
   if (tickets.kind === "malformed") return malformed(tickets);
   const todos = readRecord(root, "todos");
   if (todos.kind === "malformed") return malformed(todos);
+  const progress = readRecord(root, "progress");
+  if (progress.kind === "malformed") return malformed(progress);
 
   const recommend = (action: string, reason: string, awaitsDeveloper = false): Recommendation => {
     const resolution = resolveAction({ action }, status.state, context);
@@ -97,7 +100,19 @@ export function runNext(root: string, context: ResolutionContext): NextReport {
       true,
     );
   } else if (ticketList.length > 0 && remaining.length === 0) {
-    recommendation = recommend("wrap", "every ticket is done or withdrawn; wrap reconciles the session");
+    const completion = planCompletion(
+      { tickets: ticketList },
+      progress.kind === "present" ? progress.record : EMPTY_PROGRESS,
+    );
+    // The integrated review is plan-scoped, so the ticket-scoped review prerequisites do not apply to it.
+    recommendation = completion.complete
+      ? recommend("wrap", "every ticket is done or withdrawn; wrap reconciles the session")
+      : {
+          action: "review",
+          reason: `${completion.reason}; the integrated review across the tickets comes next (review plan)`,
+          needsDeveloper: progress.kind === "present" && progress.record.planReview !== undefined,
+          unmet: [],
+        };
   } else {
     recommendation = recommend("implement", "the plan is accepted; implementation works one assigned ticket at a time");
   }
