@@ -35,6 +35,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow ticket validate\|override` | Judge a ticket's recorded evidence against its accepted criteria (binding `validate`) and set one verdict aside with evidence; see `references/DECISIONS.md`. |
 | `scripts/jflow conflict raise\|decide` | Record a conflict: consequential ones wait for the developer, technical ones are settled by investigation. Jev is never asked; see `references/DECISIONS.md`. |
 | `scripts/jflow todo add\|list\|promote` | Record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
+| `scripts/jflow learn propose\|decide\|list` | Record a candidate project lesson with Jev's advisory `lesson-retention` answer, then retain it or keep it a candidate; a conflict with an accepted decision asks `escalate`. See `actions/learn.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
@@ -84,6 +85,8 @@ parts only the agent can honour.
 - `realign` is the developer's to invoke. Recommend it; never run it unasked.
 - A todo item is not work to do now. Recording or listing one never widens
   the current ticket; only the developer's explicit decision promotes it.
+- A retained lesson is project knowledge. It never changes the workflow, a
+  gate, a Jev question or policy, and never overrides an accepted decision.
 - Secrets never go into project files or the conversation. If the helper
   reports the Jev API key missing, ask how to configure it rather than
   proceeding without Jev.
@@ -162,7 +165,7 @@ fix. A fix goes through an authorized `implement`.
 ## Layout
 
 - `actions/` — one method file per action. `status.md`, `next.md`,
-  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+  `todo.md`, `learn.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
   `troubleshoot.md` exist; the others are filled in
   by the issue that owns each action.
 - `references/HOST.md` — what has been verified on which host, and what has

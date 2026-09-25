@@ -383,6 +383,54 @@ export interface LessonEvidence {
   readonly reference: string;
 }
 
+/**
+ * Jev's advisory `lesson-retention` answer as the lesson carries it: a
+ * reference to its envelope and the answer's summary, or why there was none.
+ */
+export type LessonAdvice =
+  | {
+      readonly envelope: string;
+      readonly answer: string;
+      readonly reasonCode: string;
+      /** `weigh`, or `ask-human` when the answer is not relied on. */
+      readonly route: string;
+    }
+  | { readonly unavailable: string; readonly traceReference?: string };
+
+export const LESSON_OUTCOMES = ["retained", "candidate"] as const;
+
+export type LessonOutcome = (typeof LESSON_OUTCOMES)[number];
+
+export const LESSON_DECIDERS = ["workflow", "agent", "developer"] as const;
+
+export type LessonDecider = (typeof LESSON_DECIDERS)[number];
+
+/** The decision recorded beside Jev's advice (D6, D21): retained, or kept a candidate. */
+export interface LessonDecision {
+  readonly outcome: LessonOutcome;
+  readonly by: LessonDecider;
+  /** Why; for the developer, their words. */
+  readonly reason?: string;
+  readonly evidence?: readonly string[];
+  /** The agent's `jev assess` record, where Jev's answer was not relied on. */
+  readonly assessment?: string;
+  readonly decidedAt: string;
+}
+
+/** How `learn` assessed a lesson (issue #19). */
+export interface LessonRetention {
+  readonly advice: LessonAdvice;
+  /** Accepted decisions or retained lessons the lesson touches, by id. */
+  readonly touches?: readonly string[];
+  /**
+   * A conflict with an accepted decision or retained lesson, asked through
+   * `escalate` at `lesson-conflict`. `with` is empty when Jev raised it.
+   * Whatever the outcome, the decision itself is never changed (D44).
+   */
+  readonly conflict?: { readonly with: readonly string[]; readonly escalation?: string };
+  readonly decision?: LessonDecision;
+}
+
 export interface LessonRecord {
   readonly id: string;
   readonly statement: string;
@@ -393,6 +441,7 @@ export interface LessonRecord {
   readonly status: LessonStatus;
   readonly supersededBy?: string;
   readonly supersededEvidence?: string;
+  readonly retention?: LessonRetention;
 }
 
 export interface LessonsRecord {
@@ -1306,7 +1355,7 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
     const lesson = requireObject(
       entry,
       path,
-      ["id", "statement", "scope", "evidence", "status", "supersededBy", "supersededEvidence"],
+      ["id", "statement", "scope", "evidence", "status", "supersededBy", "supersededEvidence", "retention"],
       issues,
     );
     if (!lesson) return;
@@ -1351,6 +1400,18 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
       issues.add(`${path}.status`, "only a superseded lesson may carry supersession fields");
     }
 
+    const retention =
+      lesson["retention"] === undefined ? undefined : validateRetention(lesson["retention"], `${path}.retention`, issues);
+    // A lesson `learn` assessed is active only on a decision to retain it, and
+    // one decided to be a candidate is never active (D21).
+    const outcome = retention?.decision?.outcome;
+    if (status === "active" && retention !== undefined && outcome !== "retained") {
+      issues.add(`${path}.status`, "an assessed lesson is active only once the decision to retain it is recorded");
+    }
+    if (status === "candidate" && outcome === "retained") {
+      issues.add(`${path}.status`, "a lesson decided retained is not a candidate");
+    }
+
     const id = requireNonEmptyString(lesson["id"], `${path}.id`, issues);
     if (ids.has(id)) issues.add(`${path}.id`, `duplicate lesson id "${id}"`);
     ids.add(id);
@@ -1364,13 +1425,82 @@ const validateLessons: Validator<LessonsRecord> = (value, issues) => {
           evidence,
           status: status ?? "candidate",
         },
-        { supersededBy, supersededEvidence },
+        { supersededBy, supersededEvidence, retention },
       ),
     );
   });
 
   return { lessons };
 };
+
+function validateAdvice(value: unknown, path: string, issues: IssueCollector): LessonAdvice | undefined {
+  const doc = requireObject(value, path, ["envelope", "answer", "reasonCode", "route", "unavailable", "traceReference"], issues);
+  if (!doc) return undefined;
+  if (doc["unavailable"] !== undefined) {
+    if (doc["envelope"] !== undefined) issues.add(`${path}.envelope`, "advice that was unavailable has no envelope");
+    return withOptional<Extract<LessonAdvice, { unavailable: string }>>(
+      { unavailable: requireNonEmptyString(doc["unavailable"], `${path}.unavailable`, issues) },
+      { traceReference: optionalString(doc["traceReference"], `${path}.traceReference`, issues) },
+    );
+  }
+  return {
+    envelope: requireNonEmptyString(doc["envelope"], `${path}.envelope`, issues),
+    answer: requireNonEmptyString(doc["answer"], `${path}.answer`, issues),
+    reasonCode: requireNonEmptyString(doc["reasonCode"], `${path}.reasonCode`, issues),
+    route: requireNonEmptyString(doc["route"], `${path}.route`, issues),
+  };
+}
+
+function validateRetention(value: unknown, path: string, issues: IssueCollector): LessonRetention | undefined {
+  const doc = requireObject(value, path, ["advice", "touches", "conflict", "decision"], issues);
+  if (!doc) return undefined;
+  const advice = validateAdvice(doc["advice"], `${path}.advice`, issues);
+
+  let conflict: LessonRetention["conflict"];
+  if (doc["conflict"] !== undefined) {
+    const item = requireObject(doc["conflict"], `${path}.conflict`, ["with", "escalation"], issues);
+    if (item) {
+      conflict = withOptional<NonNullable<LessonRetention["conflict"]>>(
+        { with: validateStringArray(item["with"], `${path}.conflict.with`, issues) },
+        { escalation: optionalString(item["escalation"], `${path}.conflict.escalation`, issues) },
+      );
+    }
+  }
+
+  let decision: LessonDecision | undefined;
+  if (doc["decision"] !== undefined) {
+    const item = requireObject(
+      doc["decision"],
+      `${path}.decision`,
+      ["outcome", "by", "reason", "evidence", "assessment", "decidedAt"],
+      issues,
+    );
+    if (item) {
+      decision = withOptional<LessonDecision>(
+        {
+          outcome:
+            validateEnumValue<LessonOutcome>(item["outcome"], `${path}.decision.outcome`, LESSON_OUTCOMES, issues) ??
+            "candidate",
+          by: validateEnumValue<LessonDecider>(item["by"], `${path}.decision.by`, LESSON_DECIDERS, issues) ?? "developer",
+          decidedAt: requireTimestamp(item["decidedAt"], `${path}.decision.decidedAt`, issues),
+        },
+        {
+          reason: optionalString(item["reason"], `${path}.decision.reason`, issues),
+          evidence: optionalStringArray(item["evidence"], `${path}.decision.evidence`, issues),
+          assessment: optionalString(item["assessment"], `${path}.decision.assessment`, issues),
+        },
+      );
+      if (decision.by === "developer" && decision.reason === undefined) {
+        issues.add(`${path}.decision.reason`, "the developer's decision is recorded in their words");
+      }
+    }
+  }
+  if (advice === undefined) return undefined;
+  return withOptional<LessonRetention>(
+    { advice },
+    { touches: optionalStringArray(doc["touches"], `${path}.touches`, issues), conflict, decision },
+  );
+}
 
 const validateJev: Validator<JevRecord> = (value, issues) => {
   const doc = requireObject(value, "", ["fallback", "history", "assessments"], issues);

@@ -187,6 +187,21 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   ticket itself. `next` reports each action's eligibility with its reasons
   and one recommendation, including what only the developer can grant. It
   writes nothing (issue #14).
+- `src/actions/learn.ts` — `learn` (issue #19) records a candidate project
+  lesson in `jflow/lessons.json` at any point, with its scope and evidence
+  links, and asks the advisory `lesson-retention` decision about it. The
+  answer's summary and envelope are recorded with the lesson, and the
+  agent's decision to retain it or keep it a candidate is recorded next to
+  them. Setting the answer aside needs a reason and evidence. Where the
+  answer is not relied on, retaining needs the developer or the agent's
+  `jev assess` record. A lesson that conflicts with an accepted decision or
+  a retained lesson, or that Jev answers `escalate` for, asks `escalate` at
+  `lesson-conflict`. On `proceed` it stays a candidate, and only the
+  developer's own word can retain it later; on an ask, only the developer
+  decides. The decision it conflicts with is never changed either way. A
+  lesson scoped to jflow's workflow, its Jev questions or its policy is
+  refused. Only the lessons
+  record is written, so the interrupted action resumes as it was.
 - `src/jev/` — the Jev client (issue #16).
   - `evidence.ts` builds the bounded packet for one decision: task summary,
     candidates and selected excerpts. It redacts credentials, including the
@@ -236,12 +251,12 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `decide`, `escalate`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
+  `todo.md`, `learn.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
   `troubleshoot.md` so far),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
@@ -249,8 +264,10 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, the other four Jev decisions' wording and call
-sites, and compound learning are not implemented yet. Nothing has been run
+The other workflow actions, the remaining Jev decisions' call sites, and
+the rest of compound learning are not implemented yet. That rest covers
+re-checking a retained lesson before use, marking one superseded, and
+question-file proposals with replay. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
@@ -279,6 +296,10 @@ on the ChatGPT desktop app; see `skill/references/HOST.md`.
   the human, not a silent fallback.
 - Raw traces are kept until explicit local cleanup and stay out of version
   control; project records carry trace references only.
+- A project lesson never changes the workflow: nothing in the package, its
+  gates or Jev's questions reads the lessons record, and a lesson scoped to
+  the workflow is refused. An assessed lesson is active only on a recorded
+  decision to retain it, and `learn` never changes an accepted decision.
 - A superseded lesson must name its successor and the evidence; an approved
   Jev fallback and an authorized execution must record their scope; a parked
   ticket must record why.

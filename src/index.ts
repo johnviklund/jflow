@@ -76,6 +76,16 @@ export {
 } from "./actions/todo.js";
 
 export {
+  decideLesson,
+  proposeLesson,
+  type DecideResult,
+  type LessonDecisionInput,
+  type LessonDraft,
+  type LessonReport,
+  type ProposeResult,
+} from "./actions/learn.js";
+
+export {
   acceptPlan,
   authorizeExecution,
   writePlan,
@@ -131,6 +141,8 @@ export {
   DECISION_STATUSES,
   FALLBACK_SCOPES,
   FALLBACK_STATUSES,
+  LESSON_DECIDERS,
+  LESSON_OUTCOMES,
   LESSON_STATUSES,
   PLAN_STATUSES,
   PROJECT_RECORD_DIRECTORY,
@@ -159,8 +171,13 @@ export {
   type FallbackScope,
   type FallbackStatus,
   type JevRecord,
+  type LessonAdvice,
+  type LessonDecider,
+  type LessonDecision,
   type LessonEvidence,
+  type LessonOutcome,
   type LessonRecord,
+  type LessonRetention,
   type LessonStatus,
   type LessonsRecord,
   type PlanRecord,

@@ -546,6 +546,28 @@ describe("readRecord", () => {
     expect(paths).toContain("lessons[0].supersededEvidence");
   });
 
+  it("rejects an assessed lesson made active without a recorded decision to retain it", () => {
+    const root = makeRoot();
+    const lesson = {
+      id: "L-1",
+      statement: "x",
+      scope: "y",
+      evidence: [{ kind: "file", reference: "z" }],
+      retention: { advice: { envelope: "ENV-1", answer: "retain", reasonCode: "evidence-backed", route: "weigh" } },
+    };
+    const kept = { outcome: "candidate", by: "agent", decidedAt: "2026-09-25T12:00:00Z" } as const;
+    const unworded = { outcome: "retained", by: "developer", decidedAt: "2026-09-25T12:00:00Z" } as const;
+
+    expect(() => writeRecord(root, "lessons", { lessons: [{ ...lesson, status: "active" }] })).toThrow(/lessons\[0\]\.status/);
+    expect(() =>
+      writeRecord(root, "lessons", { lessons: [{ ...lesson, status: "active", retention: { ...lesson.retention, decision: kept } }] }),
+    ).toThrow(/lessons\[0\]\.status/);
+    expect(() =>
+      writeRecord(root, "lessons", { lessons: [{ ...lesson, status: "active", retention: { ...lesson.retention, decision: unworded } }] }),
+    ).toThrow(/decision\.reason/);
+    expect(() => writeRecord(root, "lessons", { lessons: [{ ...lesson, status: "candidate" }] })).not.toThrow();
+  });
+
   it("never treats a malformed record as empty", () => {
     const root = makeRoot();
     mkdirSync(join(root, "jflow"));

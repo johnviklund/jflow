@@ -7,7 +7,7 @@ workflow package:
 | --- | --- | --- |
 | `next-action` | advisory | by `next`, every time |
 | `assignment` | advisory | before running stage workers you proposed |
-| `lesson-retention` | advisory | before retaining a candidate project lesson |
+| `lesson-retention` | advisory | by `learn propose`, for every candidate project lesson |
 | `model-selection` | advisory | owned by its own issue |
 | `classify` | advisory | owned by its own issue |
 | `escalate` | binding | at every human-facing boundary, through `scripts/jflow escalate` |
@@ -111,7 +111,9 @@ the project with `kind`, `summary` and `excerpts`, then run
 - `review-dispute`: asked for you by `review record` when a blocking
   finding is disputed and the evidence does not settle it; do not ask it
   yourself.
-- `lesson-conflict`: when a candidate lesson conflicts with a retained one.
+- `lesson-conflict`: asked for you by `learn propose` when a candidate
+  lesson conflicts with an accepted decision or a retained lesson; do not
+  ask it yourself.
 - `resume-discrepancy`: when resume finds the records and the work disagree.
 - `missing-check`: asked for you by `ticket validate`; do not ask it yourself.
 - `other`: any other point where you would ask the developer.

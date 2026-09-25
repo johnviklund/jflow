@@ -10,6 +10,7 @@ import { nextTicket, parkTicket, recordIndependence, type IndependenceInput } fr
 import { unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type FindingInput, type ReviewInput } from "./actions/review.js";
 import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
+import { decideLesson, proposeLesson, type LessonDraft } from "./actions/learn.js";
 import { promoteTodo, recordTodo } from "./actions/todo.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import {
@@ -104,6 +105,10 @@ Usage:
   jflow todo add <summary…> [--detail <context>] [--root <dir>]
   jflow todo list                                [--root <dir>]
   jflow todo promote <id> --note <the developer's words> [--root <dir>]
+  jflow learn propose <lesson.json>          [--stage <name>] [--root <dir>] [--config <file>]
+  jflow learn decide <id> --outcome retained|candidate --by agent|developer
+                    [--reason <why>] [--evidence <what it rests on>] [--assessment <A-n>] [--root <dir>]
+  jflow learn list                           [--root <dir>]
   jflow decide ask <decision> <input.json>   [--root <dir>] [--config <file>]
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
@@ -154,6 +159,15 @@ no paths it covers every unclaimed change. It never stages or discards.
 "todo add" records future work outside the plan and authorizes nothing;
 "todo promote" records the developer's decision to bring an item into the
 plan, and says whether plan or realign adds its ticket.
+"learn propose" records a candidate project lesson (statement, scope,
+evidence links of kind and reference, and the ids of accepted decisions or
+retained lessons it touches or conflictsWith) and asks Jev's advisory
+lesson-retention decision. A conflict asks escalate at lesson-conflict;
+the decision it conflicts with is never changed. "learn decide" records
+retaining it or keeping it a candidate beside Jev's answer: setting the
+answer aside needs --reason and --evidence, and where the answer is not
+relied on, retaining needs the developer or your jev assess record. A
+lesson scoped to the workflow, its Jev questions or its policy is refused.
 "next" also asks Jev's advisory next-action decision and reports it under
 "jev" with its envelope; a missing key is reported there, never skipped.
 "decide ask" asks a declared Jev decision over an input holding taskSummary,
@@ -276,6 +290,7 @@ const KNOWN_OPTIONS = [
   "recommendation",
   "blocker",
   "stage",
+  "assessment",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -884,6 +899,69 @@ async function runEscalate(args: ParsedArgs, io: CliIo): Promise<number> {
   return result.kind !== "refused" && !result.ask ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
 
+async function runLearn(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+
+  switch (subcommand) {
+    case "propose": {
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const read = readDraft<LessonDraft>(target, "learn propose", io);
+      if (!read.ok) return read.exit;
+      const result = await proposeLesson(root, read.draft, decisionDependencies(built.context, io, args.options["stage"]));
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      // A conflict's ask, a missing key or a failure awaiting approval each wait on the developer.
+      const waits =
+        !result.ok ||
+        result.outcome.askHuman !== undefined ||
+        result.outcome.advice.kind === "needs-configuration" ||
+        (result.outcome.advice.kind === "failed" && result.outcome.advice.fallback === "awaiting-approval");
+      return waits ? EXIT_NEEDS_HUMAN : EXIT_OK;
+    }
+    case "decide": {
+      const { outcome, by, reason, evidence, assessment } = args.options;
+      if (
+        target === undefined ||
+        (outcome !== "retained" && outcome !== "candidate") ||
+        (by !== "agent" && by !== "developer")
+      ) {
+        io.stderr(`learn decide needs a lesson id, --outcome retained|candidate and --by agent|developer\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(
+        decideLesson(
+          root,
+          target,
+          {
+            outcome,
+            by,
+            ...(reason === undefined ? {} : { reason }),
+            ...(evidence === undefined ? {} : { evidence: [evidence] }),
+            ...(assessment === undefined ? {} : { assessment }),
+          },
+          { now: new Date().toISOString() },
+        ),
+        io,
+      );
+    }
+    case "list": {
+      const read = readRecord(root, "lessons");
+      if (read.kind === "malformed") {
+        io.stdout(`${JSON.stringify(unreadable("lessons", read), null, 2)}\n`);
+        return EXIT_UNREADABLE;
+      }
+      return report({ ok: true, lessons: read.kind === "present" ? read.record.lessons : [] }, io);
+    }
+    default:
+      io.stderr(`learn needs one of propose, decide, list\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
 function runConflict(args: ParsedArgs, io: CliIo): number {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
@@ -1007,6 +1085,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "todo":
       return runTodo(args, io);
+
+    case "learn":
+      return runLearn(args, io);
 
     case "decide":
       return runDecide(args, io);

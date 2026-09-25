@@ -409,6 +409,39 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(answering.sent).toHaveLength(1);
   });
 
+  it("has learn propose a lesson, decide to retain it, and list what was saved", async () => {
+    const h = harness();
+    const lesson = {
+      statement: "Reset the fixture clock before each parser test.",
+      scope: "src/parser tests",
+      evidence: [{ kind: "commit", reference: "a1b2c3d" }],
+    };
+    h.writeFile("lesson.json", JSON.stringify(lesson));
+    h.writeFile("workflow-lesson.json", JSON.stringify({ ...lesson, scope: "workflow rules" }));
+    const answering = jev("retain", "evidence-backed");
+
+    const proposed = await run(["learn", "propose", "lesson.json"], h.root, {}, answering);
+    const refused = await run(["learn", "propose", "workflow-lesson.json"], h.root, {}, answering);
+    const incomplete = await run(["learn", "decide", "L-1", "--outcome", "kept"], h.root);
+    const decided = await run(["learn", "decide", "L-1", "--outcome", "retained", "--by", "agent"], h.root);
+    const listed = await run(["learn", "list"], h.root);
+
+    expect(proposed.code).toBe(EXIT_OK);
+    expect(proposed.json()).toMatchObject({
+      ok: true,
+      outcome: { lesson: { id: "L-1", status: "candidate" }, advice: { answer: "retain", route: "weigh" }, next: "decide" },
+    });
+    expect(refused.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(answering.sent).toHaveLength(1);
+    expect(incomplete.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(decided.code).toBe(EXIT_OK);
+    expect(decided.json()).toMatchObject({
+      ok: true,
+      outcome: { report: { saved: "retained", lesson: "L-1", evidence: lesson.evidence, record: "jflow/lessons.json" } },
+    });
+    expect(listed.json()).toMatchObject({ ok: true, lessons: [{ id: "L-1", status: "active" }] });
+  });
+
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {
     const h = harness();
     h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: "T3 fix failed twice", excerpts: [] }));
