@@ -74,6 +74,14 @@ command as `source` and its exit code. Never record a diff or file
 contents. Your own summary goes in as a `claim`. A claim never admits a
 ticket.
 
+`validate` sees only that output, so make each criterion visible in it.
+Write one test per condition a criterion names, and name the test after
+the condition: "missing argument exits nonzero", "unreadable file exits
+nonzero", "invalid UTF-8 exits nonzero", not one "reports input errors"
+test for all three. Run the tests with a reporter that prints each test's
+name. A condition no test name shows reads as unproven, and the verdict
+comes back unsure and goes to the developer.
+
 A failed test is the normal reason to ask the developer during
 implementation, but only once the fix counter reaches its limit. The
 helper keeps that counter; never count attempts yourself. Do not change a

@@ -78,3 +78,6 @@ the summary and next steps in two or three lines, and list open todos,
 parked tickets, undecided lessons and lessons waiting on the developer by
 id. Mention a Jev fallback waiting for approval. Then list
 every discrepancy with its source, and say that nothing was reconciled.
+Say that `jflow/resume.json` is left uncommitted: the next ticket's commit
+includes it, and when no ticket is left, the developer commits it or leaves
+it.
