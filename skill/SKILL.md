@@ -39,6 +39,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow todo route\|add\|list\|promote` | Ask whether an item found mid-work is a todo or in scope, record future work outside the plan, and the developer's decision to promote an item; see `actions/todo.md`. |
 | `scripts/jflow learn propose\|decide\|list` | Record a candidate project lesson with Jev's advisory `lesson-retention` answer, then retain it or keep it a candidate; a conflict with an accepted decision asks `escalate`. See `actions/learn.md`. |
 | `scripts/jflow learn active\|check\|supersede` | List the lessons that may be used, re-check one against the task before each use, and mark a contradicted one superseded with evidence; see `actions/learn.md`. |
+| `scripts/jflow realign <draft.json> --note <words>`, `realign recommend\|show` | On the developer's instruction only: re-scope, add, park or withdraw tickets for a changed direction, re-validate completed tickets whose criteria changed, and put the specification and plan back behind acceptance. `realign recommend` records a recommendation and starts nothing; see `actions/realign.md`. |
 | `scripts/jflow wrap <draft.json>`, `wrap show` | End a session: write the resume record a fresh session continues from, and report where the records and the project disagree without reconciling it. Never pushes, merges, publishes or cleans up; see `actions/wrap.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
@@ -86,7 +87,8 @@ parts only the agent can honour.
 - `review` is never done by the agent that implemented the change, nor by
   a worker that worked on it. The helper refuses the implementers it
   knows about; spawning a fresh reviewer is yours to do.
-- `realign` is the developer's to invoke. Recommend it; never run it unasked.
+- `realign` is the developer's to invoke. Recommend it (`realign
+  recommend`); never run it unasked.
 - A todo item is not work to do now. Recording or listing one never widens
   the current ticket; only the developer's explicit decision promotes it.
 - A retained lesson is project knowledge. It never changes the workflow, a
@@ -193,10 +195,9 @@ fix. A fix goes through an authorized `implement`.
 
 ## Layout
 
-- `actions/` — one method file per action. `status.md`, `next.md`,
-  `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
-  `troubleshoot.md` exist; the others are filled in
-  by the issue that owns each action.
+- `actions/` — one method file per action: `status.md`, `next.md`,
+  `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md`,
+  `troubleshoot.md` and `realign.md`.
 - `references/HOST.md` — what has been verified on which host, and what has
   not. Consult it before claiming anything about the host.
 - `references/DECISIONS.md` — asking Jev's declared decisions, what each

@@ -261,6 +261,27 @@ const examples: ProjectRecords = {
       },
     ],
   },
+  realign: {
+    recommendations: [
+      { id: "R-1", source: "review", summary: "the export format changed", evidence: ["review of T2"], recordedAt: "2026-09-20T15:00:00Z", status: "addressed", addressedBy: "RA-1" },
+    ],
+    realignments: [
+      {
+        id: "RA-1",
+        direction: "drop the date column",
+        note: "change of plan: no dates",
+        changes: [
+          { action: "rescope", ticketId: "T1", criteriaChanged: true, statusBefore: "done" },
+          { action: "withdraw", ticketId: "T3", reason: "dates are dropped", statusBefore: "parked" },
+        ],
+        revalidated: [{ ticketId: "T1", disposition: "admitted-to-review", status: "done" }],
+        specificationRevised: false,
+        priorAuthorization: { scope: "plan", note: "implement the whole plan" },
+        recommendations: ["R-1"],
+        realignedAt: "2026-09-20T16:00:00Z",
+      },
+    ],
+  },
 };
 
 describe("readRecord", () => {
@@ -781,6 +802,7 @@ describe("record types", () => {
       conflicts: { conflicts: [] },
       diagnoses: { diagnoses: [] },
       workers: { assignments: [] },
+      realign: { recommendations: [], realignments: [] },
     };
 
     for (const kind of RECORD_KINDS) {

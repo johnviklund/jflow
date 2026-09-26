@@ -7,6 +7,7 @@ import {
   type CriterionTestability,
   type PlanRecord,
   type ProgressRecord,
+  type RealignRecord,
   type TicketRecord,
   type TicketsRecord,
 } from "../project/records.js";
@@ -79,8 +80,18 @@ export interface Authorization {
 
 type Progressed = { readonly ok: true; readonly progress: ProgressRecord } | Refusal;
 
+/**
+ * Whether the plan awaiting acceptance is a realigned one (issue #31): the
+ * latest realign wrote it and it has not been accepted since. Such a
+ * breakdown carries progress, so only realign revises it.
+ */
+export function awaitsRealignAcceptance(plan: PlanRecord, realign: RealignRecord | undefined): boolean {
+  const latest = realign?.realignments[realign.realignments.length - 1];
+  return plan.status === "awaiting-acceptance" && latest !== undefined && latest.realignedAt === plan.writtenAt;
+}
+
 /** Reports the first ticket on a dependency cycle, or undefined when the graph is acyclic. */
-function findDependencyCycle(tickets: readonly TicketRecord[]): string | undefined {
+export function findDependencyCycle(tickets: readonly TicketRecord[]): string | undefined {
   const dependencies = new Map(tickets.map((ticket) => [ticket.id, ticket.dependsOn]));
   const done = new Set<string>();
   const onPath = new Set<string>();
@@ -154,6 +165,13 @@ type PreparedPlan =
 
 /** Everything `plan write` checks before anything is written or asked. */
 function preparePlan(root: string, draft: PlanDraft, options: { readonly now: string }): PreparedPlan {
+  const existing = readRecord(root, "plan");
+  if (existing.kind === "malformed") return unreadable("plan", existing);
+  const realign = readRecord(root, "realign");
+  if (realign.kind === "malformed") return unreadable("realign", realign);
+  if (existing.kind === "present" && awaitsRealignAcceptance(existing.record, realign.kind === "present" ? realign.record : undefined)) {
+    return refuse("a realigned breakdown awaits acceptance and carries the tickets' progress; revise it with realign, not plan");
+  }
   const state = readProjectState(root);
   if (state.kind === "malformed") return unreadableState(state);
   if (!state.state.specificationAccepted) {
@@ -161,8 +179,6 @@ function preparePlan(root: string, draft: PlanDraft, options: { readonly now: st
       "the specification has not been explicitly accepted; a plan cannot be made against an unagreed definition",
     );
   }
-  const existing = readRecord(root, "plan");
-  if (existing.kind === "malformed") return unreadable("plan", existing);
   if (existing.kind === "present" && existing.record.status === "accepted") {
     return refuse(
       "the plan has been accepted; changing it is a plan change, so invoke realign rather than plan again",
@@ -224,9 +240,45 @@ export async function writeClassifiedPlan(
   const now = dependencies.now();
   const prepared = preparePlan(root, draft, { now });
   if (!prepared.ok) return prepared;
+  const classified = await classifyTestability(root, prepared.tickets.tickets, draft.testabilityOverrides, dependencies);
+  if (!classified.ok) return classified;
+  const record = validateRecord("tickets", { tickets: classified.tickets });
+  if (!record.ok) return refuse("the ticket breakdown cannot be recorded", record.issues);
+  const recorded = recordSetAsides(root, classified.setAsides, now);
+  if (recorded !== undefined) return recorded;
+  writeRecord(root, "tickets", record.record);
+  writeRecord(root, "plan", prepared.plan);
+  return { ok: true, outcome: { plan: prepared.plan, tickets: record.record, progress: prepared.progress } };
+}
 
+/** An untestable answer the agent set aside, to be recorded on its envelope once the breakdown is written. */
+export interface TestabilitySetAside {
+  readonly ticketId: string;
+  readonly index: number;
+  readonly envelope: string;
+  readonly reason: string;
+  readonly evidence: readonly string[];
+}
+
+export type ClassifiedTickets =
+  | { readonly ok: true; readonly tickets: TicketRecord[]; readonly setAsides: readonly TestabilitySetAside[] }
+  | Exclude<ClassifiedPlanResult, { ok: true }>;
+
+/**
+ * Classifies every criterion of `tickets` for testability (issue #29,
+ * D50) and returns them with their answers, or the criteria `classify`
+ * confidently classed untestable that no override sets aside. Records
+ * nothing; `realign` classifies the tickets it adds or re-scopes through
+ * this too (issue #31).
+ */
+export async function classifyTestability(
+  root: string,
+  tickets: readonly TicketRecord[],
+  drafted: PlanDraft["testabilityOverrides"],
+  dependencies: DecisionDependencies,
+): Promise<ClassifiedTickets> {
   const classified: { ticket: TicketRecord; testability: CriterionTestability[] }[] = [];
-  for (const ticket of prepared.tickets.tickets) {
+  for (const ticket of tickets) {
     const testability: CriterionTestability[] = [];
     for (const criterion of ticket.acceptanceCriteria) {
       const result = await classifyContent(
@@ -243,7 +295,7 @@ export async function writeClassifiedPlan(
     classified.push({ ticket, testability });
   }
 
-  const overrides = Array.isArray(draft.testabilityOverrides) ? draft.testabilityOverrides : [];
+  const overrides = Array.isArray(drafted) ? drafted : [];
   const overrideFor = (ticketId: string, index: number) =>
     overrides.find((entry) => entry?.ticketId === ticketId && Number(entry.criterion) === index);
   const untestable: UntestableCriterion[] = [];
@@ -269,7 +321,7 @@ export async function writeClassifiedPlan(
   }
 
   // Every set-aside is checked before anything is recorded: it must answer a blocking criterion, with a reason and evidence (D6).
-  const setAsides: { ticketId: string; index: number; envelope: string; reason: string; evidence: string[] }[] = [];
+  const setAsides: TestabilitySetAside[] = [];
   for (const override of overrides) {
     const target = classified.find(({ ticket }) => ticket.id === override?.ticketId);
     const index = Number(override?.criterion);
@@ -286,15 +338,21 @@ export async function writeClassifiedPlan(
     }
     setAsides.push({ ticketId: target.ticket.id, index, envelope: entry.envelope, reason, evidence });
   }
-  const tickets: TicketRecord[] = classified.map(({ ticket, testability }) => ({
-    ...ticket,
-    testability: testability.map((entry, index) => {
-      const aside = setAsides.find((item) => item.ticketId === ticket.id && item.index === index);
-      return aside === undefined ? entry : { ...entry, setAside: { reason: aside.reason, evidence: aside.evidence } };
-    }),
-  }));
-  const record = validateRecord("tickets", { tickets });
-  if (!record.ok) return refuse("the ticket breakdown cannot be recorded", record.issues);
+  return {
+    ok: true,
+    tickets: classified.map(({ ticket, testability }) => ({
+      ...ticket,
+      testability: testability.map((entry, index) => {
+        const aside = setAsides.find((item) => item.ticketId === ticket.id && item.index === index);
+        return aside === undefined ? entry : { ...entry, setAside: { reason: aside.reason, evidence: aside.evidence } };
+      }),
+    })),
+    setAsides,
+  };
+}
+
+/** Records each set-aside as the agent's choice on its classify envelope (D6). */
+export function recordSetAsides(root: string, setAsides: readonly TestabilitySetAside[], now: string): Refusal | undefined {
   for (const aside of setAsides) {
     const chose = recordChoice(
       root,
@@ -305,9 +363,7 @@ export async function writeClassifiedPlan(
     );
     if (!chose.ok) return chose;
   }
-  writeRecord(root, "tickets", record.record);
-  writeRecord(root, "plan", prepared.plan);
-  return { ok: true, outcome: { plan: prepared.plan, tickets: record.record, progress: prepared.progress } };
+  return undefined;
 }
 
 /** Applies an authorization to the progress record, checking a named ticket exists. */
@@ -364,6 +420,12 @@ export function acceptPlan(
   if (existing.kind === "malformed") return unreadable("plan", existing);
   if (existing.record.status === "accepted") {
     return refuse(`the plan was already accepted at ${existing.record.acceptedAt}`);
+  }
+  // A plan rests on its specification; after a realign both await acceptance, the specification first (D27, D28).
+  const state = readProjectState(root);
+  if (state.kind === "malformed") return unreadableState(state);
+  if (!state.state.specificationAccepted) {
+    return refuse("the specification is not accepted; the developer accepts it before the plan that rests on it");
   }
 
   const current = readProgress(root);

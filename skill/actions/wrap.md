@@ -58,6 +58,11 @@ name files, commands and ticket ids, and say where you stopped and what
 was about to happen. Put nothing secret in them, and no diff or file
 contents.
 
+When a discrepancy means the plan itself no longer fits (a requirement
+the tickets do not cover, work that turned out unnecessary), also record
+`scripts/jflow realign recommend --source resume --summary "…"`. It starts
+nothing; the developer decides whether to realign.
+
 A discrepancy is reported, never reconciled. Do not change a ticket's
 status, rewrite a record, or discard or commit changes to make the
 records and the project agree. That is the developer's to decide, or

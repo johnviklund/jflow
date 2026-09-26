@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { StageModelConfiguration } from "../config/configuration.js";
@@ -340,6 +340,17 @@ function recordEvidence(root: string, input: ValidationInput, recordedAt: string
   const stored = { ticketId: input.ticketId, evidence: input.evidence, checks: input.checks ?? [], recordedAt };
   writeFileSync(join(root, reference), `${JSON.stringify(stored, null, 2)}\n`);
   return reference;
+}
+
+/** The verification evidence last recorded for a ticket, if any can be read. */
+export function readRecordedEvidence(root: string, ticketId: string): Pick<ValidationInput, "evidence" | "checks"> | undefined {
+  try {
+    const stored = JSON.parse(readFileSync(join(root, EVIDENCE_DIRECTORY, `${encodeURIComponent(ticketId)}.json`), "utf8")) as Partial<ValidationInput>;
+    if (stored.ticketId !== ticketId || !Array.isArray(stored.evidence)) return undefined;
+    return { evidence: stored.evidence, checks: Array.isArray(stored.checks) ? stored.checks : [] };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Adds the ticket's workers to its recorded implementers, which review checks its reviewer against (D32). */

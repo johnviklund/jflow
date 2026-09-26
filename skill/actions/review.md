@@ -119,7 +119,9 @@ It uses the same steps with `review plan`:
    record <review.json>`.
 4. `passed`: the plan is complete; `wrap` comes next. `returned-to-fix`:
    a blocking finding holds the plan. Fixing it is new work, which
-   `realign` adds. Put `askHuman` to the developer with your
+   `realign` adds. Record that with `scripts/jflow realign recommend
+   --source review --summary "<the finding and why it needs new work>"`,
+   which starts nothing. Put `askHuman` to the developer with your
    recommendation, and wait. If the developer decides a blocking finding
    is not to be fixed, record their words with `scripts/jflow review plan
    decide --finding <id> --outcome withdrawn --note "<their words>"`.

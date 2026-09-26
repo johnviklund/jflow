@@ -58,7 +58,9 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   ticket breakdown (refused without an accepted specification, for a
   ticket without acceptance criteria, or for a dependency cycle), record
   plan acceptance, and record execution authorization as a separate fact
-  that the same instruction may grant — "looks good" accepts only.
+  that the same instruction may grant — "looks good" accepts only. The plan
+  is accepted only after the specification it rests on, and `plan write`
+  never replaces a realigned breakdown awaiting acceptance.
 - `src/actions/implement.ts` — the helper side of `implement` (issue #8).
   `implement start` starts exactly one ticket under recorded execution
   authorization: the authorized ticket, or the named one under whole-plan
@@ -243,6 +245,19 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   without a commit), carries over discrepancies recorded earlier, and adds
   the agent's own findings. It reports every discrepancy and reconciles none.
   It writes no other record and only reads Git.
+- `src/actions/realign.ts` — `realign` (issue #31, D42), run only on the
+  developer's recorded words. It re-scopes, adds, parks or withdraws the
+  tickets the new direction affects and leaves the others and their
+  records as they were. A done ticket whose criteria changed is
+  re-validated through `validate` over its recorded evidence and reopened
+  with its review cleared, since the review covered the old criteria;
+  when it cannot be re-validated nothing is written. New and changed
+  criteria are classified for testability as in `plan write`, and the
+  plan review, which covered the old scope, is cleared.
+  The specification and plan re-enter acceptance and the execution
+  authorization ends. Each realign and each recommendation (which starts
+  nothing) is kept in `jflow/realign.json`. It edits no code and marks
+  nothing done.
 - `src/actions/lesson-use.ts` — using a retained lesson (issue #20). Only
   active lessons are offered (`learn active`). Each is re-checked against
   the task before use, and the check (applies, or skipped with the reason)
@@ -336,24 +351,30 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `learn`, `wrap`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `wrap`, `realign`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
-  `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md` and
-  `troubleshoot.md` so far),
+  `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md`,
+  `troubleshoot.md` and `realign.md`),
   `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
   on which host).
 - `src/testing/` — the project-directory test harness: set up a directory in
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions are not implemented yet. Nothing has been run
-on the ChatGPT desktop app; see `skill/references/HOST.md`.
+Nothing has been run on the ChatGPT desktop app; see
+`skill/references/HOST.md`.
 
 ## Invariants enforced in code
 
+- `realign` runs only with the developer's recorded words. It ends the
+  execution authorization, puts the specification and plan back behind
+  acceptance, reopens every done ticket whose criteria changed, and never
+  marks a ticket done or edits code. A recommendation to realign changes
+  nothing else. The plan is accepted only after its specification, and
+  `plan write` never replaces a realigned breakdown.
 - Review always requires a role that is independent of the implementer; no
   workflow package or configuration can disable that gate. A review by the
   primary agent or a recorded worker is refused, and review is refused

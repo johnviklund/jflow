@@ -15,6 +15,7 @@ import { activeLessons, checkLesson, supersedeLesson } from "./actions/lesson-us
 import { promoteTodo, recordTodo, routeItem } from "./actions/todo.js";
 import { classifyContent, type ClassifyInput, type ClassifyResult } from "./actions/classify.js";
 import { wrapSession, type WrapDraft } from "./actions/wrap.js";
+import { realignPlan, recommendRealign, type RealignDraft } from "./actions/realign.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import { recommendModel, type SelectionDraft } from "./actions/model-selection.js";
 import {
@@ -70,7 +71,7 @@ import {
   type SpecificationDraft,
 } from "./actions/specification.js";
 import { resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
-import { readRecord, type CriterionVerdict } from "./project/records.js";
+import { readRecord, type CriterionVerdict, type RealignSource } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
 import { WorkflowPackageError, type DecisionAuthority, type WorkflowPackage } from "./workflow/types.js";
@@ -136,6 +137,9 @@ Usage:
   jflow learn supersede <id> --successor <lesson id or change> --evidence <what contradicts it>
                     --by agent|developer [--reason <the developer's words>] [--conflicts-with <decision id>]
                     [--task <the task>] [--stage <name>] [--root <dir>] [--config <file>]
+  jflow realign <draft.json> --note <the developer's words> [--root <dir>] [--config <file>]
+  jflow realign recommend --source resume|review|agent --summary <why> [--evidence <what it rests on>] [--root <dir>]
+  jflow realign show                         [--root <dir>]
   jflow wrap <draft.json>                    [--root <dir>] [--config <file>]
   jflow wrap show                            [--root <dir>]
   jflow decide ask <decision> <input.json>   [--root <dir>] [--config <file>]
@@ -258,6 +262,20 @@ each change linked to its envelope.
 It writes only traces: no envelope, record, question or policy file, and
 it decides nothing. A decision with no stored envelopes is reported as
 nothing to replay (exit 1).
+"realign" is the developer's to invoke: --note records their instruction.
+Its draft holds direction, changes (action rescope with ticketId and any of
+title, acceptanceCriteria, dependsOn; add with ticketId, title,
+acceptanceCriteria, dependsOn; park or withdraw with ticketId and reason),
+and optionally specification (a revised draft), plan (title, summary) and
+recommendations (ids it addresses). Unchanged tickets stay as they are. A
+done ticket whose criteria changed is re-validated over its recorded
+evidence. The specification
+and plan both await acceptance again, and the execution authorization
+ends. It exits 1 when a re-validation cannot run (nothing is written) or
+waits on the developer. New and changed criteria are classified for
+testability as in "plan write" (testabilityOverrides sets one aside). A
+done ticket whose criteria changed is reopened for review either way.
+"realign recommend" records a recommendation and starts nothing.
 "proposal observations" lists the harness observations: low-confidence
 answers, overrides, escalations, calls Jev did not answer and tickets at
 the fix limit, read from the stored envelopes, traces and progress record,
@@ -406,6 +424,8 @@ const KNOWN_OPTIONS = [
   "routing",
   "kind",
   "authority",
+  "source",
+  "summary",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -1213,6 +1233,44 @@ function runWrap(args: ParsedArgs, io: CliIo): number {
   return result.ok && result.outcome.discrepancies.length === 0 ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
 
+async function runRealign(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [target] = args.positional;
+  if (target === "show") {
+    const read = readRecord(root, "realign");
+    if (read.kind === "malformed") {
+      io.stdout(`${JSON.stringify(unreadable("realign", read), null, 2)}\n`);
+      return EXIT_UNREADABLE;
+    }
+    return report({ ok: true, realign: read.kind === "present" ? read.record : { recommendations: [], realignments: [] } }, io);
+  }
+  if (target === "recommend") {
+    const { source, summary, evidence } = args.options;
+    if (source === undefined || summary === undefined) {
+      io.stderr(`realign recommend needs --source and --summary\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+    }
+    return report(
+      recommendRealign(
+        root,
+        { source: source as RealignSource, summary, evidence: evidence === undefined ? [] : [evidence] },
+        { now: new Date().toISOString() },
+      ),
+      io,
+    );
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const read = readDraft<RealignDraft>(target, "realign", io);
+  if (!read.ok) return read.exit;
+  const result = await realignPlan(root, read.draft, { note: args.options["note"] ?? "" }, decisionDependencies(built.context, io, "realign"));
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
 async function runReplay(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [decision] = args.positional;
@@ -1446,6 +1504,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "wrap":
       return runWrap(args, io);
+
+    case "realign":
+      return runRealign(args, io);
 
     case "decide":
       return runDecide(args, io);

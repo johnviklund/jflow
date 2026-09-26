@@ -49,6 +49,7 @@ export const RECORD_KINDS = [
   "conflicts",
   "diagnoses",
   "workers",
+  "realign",
 ] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -645,6 +646,77 @@ export interface TodoItem {
   readonly routing?: { readonly envelope: string; readonly answer: string };
 }
 
+/** Where a realign recommendation came from: resume, a review, or the agent's own reading of the records. */
+export const REALIGN_SOURCES = ["resume", "review", "agent"] as const;
+
+export type RealignSource = (typeof REALIGN_SOURCES)[number];
+
+export const RECOMMENDATION_STATUSES = ["open", "addressed"] as const;
+
+export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number];
+
+/**
+ * A recommendation to realign (D42, issue #31): recorded, never acted on.
+ * Only the developer invokes realign; `addressed` names the realign they
+ * ran that answered it.
+ */
+export interface RealignRecommendation {
+  readonly id: string;
+  readonly source: RealignSource;
+  readonly summary: string;
+  readonly evidence: readonly string[];
+  readonly recordedAt: string;
+  readonly status: RecommendationStatus;
+  readonly addressedBy?: string;
+}
+
+export const TICKET_CHANGE_ACTIONS = ["rescope", "add", "park", "withdraw"] as const;
+
+export type TicketChangeAction = (typeof TICKET_CHANGE_ACTIONS)[number];
+
+/** One ticket a realign changed, and how. */
+export interface TicketRealignment {
+  readonly action: TicketChangeAction;
+  readonly ticketId: string;
+  /** Why it was parked or withdrawn. */
+  readonly reason?: string;
+  /** For a re-scope: whether its acceptance criteria changed, which re-validates a completed ticket. */
+  readonly criteriaChanged?: boolean;
+  /** The ticket's status before the realign; absent for an added ticket. */
+  readonly statusBefore?: TicketStatus;
+}
+
+/** A completed ticket re-validated against its changed criteria, and the status that followed. */
+export interface Revalidation {
+  readonly ticketId: string;
+  readonly disposition: ValidationDisposition;
+  readonly status: TicketStatus;
+}
+
+/**
+ * One in-flight plan change the developer invoked (D42): their direction
+ * in their words, what changed, the completed tickets re-validated, and
+ * the authorization that ended with it, since none carries over silently.
+ */
+export interface Realignment {
+  readonly id: string;
+  readonly direction: string;
+  /** The developer's instruction, recorded as said. */
+  readonly note: string;
+  readonly changes: readonly TicketRealignment[];
+  readonly revalidated: readonly Revalidation[];
+  readonly specificationRevised: boolean;
+  readonly priorAuthorization?: { readonly scope: AuthorizationScope; readonly note?: string };
+  /** Recommendations this realign addressed. */
+  readonly recommendations?: readonly string[];
+  readonly realignedAt: string;
+}
+
+export interface RealignRecord {
+  readonly recommendations: readonly RealignRecommendation[];
+  readonly realignments: readonly Realignment[];
+}
+
 export interface TodosRecord {
   readonly items: readonly TodoItem[];
 }
@@ -803,6 +875,7 @@ export interface ProjectRecords {
   readonly conflicts: ConflictsRecord;
   readonly diagnoses: DiagnosesRecord;
   readonly workers: WorkersRecord;
+  readonly realign: RealignRecord;
 }
 
 export type RecordReadResult<K extends RecordKind> =
@@ -2362,6 +2435,101 @@ const validateWorkers: Validator<WorkersRecord> = (value, issues) => {
   return rejections === undefined ? { assignments } : { assignments, rejections };
 };
 
+function validateRecommendation(value: unknown, path: string, issues: IssueCollector): RealignRecommendation | undefined {
+  const entry = requireObject(value, path, ["id", "source", "summary", "evidence", "recordedAt", "status", "addressedBy"], issues);
+  if (!entry) return undefined;
+  const status = validateEnumValue<RecommendationStatus>(entry["status"], `${path}.status`, RECOMMENDATION_STATUSES, issues);
+  const addressedBy = optionalString(entry["addressedBy"], `${path}.addressedBy`, issues);
+  if (status === "addressed" && addressedBy === undefined) issues.add(`${path}.addressedBy`, "an addressed recommendation names the realign that addressed it");
+  if (status === "open" && addressedBy !== undefined) issues.add(`${path}.addressedBy`, "must be absent while the recommendation is open");
+  return withOptional<RealignRecommendation>(
+    {
+      id: requireNonEmptyString(entry["id"], `${path}.id`, issues),
+      source: validateEnumValue<RealignSource>(entry["source"], `${path}.source`, REALIGN_SOURCES, issues) ?? "agent",
+      summary: requireNonEmptyString(entry["summary"], `${path}.summary`, issues),
+      evidence: validateStringArray(entry["evidence"], `${path}.evidence`, issues),
+      recordedAt: requireTimestamp(entry["recordedAt"], `${path}.recordedAt`, issues),
+      status: status ?? "open",
+    },
+    { addressedBy },
+  );
+}
+
+function validateRealignment(value: unknown, path: string, issues: IssueCollector): Realignment | undefined {
+  const entry = requireObject(
+    value,
+    path,
+    ["id", "direction", "note", "changes", "revalidated", "specificationRevised", "priorAuthorization", "recommendations", "realignedAt"],
+    issues,
+  );
+  if (!entry) return undefined;
+  const changes =
+    optionalList(entry["changes"], `${path}.changes`, issues, (item, at) => {
+      const change = requireObject(item, at, ["action", "ticketId", "reason", "criteriaChanged", "statusBefore"], issues);
+      if (!change) return undefined;
+      return withOptional<TicketRealignment>(
+        {
+          action: validateEnumValue<TicketChangeAction>(change["action"], `${at}.action`, TICKET_CHANGE_ACTIONS, issues) ?? "rescope",
+          ticketId: requireNonEmptyString(change["ticketId"], `${at}.ticketId`, issues),
+        },
+        {
+          reason: optionalString(change["reason"], `${at}.reason`, issues),
+          criteriaChanged: change["criteriaChanged"] === undefined ? undefined : requireBoolean(change["criteriaChanged"], `${at}.criteriaChanged`, issues),
+          statusBefore:
+            change["statusBefore"] === undefined ? undefined : validateEnumValue<TicketStatus>(change["statusBefore"], `${at}.statusBefore`, TICKET_STATUSES, issues),
+        },
+      );
+    }) ?? [];
+  const revalidated =
+    optionalList(entry["revalidated"], `${path}.revalidated`, issues, (item, at) => {
+      const result = requireObject(item, at, ["ticketId", "disposition", "status"], issues);
+      if (!result) return undefined;
+      return {
+        ticketId: requireNonEmptyString(result["ticketId"], `${at}.ticketId`, issues),
+        disposition: validateEnumValue<ValidationDisposition>(result["disposition"], `${at}.disposition`, VALIDATION_DISPOSITIONS, issues) ?? "awaiting-developer",
+        status: validateEnumValue<TicketStatus>(result["status"], `${at}.status`, TICKET_STATUSES, issues) ?? "ready",
+      };
+    }) ?? [];
+  if (!Array.isArray(entry["changes"])) issues.add(`${path}.changes`, "must be an array of ticket changes");
+  if (!Array.isArray(entry["revalidated"])) issues.add(`${path}.revalidated`, "must be an array of re-validations");
+  let priorAuthorization: Realignment["priorAuthorization"];
+  if (entry["priorAuthorization"] !== undefined) {
+    const prior = requireObject(entry["priorAuthorization"], `${path}.priorAuthorization`, ["scope", "note"], issues);
+    if (prior) {
+      priorAuthorization = withOptional<NonNullable<Realignment["priorAuthorization"]>>(
+        { scope: validateEnumValue<AuthorizationScope>(prior["scope"], `${path}.priorAuthorization.scope`, AUTHORIZATION_SCOPES, issues) ?? "ticket" },
+        { note: optionalString(prior["note"], `${path}.priorAuthorization.note`, issues) },
+      );
+    }
+  }
+  return withOptional<Realignment>(
+    {
+      id: requireNonEmptyString(entry["id"], `${path}.id`, issues),
+      direction: requireNonEmptyString(entry["direction"], `${path}.direction`, issues),
+      note: requireNonEmptyString(entry["note"], `${path}.note`, issues),
+      changes,
+      revalidated,
+      specificationRevised: requireBoolean(entry["specificationRevised"], `${path}.specificationRevised`, issues),
+      realignedAt: requireTimestamp(entry["realignedAt"], `${path}.realignedAt`, issues),
+    },
+    {
+      priorAuthorization,
+      recommendations: optionalStringArray(entry["recommendations"], `${path}.recommendations`, issues),
+    },
+  );
+}
+
+const validateRealign: Validator<RealignRecord> = (value, issues) => {
+  const doc = requireObject(value, "", ["recommendations", "realignments"], issues);
+  if (!doc) return undefined;
+  if (!Array.isArray(doc["recommendations"])) issues.add("recommendations", "must be an array of recommendations");
+  if (!Array.isArray(doc["realignments"])) issues.add("realignments", "must be an array of realignments");
+  return {
+    recommendations: optionalList(doc["recommendations"], "recommendations", issues, (item, at) => validateRecommendation(item, at, issues)) ?? [],
+    realignments: optionalList(doc["realignments"], "realignments", issues, (item, at) => validateRealignment(item, at, issues)) ?? [],
+  };
+};
+
 const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } = {
   specification: validateSpecification,
   plan: validatePlan,
@@ -2374,6 +2542,7 @@ const validators: { readonly [K in RecordKind]: Validator<ProjectRecords[K]> } =
   conflicts: validateConflicts,
   diagnoses: validateDiagnoses,
   workers: validateWorkers,
+  realign: validateRealign,
 };
 
 /** Walks the whole document so a credential cannot hide in a nested field (D14, D23). */

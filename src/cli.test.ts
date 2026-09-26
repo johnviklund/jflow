@@ -519,6 +519,30 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(blank.code).toBe(EXIT_NEEDS_HUMAN);
   });
 
+  it("has realign record a recommendation that starts nothing, and realign the plan only with the developer's words", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" } });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({ tickets: [{ id: "T1", title: "parse", acceptanceCriteria: ["parses"], dependsOn: [], status: "in-progress" }] }),
+    );
+    h.writeFile("realign.json", JSON.stringify({ direction: "also parse TSV", changes: [{ action: "rescope", ticketId: "T1", acceptanceCriteria: ["parses CSV", "parses TSV"] }] }));
+
+    const recommended = await run(["realign", "recommend", "--source", "review", "--summary", "TSV input showed up"], h.root);
+    const planBefore = h.snapshot()["jflow/plan.json"];
+    const unsaid = await run(["realign", "realign.json"], h.root);
+    const realigned = await run(["realign", "realign.json", "--note", "yes, add TSV"], h.root);
+    const shown = await run(["realign", "show"], h.root);
+
+    expect(recommended.code).toBe(EXIT_OK);
+    expect(recommended.json()).toMatchObject({ ok: true, outcome: { recommendation: { id: "R-1", status: "open" } } });
+    expect(planBefore).toContain('"accepted"');
+    expect(unsaid.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(realigned.code).toBe(EXIT_OK);
+    expect(realigned.json()).toMatchObject({ ok: true, outcome: { realignment: { id: "RA-1", note: "yes, add TSV" } } });
+    expect(h.snapshot()["jflow/plan.json"]).toContain('"awaiting-acceptance"');
+    expect(shown.json()).toMatchObject({ ok: true, realign: { recommendations: [{ id: "R-1" }], realignments: [{ id: "RA-1" }] } });
+  });
+
   it("has proposal draft a change from recurring observations, and change the package only on accept", async () => {
     const h = harness();
     const packageDirectory = mkdtempSync(join(tmpdir(), "jflow-package-"));

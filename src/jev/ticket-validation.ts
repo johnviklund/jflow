@@ -224,8 +224,23 @@ export async function validateTicket(
   if (read.kind === "refused") return read;
   const invalid = refuseInvalidEvidence(input);
   if (invalid) return invalid;
-  const { ticket } = read;
+  const judged = await judgeTicket(root, read.ticket, input, dependencies);
+  return judged.kind === "validated" ? (save(root, read.ticket.id, judged.validation) ?? judged) : judged;
+}
 
+/**
+ * Judges `ticket`'s criteria, as given, against recorded evidence and
+ * settles its next state, without recording it. `realign` re-validates a
+ * completed ticket against its changed criteria through this (issue #31);
+ * the evidence is what was recorded for it, and none at all is judged as
+ * the implementer's claim alone.
+ */
+export async function judgeTicket(
+  root: string,
+  ticket: TicketRecord,
+  input: Pick<ValidationInput, "evidence" | "checks">,
+  dependencies: DecisionDependencies,
+): Promise<TicketValidationResult> {
   const ran = new Set(input.evidence.filter((entry) => entry.kind === "check").map((entry) => entry.source.trim()));
   const missingChecks = (input.checks ?? []).map((check) => check.trim()).filter((check) => check !== "" && !ran.has(check));
 
@@ -259,7 +274,7 @@ export async function validateTicket(
     }
   }
 
-  return settledResult(root, ticket.id, await settle(root, ticket, criteria, missingChecks, dependencies));
+  return { kind: "validated", ...(await settle(root, ticket, criteria, missingChecks, dependencies)) };
 }
 
 export interface CriterionOverride {

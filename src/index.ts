@@ -103,6 +103,16 @@ export {
 export { wrapSession, type WrapDraft, type WrapResult } from "./actions/wrap.js";
 
 export {
+  realignPlan,
+  recommendRealign,
+  type RealignDraft,
+  type RealignResult,
+  type RecommendationInput,
+  type RecommendResult,
+  type TicketChange,
+} from "./actions/realign.js";
+
+export {
   classifyContent,
   CONTENT_KINDS,
   contentKindOf,
