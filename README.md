@@ -381,11 +381,14 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
 
 ## Jev key
 
-Put your Jev API key in a file in your home folder, once per computer:
+Put your Jev API key in a file in your home folder, once per computer. This
+works in bash and zsh, keeps the key off the screen and out of your shell
+history:
 
 ```sh
 mkdir -p ~/.config/jflow
-nano ~/.config/jflow/jev-key    # paste the key, save
+printf 'Paste your Jev key, then press Enter: '; read -rs KEY; echo
+printf '%s\n' "$KEY" > ~/.config/jflow/jev-key; unset KEY
 chmod 600 ~/.config/jflow/jev-key
 ```
 
