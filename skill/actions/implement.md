@@ -17,7 +17,9 @@ implementing it: without recorded authorization, ask. If the block is
    ticket to get around it. The outcome gives the ticket's accepted
    criteria, `delegationLimits`, and the fix counter (`fix.attempts` of
    `fix.limit`).
-2. Implement the ticket (Method below).
+2. Implement the ticket (Method below). When the outcome says
+   `ticketWorker: true`, a fresh sub-agent does steps 2 and 3 (see
+   "One sub-agent per ticket" below).
 3. Run every check the ticket has. Write the evidence file outside the
    project, in the shape `references/DECISIONS.md` shows under
    "Validating a ticket". Once the ticket has failed before, also add
@@ -66,6 +68,22 @@ is true, with never more than `delegationLimits.maxParallelWorkers` running
 at once. When it is false, work sequentially. Every worker stays inside
 this ticket. Record each worker before it runs, as `SKILL.md` says under
 "Stage workers", and finish it when it is done.
+
+**One sub-agent per ticket**
+
+`ticketWorker: true` means execution is authorized for the whole plan and
+`implement.ticketWorker` is on (the default). Start one new sub-agent for
+the ticket, with role `implementer`, and record it first, as `SKILL.md`
+says under "Stage workers". Give it only what the ticket needs: the ticket
+id, title and accepted criteria, the parts of the specification they rest
+on, the test-naming rule below, and where the evidence file goes. It
+implements the ticket, runs the checks, writes the evidence file, and
+returns the files it changed and a few lines on what it did. It runs no
+`scripts/jflow` command and never commits. You run steps 4 and 5, and the
+review, from its report. If the ticket comes back `returned-to-fix`, start
+a new sub-agent with the criteria not met or the blocking findings. List
+every sub-agent under `"workers"` in the evidence file. None of them may
+review the ticket.
 
 The ticket's checks are the commands whose results its acceptance criteria
 depend on: the tests named in them, and the project's typecheck and test

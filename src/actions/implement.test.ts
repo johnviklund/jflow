@@ -150,6 +150,7 @@ describe("starting a ticket", () => {
         ticket: { id: "T1", status: "in-progress", acceptanceCriteria: [PARSES] },
         delegationLimits: { maxParallelWorkers: 3, allowParallelWithinUnit: true },
         fix: { attempts: 0, limit: 2 },
+        ticketWorker: false,
       },
     });
     expect(ticketOf(h, "T1")?.status).toBe("in-progress");

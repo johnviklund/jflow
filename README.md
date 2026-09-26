@@ -65,7 +65,10 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   `implement start` starts exactly one ticket under recorded execution
   authorization: the authorized ticket, or the named one under whole-plan
   authorization, with its dependencies done and no other ticket in
-  progress. It reports the stage's delegation limits for parallel sub-work.
+  progress. It reports the stage's delegation limits for parallel sub-work,
+  and `ticketWorker`: under whole-plan authorization, with
+  `implement.ticketWorker` on (the default), each ticket goes to a fresh
+  implementer sub-agent so the main conversation stays short.
   `implement check` records the ticket's check output under
   `.jflow/evidence/` in the form `validate` consumes, asks `validate`, and
   keeps the ticket's one fix counter (`progress.fixAttempts`, D48). The

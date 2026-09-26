@@ -63,6 +63,8 @@ export interface StartedTicket {
   readonly stageModel?: StageModelConfiguration;
   readonly setupWarnings: readonly string[];
   readonly fix: { readonly attempts: number; readonly limit: number };
+  /** Hand the ticket to a fresh implementer sub-agent: whole-plan authorization with `implement.ticketWorker` on. */
+  readonly ticketWorker: boolean;
 }
 
 export type StartResult = { readonly ok: true; readonly outcome: StartedTicket } | Refusal;
@@ -200,6 +202,8 @@ export function startTicket(
       ...(resolution.stageModel === undefined ? {} : { stageModel: resolution.stageModel }),
       setupWarnings: resolution.setupWarnings,
       fix: { attempts: progress.fixAttempts?.[target] ?? 0, limit: fixLimit(context) },
+      ticketWorker:
+        progress.authorizationScope === "plan" && context.configuration.settings["implement.ticketWorker"] !== false,
     },
   };
 }

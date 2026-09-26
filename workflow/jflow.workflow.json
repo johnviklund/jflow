@@ -249,6 +249,12 @@
         "default": true
       },
       {
+        "key": "implement.ticketWorker",
+        "type": "boolean",
+        "summary": "Under whole-plan authorization, implement each ticket in a fresh implementer sub-agent, so the main conversation stays short.",
+        "default": true
+      },
+      {
         "key": "jev.retryCount",
         "type": "integer",
         "summary": "Retries after the initial attempt for a temporary Jev failure, before asking the human.",

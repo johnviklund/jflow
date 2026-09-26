@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { resolveConfiguration } from "../config/configuration.js";
 import type { JevTransport, TransportRequest } from "../jev/client.js";
 import type { DecisionDependencies } from "../jev/decisions.js";
 import { readRecord, writeRecord, type ProgressRecord, type TicketRecord } from "../project/records.js";
@@ -126,6 +127,21 @@ describe("moving to the next ticket", () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.body).toContain("Boundary: next-ticket.");
     expect(progressOf(h)).toMatchObject({ assignedTicketId: "T2", authorizationScope: "plan" });
+  });
+
+  it("hands each ticket to a fresh implementer sub-agent under whole-plan authorization, unless configured off", async () => {
+    const first = project();
+    const on = await nextTicket(first.root, dependencies(first, jev(PROCEED)));
+    const h = project();
+    const resolved = resolveConfiguration({ settings: { "implement.ticketWorker": false } }, loadShippedWorkflowPackage());
+    if (!resolved.ok) throw new Error("test configuration must be valid");
+    const off = await nextTicket(h.root, {
+      ...dependencies(h, jev(PROCEED)),
+      context: { workflowPackage: loadShippedWorkflowPackage(), configuration: resolved.configuration },
+    });
+
+    expect(on).toMatchObject({ kind: "started", ticketWorker: true });
+    expect(off).toMatchObject({ kind: "started", ticketWorker: false });
   });
 
   it("asks escalate for the first ticket under whole-plan authorization too, and never starts one without it", async () => {
