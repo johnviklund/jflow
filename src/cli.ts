@@ -16,6 +16,7 @@ import { promoteTodo, recordTodo, routeItem } from "./actions/todo.js";
 import { classifyContent, type ClassifyInput, type ClassifyResult } from "./actions/classify.js";
 import { wrapSession, type WrapDraft } from "./actions/wrap.js";
 import { realignPlan, recommendRealign, type RealignDraft } from "./actions/realign.js";
+import { readResume, reconcileResume, settleDiscrepancies, verifyTicket, type ReconcileDraft } from "./actions/resume.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import { recommendModel, type SelectionDraft } from "./actions/model-selection.js";
 import {
@@ -137,6 +138,10 @@ Usage:
   jflow learn supersede <id> --successor <lesson id or change> --evidence <what contradicts it>
                     --by agent|developer [--reason <the developer's words>] [--conflicts-with <decision id>]
                     [--task <the task>] [--stage <name>] [--root <dir>] [--config <file>]
+  jflow resume                               [--root <dir>] [--config <file>]
+  jflow resume verify <evidence.json>        [--root <dir>] [--config <file>]
+  jflow resume reconcile [<draft.json>]      [--root <dir>] [--config <file>]
+  jflow resume settle --note <the developer's words> [--root <dir>]
   jflow realign <draft.json> --note <the developer's words> [--root <dir>] [--config <file>]
   jflow realign recommend --source resume|review|agent --summary <why> [--evidence <what it rests on>] [--root <dir>]
   jflow realign show                         [--root <dir>]
@@ -262,6 +267,21 @@ each change linked to its envelope.
 It writes only traces: no envelope, record, question or policy file, and
 it decides nothing. A decision with no stored envelopes is reported as
 nothing to replay (exit 1).
+"resume" reconciles a fresh session with the records, the working tree and
+the resume record, and writes nothing. It reports the authorization from
+the progress record alone, the ticket to continue with its uncommitted
+edits, done tickets without verification evidence (unverified), the
+affected tickets, the discrepancies, and the previous recommendation
+beside the current one. "resume verify" judges a done ticket on checks run
+now (the evidence file of "ticket validate") and records the result; it
+never changes the ticket's status. "resume reconcile" asks escalate at
+resume-discrepancy for every discrepancy, the draft's (summary, ticketId,
+evidence, changesScope) included; a scope change asks the developer
+without Jev and records a realign recommendation. It refuses while a done
+ticket is unverified, puts a discrepancy already waiting on the developer
+to them again without Jev, exits 1 when the developer is asked, and
+reconciles nothing itself. "resume settle" records the developer's
+decision on the waiting discrepancies so they are not raised again.
 "realign" is the developer's to invoke: --note records their instruction.
 Its draft holds direction, changes (action rescope with ticketId and any of
 title, acceptanceCriteria, dependsOn; add with ticketId, title,
@@ -1233,6 +1253,42 @@ function runWrap(args: ParsedArgs, io: CliIo): number {
   return result.ok && result.outcome.discrepancies.length === 0 ? EXIT_OK : EXIT_NEEDS_HUMAN;
 }
 
+async function runResume(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  if (subcommand === "settle") {
+    return report(settleDiscrepancies(root, { note: args.options["note"] ?? "" }, { now: new Date().toISOString() }), io);
+  }
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  switch (subcommand) {
+    case undefined:
+      return report(readResume(root, built.context), io);
+    case "verify": {
+      const read = readDraft<ValidationInput>(target, "resume verify", io);
+      if (!read.ok) return read.exit;
+      return reportValidation(await verifyTicket(root, read.draft, decisionDependencies(built.context, io)), io);
+    }
+    case "reconcile": {
+      let draft: ReconcileDraft = {};
+      if (target !== undefined) {
+        const read = readDraft<ReconcileDraft>(target, "resume reconcile", io);
+        if (!read.ok) return read.exit;
+        draft = read.draft;
+      }
+      const result = await reconcileResume(root, draft, decisionDependencies(built.context, io));
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman.length === 0 ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+    default:
+      io.stderr(`resume takes no subcommand, or one of verify, reconcile, settle\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+}
+
 async function runRealign(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [target] = args.positional;
@@ -1507,6 +1563,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "realign":
       return runRealign(args, io);
+
+    case "resume":
+      return runResume(args, io);
 
     case "decide":
       return runDecide(args, io);

@@ -97,7 +97,7 @@ function readTicket(root: string, ticketId: string): { readonly kind: "ticket"; 
 }
 
 /** Refuses drafted evidence that is not check output or the implementer's claim. */
-function refuseInvalidEvidence(input: ValidationInput): Refused | undefined {
+export function refuseInvalidEvidence(input: ValidationInput): Refused | undefined {
   if (!Array.isArray(input.evidence) || input.evidence.length === 0) {
     return refused("validation needs recorded verification evidence: run the ticket's checks and record their output");
   }
@@ -198,7 +198,8 @@ async function settle(
   return { validation: { ...base, ...recorded, disposition: "awaiting-developer" }, askHuman: escalation.askHuman };
 }
 
-function save(root: string, ticketId: string, validation: TicketValidation): Refused | undefined {
+/** Records a ticket's validation in the progress record, the only record validation writes. */
+export function saveValidation(root: string, ticketId: string, validation: TicketValidation): Refused | undefined {
   const read = readRecord(root, "progress");
   if (read.kind === "malformed") return refused(`the progress record at ${read.path} cannot be read`);
   const current = read.kind === "present" ? read.record : EMPTY_PROGRESS;
@@ -212,7 +213,7 @@ function save(root: string, ticketId: string, validation: TicketValidation): Ref
 }
 
 function settledResult(root: string, ticketId: string, settled: Settled): TicketValidationResult {
-  return save(root, ticketId, settled.validation) ?? { kind: "validated", ...settled };
+  return saveValidation(root, ticketId, settled.validation) ?? { kind: "validated", ...settled };
 }
 
 export async function validateTicket(
@@ -225,7 +226,7 @@ export async function validateTicket(
   const invalid = refuseInvalidEvidence(input);
   if (invalid) return invalid;
   const judged = await judgeTicket(root, read.ticket, input, dependencies);
-  return judged.kind === "validated" ? (save(root, read.ticket.id, judged.validation) ?? judged) : judged;
+  return judged.kind === "validated" ? (saveValidation(root, read.ticket.id, judged.validation) ?? judged) : judged;
 }
 
 /**

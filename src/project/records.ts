@@ -162,6 +162,13 @@ export interface ReconciliationDiscrepancy {
   readonly consequential: boolean;
 }
 
+export interface SettledDiscrepancy {
+  readonly summary: string;
+  readonly ticketId?: string;
+  readonly note: string;
+  readonly settledAt: string;
+}
+
 export const CHANGE_OWNERS = ["developer", "ticket"] as const;
 
 export type ChangeOwner = (typeof CHANGE_OWNERS)[number];
@@ -335,6 +342,8 @@ export interface ProgressRecord {
   readonly reconciliation?: {
     readonly lastReconciledAt?: string;
     readonly discrepancies: readonly ReconciliationDiscrepancy[];
+    /** Discrepancies the developer settled at resume, in their words; not asked about again (issue #22). */
+    readonly settled?: readonly SettledDiscrepancy[];
   };
 }
 
@@ -1362,7 +1371,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
     const rec = requireObject(
       doc["reconciliation"],
       "reconciliation",
-      ["lastReconciledAt", "discrepancies"],
+      ["lastReconciledAt", "discrepancies", "settled"],
       issues,
     );
     if (rec) {
@@ -1389,6 +1398,18 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
           );
         });
       }
+      const settled = optionalList(rec["settled"], "reconciliation.settled", issues, (entry, path) => {
+        const item = requireObject(entry, path, ["summary", "ticketId", "note", "settledAt"], issues);
+        if (!item) return undefined;
+        return withOptional<SettledDiscrepancy>(
+          {
+            summary: requireNonEmptyString(item["summary"], `${path}.summary`, issues),
+            note: requireNonEmptyString(item["note"], `${path}.note`, issues),
+            settledAt: requireTimestamp(item["settledAt"], `${path}.settledAt`, issues),
+          },
+          { ticketId: optionalString(item["ticketId"], `${path}.ticketId`, issues) },
+        );
+      });
       reconciliation = withOptional<NonNullable<ProgressRecord["reconciliation"]>>(
         { discrepancies },
         {
@@ -1397,6 +1418,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
             "reconciliation.lastReconciledAt",
             issues,
           ),
+          settled,
         },
       );
     }

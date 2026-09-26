@@ -334,7 +334,8 @@ export type CheckResult =
       readonly fix?: FixCount;
     });
 
-function recordEvidence(root: string, input: ValidationInput, recordedAt: string): string {
+/** Keeps a ticket's latest verification evidence under `.jflow/evidence/`, returning where. */
+export function recordEvidence(root: string, input: ValidationInput, recordedAt: string): string {
   ensureLocalDirectory(root, EVIDENCE_DIRECTORY);
   const reference = `${EVIDENCE_DIRECTORY}/${encodeURIComponent(input.ticketId)}.json`;
   const stored = { ticketId: input.ticketId, evidence: input.evidence, checks: input.checks ?? [], recordedAt };

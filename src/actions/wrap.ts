@@ -92,8 +92,8 @@ function lessonStateOf(lessons: readonly LessonRecord[]): ResumeLessons {
   };
 }
 
-/** Where the records and the repository disagree. Read-only. */
-function findRecordDiscrepancies(
+/** Where the records and the repository disagree. Read-only; resume checks the same again (issue #22). */
+export function findRecordDiscrepancies(
   root: string,
   tickets: readonly TicketRecord[],
   progress: ProgressRecord | undefined,

@@ -245,6 +245,22 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   without a commit), carries over discrepancies recorded earlier, and adds
   the agent's own findings. It reports every discrepancy and reconciles none.
   It writes no other record and only reads Git.
+- `src/actions/resume.ts` — resuming in a fresh conversation (issue #22,
+  D15). `readResume` writes nothing: it reports the resume record beside
+  the records and the working tree, the authorization from the progress
+  record alone, the ticket to continue with its uncommitted edits, done
+  tickets no validation supports, the affected tickets, the discrepancies
+  (those `wrap` checks, plus an authorization that differs from the resume
+  record's, paths changed since wrap, and a done ticket whose validation
+  fails), and the previous recommendation beside the current one.
+  `verifyTicket` judges a done ticket on checks run now through
+  `validate`, without changing its status. `reconcileResume` asks
+  `escalate` at `resume-discrepancy` for each discrepancy with its
+  evidence; a scope change asks the developer without Jev and records a
+  `realign` recommendation (once). It refuses while a completion claim is
+  unverified, and puts a discrepancy already waiting on the developer to
+  them again without Jev. `settleDiscrepancies` records their decision so
+  it is not raised again. Only `progress.reconciliation` is written.
 - `src/actions/realign.ts` — `realign` (issue #31, D42), run only on the
   developer's recorded words. It re-scopes, adds, parks or withdraws the
   tickets the new direction affects and leaves the others and their
@@ -351,7 +367,7 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `learn`, `wrap`, `realign`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `wrap`, `resume`, `realign`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
@@ -369,6 +385,11 @@ Nothing has been run on the ChatGPT desktop app; see
 
 ## Invariants enforced in code
 
+- Resume reconciles nothing itself: it changes no ticket, edit, fix
+  counter or authorization, takes authorization from the progress record
+  alone, and puts every discrepancy through `escalate` (a scope change to
+  the developer directly). A completion claim no validation supports is
+  listed for its checks to run, never trusted.
 - `realign` runs only with the developer's recorded words. It ends the
   execution authorization, puts the specification and plan back behind
   acceptance, reopens every done ticket whose criteria changed, and never

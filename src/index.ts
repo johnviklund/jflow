@@ -103,6 +103,21 @@ export {
 export { wrapSession, type WrapDraft, type WrapResult } from "./actions/wrap.js";
 
 export {
+  readResume,
+  reconcileResume,
+  settleDiscrepancies,
+  verifyTicket,
+  type Recommendation as ResumeRecommendation,
+  type SettleResult,
+  type ReconcileDraft,
+  type ReconcileResult,
+  type ReconciledDiscrepancy,
+  type ResumeReadResult,
+  type ResumeReport,
+  type UnverifiedTicket,
+} from "./actions/resume.js";
+
+export {
   realignPlan,
   recommendRealign,
   type RealignDraft,

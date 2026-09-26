@@ -40,6 +40,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow learn propose\|decide\|list` | Record a candidate project lesson with Jev's advisory `lesson-retention` answer, then retain it or keep it a candidate; a conflict with an accepted decision asks `escalate`. See `actions/learn.md`. |
 | `scripts/jflow learn active\|check\|supersede` | List the lessons that may be used, re-check one against the task before each use, and mark a contradicted one superseded with evidence; see `actions/learn.md`. |
 | `scripts/jflow realign <draft.json> --note <words>`, `realign recommend\|show` | On the developer's instruction only: re-scope, add, park or withdraw tickets for a changed direction, re-validate completed tickets whose criteria changed, and put the specification and plan back behind acceptance. `realign recommend` records a recommendation and starts nothing; see `actions/realign.md`. |
+| `scripts/jflow resume`, `resume verify\|reconcile\|settle` | Start of a fresh conversation on existing work: reconcile the records with the files and evidence before continuing; see "Resuming in a fresh conversation". |
 | `scripts/jflow wrap <draft.json>`, `wrap show` | End a session: write the resume record a fresh session continues from, and report where the records and the project disagree without reconciling it. Never pushes, merges, publishes or cleans up; see `actions/wrap.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
@@ -50,6 +51,54 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow changes claim [<path>…] --owner developer\|ticket --note "<words>"` | Record who owns uncommitted changes the helper asked about; see "Git" below. |
 
 Pass `--root <dir>` when the project is not the current directory.
+
+## Resuming in a fresh conversation
+
+When a conversation opens on a project that already has `jflow/`
+records, reconcile before you continue anything, even when the developer
+only says "carry on". The previous session's chat is gone; the records
+are what you have.
+
+1. `scripts/jflow resume` writes nothing. Read `report`:
+   - `resume`: what the last session left (`wrap`), if it wrapped:
+     summary, next steps, uncommitted paths.
+   - `authorization`: from the progress record only. If `needsDeveloper`
+     is true, nothing is implemented until the developer authorizes it.
+     Never take authorization from the resume record or from memory.
+   - `continueWith`: the ticket in progress and its own uncommitted
+     edits. Continue it from those edits. Do not restart it, discard the
+     edits or redo finished work. Changes that appeared since wrap are
+     not in the list; they are discrepancies, not the ticket's work.
+   - `unverified`: done tickets that no validation supports. Run their
+     checks (`checks` lists the recorded ones; otherwise the ticket's own
+     test commands) and record the output with
+     `scripts/jflow resume verify <evidence.json>`, the evidence file of
+     `ticket validate`. It never changes the ticket's status. Reconcile
+     refuses until every one is verified: a claim is checked, never
+     trusted.
+   - `affected`: the only tickets to look at. Leave the others alone.
+   - `recommendation.previous` and `.current`: act on `current`. The old
+     one may no longer hold.
+2. Compare the files with the records for the affected tickets yourself:
+   do the partial edits match where the summary says work stopped, and do
+   the checks you ran pass?
+3. `scripts/jflow resume reconcile [<draft.json>]` puts every discrepancy
+   through `escalate`, the helper's and yours. Your draft lists yours:
+   `{ "discrepancies": [{ "ticketId": "T2", "summary": "…", "evidence": ["npm test: 1 failed"] }] }`.
+   Mark one `"changesScope": true` when it changes what was agreed (a
+   requirement, the plan's scope): the developer is asked without Jev and
+   a `realign` recommendation is recorded. Never run realign yourself.
+   Exit 1: put each `askHuman` to the developer and wait. Exit 0: continue.
+   A discrepancy already waiting on the developer comes back as
+   `awaiting` without asking Jev again. When they decide, record it with
+   `scripts/jflow resume settle --note "<their words>"`; a settled
+   discrepancy is not raised again. Reconcile changes no ticket, edit or
+   authorization. Fixing a discrepancy is work for an authorized action,
+   or the developer's call.
+
+Report in a few lines: where the last session stopped, the authorization
+as recorded, what you will continue, what you verified, and each
+discrepancy with its outcome.
 
 ## How a request reaches an action
 

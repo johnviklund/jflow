@@ -519,6 +519,26 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(blank.code).toBe(EXIT_NEEDS_HUMAN);
   });
 
+  it("has resume report where the work stands without writing, and reconcile ask escalate about each discrepancy", async () => {
+    const h = harness({ state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" } });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({ tickets: [{ id: "T1", title: "parse", acceptanceCriteria: ["parses"], dependsOn: [], status: "in-progress" }] }),
+    );
+    h.writeFile("reconcile.json", JSON.stringify({ discrepancies: [{ ticketId: "T1", summary: "the parser test now fails", evidence: ["npm test: 1 failed"] }] }));
+    const before = h.snapshot();
+
+    const shown = await run(["resume"], h.root);
+    const unchanged = h.snapshot();
+    const reconciled = await run(["resume", "reconcile", "reconcile.json"], h.root, {}, jev("escalate", "uncertain"));
+
+    expect(shown.code).toBe(EXIT_OK);
+    expect(shown.json()).toMatchObject({ ok: true, report: { authorization: { executionAuthorized: true }, continueWith: { ticketId: "T1" } } });
+    expect(unchanged).toEqual(before);
+    expect(reconciled.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(reconciled.json()).toMatchObject({ ok: true, outcome: { discrepancies: [{ ticketId: "T1", ask: true }] } });
+  });
+
   it("has realign record a recommendation that starts nothing, and realign the plan only with the developer's words", async () => {
     const h = harness({ state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" } });
     h.writeFile(
