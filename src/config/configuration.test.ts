@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
-import { resolveConfiguration, resolveJevApiKey } from "./configuration.js";
+import { jevKeyFilePath, resolveConfiguration, resolveJevApiKey } from "./configuration.js";
 
 const workflowPackage = loadShippedWorkflowPackage();
 
@@ -214,7 +214,7 @@ describe("resolveConfiguration secret handling", () => {
     expect(result.issues).toContainEqual({
       path: "jevApiKey",
       message:
-        "secrets must never be stored in jflow configuration or version control; provide the Jev API key via the JFLOW_JEV_API_KEY environment variable or host secret storage",
+        "secrets must never be stored in jflow configuration or version control; provide the Jev API key via ~/.config/jflow/jev-key or the JFLOW_JEV_API_KEY environment variable",
     });
   });
 
@@ -248,6 +248,21 @@ describe("resolveJevApiKey", () => {
     });
   });
 
+  it("reads the user's key file when the environment variable is absent", () => {
+    const result = resolveJevApiKey({ env: {}, readKeyFile: () => "sk-file\n" });
+
+    expect(result).toEqual({ status: "configured", source: "key-file", key: "sk-file" });
+  });
+
+  it("prefers the environment variable over the key file", () => {
+    const result = resolveJevApiKey({
+      env: { JFLOW_JEV_API_KEY: "sk-env" },
+      readKeyFile: () => "sk-file",
+    });
+
+    expect(result).toMatchObject({ source: "environment", key: "sk-env" });
+  });
+
   it("falls back to host secret storage when the environment variable is absent", () => {
     const result = resolveJevApiKey({
       env: {},
@@ -267,6 +282,7 @@ describe("resolveJevApiKey", () => {
     expect(result.status).toBe("missing");
     if (result.status !== "missing") return;
     expect(result.askHuman).toContain("JFLOW_JEV_API_KEY");
+    expect(result.askHuman).toContain("jflow/jev-key");
     expect(result.mayProceedWithoutJev).toBe(false);
   });
 
@@ -274,5 +290,15 @@ describe("resolveJevApiKey", () => {
     const result = resolveJevApiKey({ env: { JFLOW_JEV_API_KEY: "   " } });
 
     expect(result.status).toBe("missing");
+  });
+});
+
+describe("jevKeyFilePath", () => {
+  it("lives in the user's config directory, outside any project", () => {
+    expect(jevKeyFilePath({}, "/home/dev")).toBe("/home/dev/.config/jflow/jev-key");
+  });
+
+  it("follows XDG_CONFIG_HOME when it is set", () => {
+    expect(jevKeyFilePath({ XDG_CONFIG_HOME: "/cfg" }, "/home/dev")).toBe("/cfg/jflow/jev-key");
   });
 });

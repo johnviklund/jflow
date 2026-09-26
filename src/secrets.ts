@@ -2,7 +2,7 @@
  * What counts as a credential in anything jflow persists. Secrets are never
  * stored in configuration, project records or version control (SPEC.md
  * confirmed default 8, D14); the Jev API key comes from the environment or
- * host secret storage.
+ * the user's key file outside every project.
  */
 
 export const JEV_API_KEY_ENV_VAR = "JFLOW_JEV_API_KEY";
@@ -22,4 +22,4 @@ export const SECRET_VALUE_PATTERN =
 
 export const SECRET_MESSAGE =
   `secrets must never be stored in jflow configuration or version control; ` +
-  `provide the Jev API key via the ${JEV_API_KEY_ENV_VAR} environment variable or host secret storage`;
+  `provide the Jev API key via ~/.config/jflow/jev-key or the ${JEV_API_KEY_ENV_VAR} environment variable`;

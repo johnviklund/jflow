@@ -71,7 +71,7 @@ import {
   writeSpecification,
   type SpecificationDraft,
 } from "./actions/specification.js";
-import { resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
+import { readJevKeyFile, resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
 import { readRecord, type CriterionVerdict, type RealignSource } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
@@ -99,6 +99,8 @@ export interface CliIo {
   /** Where the Jev key is read from and how requests are sent; defaults to the process and the network. */
   readonly jev?: {
     readonly env: Readonly<Record<string, string | undefined>>;
+    /** The user's key file; tests that inject `jev` leave it out, so none is read. */
+    readonly readKeyFile?: () => string | undefined;
     readonly transport: JevTransport;
     /** Waits between retries; a real timer unless a test injects one. */
     readonly sleep?: (ms: number) => Promise<void>;
@@ -545,10 +547,17 @@ function exitCodeFor(outcome: DispatchOutcome): number {
 }
 
 function decisionDependencies(context: ResolutionContext, io: CliIo, stage?: string): DecisionDependencies {
-  const jev = io.jev ?? { env: process.env, transport: fetchTransport };
+  const jev = io.jev ?? {
+    env: process.env,
+    readKeyFile: () => readJevKeyFile(process.env),
+    transport: fetchTransport,
+  };
   return {
     context,
-    apiKey: resolveJevApiKey({ env: jev.env }),
+    apiKey: resolveJevApiKey({
+      env: jev.env,
+      ...(jev.readKeyFile === undefined ? {} : { readKeyFile: jev.readKeyFile }),
+    }),
     transport: jev.transport,
     now: () => new Date().toISOString(),
     ...(jev.sleep === undefined ? {} : { sleep: jev.sleep }),

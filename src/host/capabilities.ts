@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { jevKeyFilePath, readJevKeyFile } from "../config/configuration.js";
 import { JEV_API_KEY_ENV_VAR } from "../secrets.js";
 
 /**
@@ -16,6 +17,7 @@ export const HOST_CAPABILITIES = [
   "project-files",
   "shell",
   "secret-environment",
+  "secret-key-file",
   "secret-host-storage",
   "distinct-agent-context",
   "pinned-worker-model",
@@ -39,6 +41,8 @@ export interface HostProbeOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Runs a command and returns its stdout; throws when it cannot run. */
   readonly exec: (command: string, args: readonly string[]) => string;
+  /** The user's Jev key file; undefined when there is none. */
+  readonly readKeyFile?: () => string | undefined;
   /** The host's own secret storage, when an integration provides one (#16). */
   readonly readHostSecret?: () => string | undefined;
 }
@@ -104,6 +108,26 @@ function probeEnvironmentSecret(env: HostProbeOptions["env"]): HostCapabilityRes
       };
 }
 
+function probeKeyFile(options: HostProbeOptions): HostCapabilityResult {
+  const path = jevKeyFilePath(options.env);
+  try {
+    const value = options.readKeyFile?.();
+    return typeof value === "string" && value.trim() !== ""
+      ? {
+          capability: "secret-key-file",
+          status: "verified",
+          evidence: `${path} holds a key (value not recorded)`,
+        }
+      : { capability: "secret-key-file", status: "unverified", evidence: `no key in ${path}` };
+  } catch (error) {
+    return {
+      capability: "secret-key-file",
+      status: "unverified",
+      evidence: `could not read ${path}: ${errorText(error)}`,
+    };
+  }
+}
+
 function probeHostSecret(read: HostProbeOptions["readHostSecret"]): HostCapabilityResult {
   if (!read) {
     return {
@@ -158,6 +182,7 @@ export function checkHostCapabilities(root: string, options: HostProbeOptions): 
       probeProjectFiles(root),
       probeShell(options.exec),
       probeEnvironmentSecret(options.env),
+      probeKeyFile(options),
       probeHostSecret(options.readHostSecret),
       ...HOST_ONLY,
     ],
@@ -169,5 +194,6 @@ export function processProbeOptions(): HostProbeOptions {
   return {
     env: process.env,
     exec: (command, args) => execFileSync(command, [...args], { encoding: "utf8" }),
+    readKeyFile: () => readJevKeyFile(process.env),
   };
 }

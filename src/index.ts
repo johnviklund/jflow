@@ -45,6 +45,7 @@ export {
 
 export {
   JEV_API_KEY_ENV_VAR,
+  jevKeyFilePath,
   resolveConfiguration,
   resolveJevApiKey,
   type ConfigurationResult,

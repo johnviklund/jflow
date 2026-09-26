@@ -432,7 +432,10 @@ claim that Jev improves routing (D36).
   The actual model used is recorded.
 - **Jev API key handling** (confirmed 2026-09-18, new item #8): the Jev API
   key is never stored in project files or version control. It is read from an
-  environment variable or the host's own secret storage. If it is missing,
+  environment variable or from the user's key file, `~/.config/jflow/jev-key`,
+  which sits outside every project (changed 2026-09-26: the ChatGPT desktop
+  app offers no secret storage, and a variable set in a shell does not reach
+  a desktop app started from its launcher). If it is missing,
   jflow asks the human how to configure it rather than proceeding without Jev
   or silently falling back; this is distinct from the temporary-failure
   retry/fallback handling below, which assumes a key is already configured.
@@ -780,8 +783,8 @@ claim that Jev improves routing (D36).
      never auto-pushes, merges, publishes, or destructively cleans up.
   8. Jev API key handling **(new, not from discovery — added and confirmed
      2026-09-18)**: never store the Jev API key in project files or version
-     control. Read it from an environment variable or the host's own secret
-     storage. If it's missing, ask the human how to configure it rather than
+     control. Read it from an environment variable or the user's key file
+     outside every project (changed 2026-09-26, see above). If it's missing, ask the human how to configure it rather than
      proceeding without Jev or silently falling back — this is distinct from
      the temporary-failure retry/fallback policy in items 3-4, which assumes
      a key is already configured.

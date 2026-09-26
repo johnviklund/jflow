@@ -3,6 +3,10 @@ import type {
   ValidationIssue,
   WorkflowPackage,
 } from "../workflow/types.js";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { JEV_API_KEY_ENV_VAR, SECRET_KEY_PATTERN, SECRET_MESSAGE } from "../secrets.js";
 import { isRecord, joinPath } from "../validation.js";
 
@@ -315,7 +319,7 @@ export function resolveConfiguration(
   };
 }
 
-export type JevApiKeySource = "environment" | "host-secret-storage";
+export type JevApiKeySource = "environment" | "key-file" | "host-secret-storage";
 
 export type JevApiKeyResult =
   | { readonly status: "configured"; readonly source: JevApiKeySource; readonly key: string }
@@ -328,18 +332,49 @@ export type JevApiKeyResult =
 
 export interface JevApiKeyLookup {
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** The user's key file (`jevKeyFilePath`); undefined when there is none. */
+  readonly readKeyFile?: () => string | undefined;
   readonly readHostSecret?: () => string | undefined;
 }
 
 /**
- * Resolves the Jev API key from the environment or host secret storage. The key
- * is never read from project files or version control, and a missing key asks
- * the human rather than falling back (SPEC.md confirmed default 8).
+ * The user's Jev key file: `jflow/jev-key` in `XDG_CONFIG_HOME`, else in
+ * `~/.config`. It sits outside every project, so no project read or commit
+ * can reach it.
+ */
+export function jevKeyFilePath(
+  env: Readonly<Record<string, string | undefined>>,
+  home: string = homedir(),
+): string {
+  const configHome = env["XDG_CONFIG_HOME"]?.trim() || join(home, ".config");
+  return join(configHome, "jflow", "jev-key");
+}
+
+/** Reads the user's key file; undefined when it does not exist. */
+export function readJevKeyFile(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  try {
+    return readFileSync(jevKeyFilePath(env), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Resolves the Jev API key from the environment, the user's key file, or host
+ * secret storage, in that order. The key is never read from project files or
+ * version control, and a missing key asks the human rather than falling back
+ * (SPEC.md confirmed default 8).
  */
 export function resolveJevApiKey(lookup: JevApiKeyLookup): JevApiKeyResult {
   const fromEnv = lookup.env[JEV_API_KEY_ENV_VAR];
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") {
     return { status: "configured", source: "environment", key: fromEnv.trim() };
+  }
+
+  const fromFile = lookup.readKeyFile?.();
+  if (typeof fromFile === "string" && fromFile.trim() !== "") {
+    return { status: "configured", source: "key-file", key: fromFile.trim() };
   }
 
   const fromHost = lookup.readHostSecret?.();
@@ -350,8 +385,8 @@ export function resolveJevApiKey(lookup: JevApiKeyLookup): JevApiKeyResult {
   return {
     status: "missing",
     askHuman:
-      `No Jev API key is configured. Set the ${JEV_API_KEY_ENV_VAR} environment variable ` +
-      `or store the key in your host's secret storage, then tell jflow to continue. ` +
+      `No Jev API key is configured. Put the key in ${jevKeyFilePath(lookup.env)} ` +
+      `or set the ${JEV_API_KEY_ENV_VAR} environment variable, then tell jflow to continue. ` +
       `jflow will not proceed without Jev unless you explicitly approve it.`,
     mayProceedWithoutJev: false,
   };

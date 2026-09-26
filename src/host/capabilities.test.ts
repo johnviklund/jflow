@@ -79,6 +79,21 @@ describe("checkHostCapabilities", () => {
     expect(JSON.stringify(set)).not.toContain("1234567890abcdef");
   });
 
+  it("verifies the key file only when it holds a key, and never records its value", () => {
+    const root = makeRoot();
+
+    const none = checkHostCapabilities(root, { env: {}, exec: shellWorks });
+    const some = checkHostCapabilities(root, {
+      env: {},
+      exec: shellWorks,
+      readKeyFile: () => "sk-file-1234567890abcdef\n",
+    });
+
+    expect(none.results.find((r) => r.capability === "secret-key-file")?.status).toBe("unverified");
+    expect(some.results.find((r) => r.capability === "secret-key-file")?.status).toBe("verified");
+    expect(JSON.stringify(some)).not.toContain("1234567890abcdef");
+  });
+
   it("verifies host secret storage only through an injected reader that returns a value", () => {
     const root = makeRoot();
 

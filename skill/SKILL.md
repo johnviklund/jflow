@@ -143,9 +143,10 @@ parts only the agent can honour.
 - A retained lesson is project knowledge. It never changes the workflow, a
   gate, a Jev question or policy, and never overrides an accepted decision.
   Re-check it against the task every time before applying it.
-- Secrets never go into project files or the conversation. If the helper
-  reports the Jev API key missing, ask how to configure it rather than
-  proceeding without Jev.
+- Secrets never go into project files or the conversation. Never read or
+  print the Jev key file. If the helper reports the Jev API key missing,
+  show the developer its message and wait, rather than proceeding without
+  Jev.
 - Evidence for Jev is a bounded packet for one decision: a task summary,
   the candidates and selected excerpts. Never paste a whole conversation or
   repository into it, or anything secret.

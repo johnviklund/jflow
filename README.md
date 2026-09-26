@@ -379,12 +379,25 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
+## Jev key
+
+Put your Jev API key in a file in your home folder, once per computer:
+
+```sh
+mkdir -p ~/.config/jflow
+nano ~/.config/jflow/jev-key    # paste the key, save
+chmod 600 ~/.config/jflow/jev-key
+```
+
+The file sits outside every project, so no project read or commit reaches
+it. `JFLOW_JEV_API_KEY`, when set, takes precedence. `check-host` reports
+whether the key file was found, never its value.
+
 ## Tested on
 
 ChatGPT desktop 26.908.70816, Linux, 2026-09-26: all host checks pass
 except reading the app's own secret storage, which the app does not offer.
-The Jev key works as an environment variable when the app is started with
-it set after a full quit. Details are in #24.
+Details are in #24. The key file has not been tested in the app yet.
 
 Not yet tested on macOS, Windows or Copilot Desktop. Run
 `skill/scripts/jflow check-host` to check your own setup.
@@ -461,7 +474,8 @@ host or model beyond what "Tested on" records as verified
   never pushes, publishes or merges.
 - A stage worker model never falls back implicitly — the fallback must name an
   explicit model, otherwise jflow asks.
-- The Jev API key is read from `JFLOW_JEV_API_KEY` or host secret storage, and
+- The Jev API key is read from `JFLOW_JEV_API_KEY` or the user's key file
+  (`~/.config/jflow/jev-key`, outside every project), and
   is rejected if found in configuration. A missing key produces a question for
   the human, not a silent fallback.
 - Raw traces are kept until explicit local cleanup and stay out of version
