@@ -22,6 +22,7 @@ import {
   type LessonsRecord,
 } from "../project/records.js";
 import { hasText } from "../validation.js";
+import { classificationOf, classifyContent, UNCLEAR_SCOPE } from "./classify.js";
 import { refuse, unreadable, type Refusal } from "./refusal.js";
 
 /**
@@ -50,6 +51,8 @@ export interface LessonDraft {
   readonly touches?: readonly string[];
   /** Those among them the agent judges it conflicts with. */
   readonly conflictsWith?: readonly string[];
+  /** Other scopes the lesson might apply to, for `classify` to weigh beside `scope` (issue #29). */
+  readonly scopeAlternatives?: readonly string[];
 }
 
 /** What was saved, for the developer to see. */
@@ -64,6 +67,8 @@ export interface LessonReport {
   readonly adviceEnvelope?: string;
   /** Accepted decisions or retained lessons the lesson conflicts with, left as they were. */
   readonly unchanged?: readonly string[];
+  /** The scope `classify` proposed, when it answered (issue #29). */
+  readonly proposedScope?: string;
 }
 
 export type ProposeResult =
@@ -175,6 +180,7 @@ function reportOf(lesson: LessonRecord): LessonReport {
     record: RECORD,
     ...(advice !== undefined && "envelope" in advice ? { adviceEnvelope: advice.envelope } : {}),
     ...(unchanged.length === 0 ? {} : { unchanged }),
+    ...(retention?.scope !== undefined && "answer" in retention.scope ? { proposedScope: retention.scope.answer } : {}),
   };
 }
 
@@ -218,6 +224,20 @@ export async function proposeLesson(root: string, draft: LessonDraft, dependenci
   );
   const advice = adviceFrom(asked);
   if ("ok" in advice) return advice;
+
+  // Which part of the project it applies to: classify's proposal, kept beside the agent's scope (D21, D50).
+  const alternatives = (Array.isArray(draft.scopeAlternatives) ? draft.scopeAlternatives : []).filter(hasText);
+  const scoped = await classifyContent(
+    root,
+    {
+      kind: "lesson-scope",
+      summary: statement,
+      scopes: [scope, ...alternatives],
+      excerpts: evidence.map((link) => ({ source: "lesson/evidence", text: `${link.kind}: ${link.reference}` })),
+    },
+    dependencies,
+  );
+  const scopeAdvice: LessonAdvice = classificationOf(scoped);
 
   // An escalate from lesson-retention is Jev saying it conflicts; even an
   // uncertain one goes to escalate rather than to the agent's own judgment.
@@ -266,6 +286,7 @@ export async function proposeLesson(root: string, draft: LessonDraft, dependenci
     status: "candidate",
     retention: {
       advice,
+      scope: scopeAdvice,
       ...(touches.length === 0 ? {} : { touches }),
       ...(conflict === undefined ? {} : { conflict }),
       ...(decision === undefined ? {} : { decision }),
@@ -350,6 +371,20 @@ export function decideLesson(
     return refuse(
       `lesson ${id} conflicts with ${against}, so it is the developer's to decide once escalate asked them; record their words with --by developer`,
     );
+  }
+
+  // D21's clear-scope criterion: retaining a lesson classify confidently found no scope for needs evidence.
+  const scope = retention.scope;
+  if (
+    input.by === "agent" &&
+    input.outcome === "retained" &&
+    scope !== undefined &&
+    "answer" in scope &&
+    scope.route !== "ask-human" &&
+    scope.answer === UNCLEAR_SCOPE &&
+    evidence.length === 0
+  ) {
+    return refuse(`classify found no clear scope for lesson ${id} (${scope.envelope}); retain it only with evidence that "${lesson.scope}" is its scope (--evidence)`);
   }
 
   const { advice } = retention;

@@ -21,12 +21,20 @@ including in the middle of another action.
        { "kind": "commit", "reference": "a1b2c3d" },
        { "kind": "check", "reference": "npm test -- parser: 3 failed before, 12 passed after" }
      ],
+     "scopeAlternatives": ["src/parser"],
      "touches": ["L-2"],
      "conflictsWith": []
    }
    ```
 
-   `touches` and `conflictsWith` hold the ids of accepted specification
+   `scopeAlternatives` lists other scopes the lesson might apply to (a
+   wider or narrower part of the project); Jev's `classify`
+   (lesson-scope) picks the one that fits among them and `scope`, and
+   the lesson records its proposal as `retention.scope`
+   (`report.proposedScope`). If it proposes another scope than yours,
+   look at the evidence again before you decide. If it confidently
+   answers `unclear`, retaining the lesson needs `--evidence` that your
+   scope is right. `touches` and `conflictsWith` hold the ids of accepted specification
    decisions (`D1`) or retained lessons (`L-2`). Leave them out when there
    are none. Then run `scripts/jflow learn propose <lesson.json>`. The
    helper records the lesson as a candidate (`L-n`) and asks Jev's
@@ -59,7 +67,8 @@ including in the middle of another action.
    decision.
 4. Before a task, `scripts/jflow learn active` lists the lessons that may
    be used: retained ones only. Candidates and superseded lessons are
-   never applied. `contradicted: true` means new evidence went against
+   never applied. `proposedScope` is the scope `classify` proposed; check
+   the task against it as well as `scope`. `contradicted: true` means new evidence went against
    the lesson and the developer's decision kept it.
 5. Before applying a lesson to the task, re-check it each time:
    `scripts/jflow learn check <id> --task "<the task>" --outcome

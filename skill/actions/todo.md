@@ -8,7 +8,22 @@ another action.
 
 **Run**:
 
-1. `scripts/jflow todo add <summary…> --detail "<context>"` records the
+1. When you found the item mid-work, first run
+   `scripts/jflow todo route <summary…> --detail "<context>"`. Jev's
+   `classify` (item-routing) answers `todo` or `in-scope` for the
+   assigned ticket. Weigh it and decide:
+   - todo: `scripts/jflow todo add <summary…> --detail "<context>"
+     --routing <envelope>`. Against an `in-scope` answer, add `--reason`
+     and `--evidence`.
+   - in scope: `scripts/jflow decide choose <envelope> --action in-scope
+     --by agent`, and handle it within the current ticket. Against a
+     `todo` answer, add `--reason` and `--evidence`.
+   Below the threshold (`route: ask-human`, exit 1) the developer
+   decides; record their words with `--by developer --reason`. The
+   `--routing` envelope must be the one `todo route` returned for this
+   same item. A review improvement is
+   never routed: the fixed rule makes it a todo.
+   `scripts/jflow todo add <summary…> --detail "<context>"` records the
    item and prints its id (`TODO-n`). The helper notes which ticket was
    assigned when the item was found. It writes only `jflow/todos.json`:
    no ticket, no progress and no authorization change.

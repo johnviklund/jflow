@@ -1,19 +1,24 @@
 {
   "decision": "classify",
   "version": 2,
-  "status": "skeleton",
+  "status": "accepted",
   "ownedBy": "#29",
-  "prompt": "Skeleton (D37): given a piece of workflow content and its content kind (item routing, lesson scope, ticket testability), which class applies? Wording proposed in #29 for explicit acceptance.",
+  "prompt": "You are classifying one piece of jflow workflow content. The packet names its content kind and gives the content with its context. For item-routing: answer in-scope when the item is needed to meet the current ticket's acceptance criteria, and todo when it is separate work, however small or related. For testability: answer testable when the criterion states an observable outcome that a check's output could show met or not met, and untestable when it is vague, subjective, or could only be judged by opinion. For lesson-scope: answer with the listed scope that names the part of the project the lesson applies to, the narrowest one its evidence supports, or unclear when none fits. Answer only with one of the choices listed for this content kind. Your answer is advisory and grants no authorization.",
   "answers": [
     "todo",
     "in-scope",
-    "scope",
     "testable",
-    "untestable"
+    "untestable",
+    "scope",
+    "unclear"
   ],
   "reasons": [
     "clear-match",
     "ambiguous",
     "insufficient-evidence"
-  ]
+  ],
+  "acceptance": {
+    "acceptedAt": "2026-09-26T00:00:00Z",
+    "note": "Accept as written (developer, answering the #29 wording proposal for classify)"
+  }
 }

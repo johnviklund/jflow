@@ -18,6 +18,17 @@ tickets against an unaccepted specification.
    them or merge the ticket away; never present a breakdown the helper
    refused. A refusal naming `realign` means the plan is already accepted
    and the developer is changing it: recommend `realign` and stop.
+   `plan write` asks Jev's `classify` (testability) about every criterion
+   first and records each answer on its ticket. A refusal with
+   `untestable` lists criteria Jev confidently classed untestable. Rewrite
+   each one so a check's output can show it met or not met, then write
+   again. Only if you have evidence that a criterion can be checked as
+   written, set the answer aside: add `"testabilityOverrides":
+   [{"ticketId": "T2", "criterion": 1, "reason": "<why>", "evidence":
+   ["<what it rests on>"]}]` to the draft (`criterion` counts from 0).
+   Never present a breakdown with an untestable criterion. An answer
+   below the threshold blocks nothing; mention it when you present the
+   breakdown.
 3. Present the breakdown and ask for acceptance. Then record exactly what
    the developer said:
    - "looks good", "accepted", "fine" and the like:

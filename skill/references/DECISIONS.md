@@ -9,7 +9,7 @@ workflow package:
 | `assignment` | advisory | before running stage workers you proposed |
 | `lesson-retention` | advisory | by `learn propose`, for every candidate project lesson |
 | `model-selection` | advisory | by `worker recommend`, before a stage worker runs |
-| `classify` | advisory | owned by its own issue |
+| `classify` | advisory | by `plan write` (testability), `todo route` (item-routing) and `learn propose` (lesson-scope) |
 | `escalate` | binding | at every human-facing boundary, through `scripts/jflow escalate` |
 | `validate` | binding | after a ticket's checks run, through `scripts/jflow ticket validate` |
 

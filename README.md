@@ -195,6 +195,19 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   `jflow/conflicts.json` and waits for the developer. A technical
   disagreement is settled by recorded investigation, or waits for the
   developer when the investigation is inconclusive. Jev is never asked.
+- `src/actions/classify.ts` — Jev's advisory `classify` (issue #29, D50):
+  one question over three content kinds, each offered only its own
+  choices, the kind leading the packet so envelopes and replay can tell
+  them apart. `plan write` asks it about every drafted criterion
+  (testability) and records each answer on its ticket; a criterion it
+  confidently classes untestable stops the write until it is rewritten
+  or set aside with a reason and evidence. `todo route` asks it whether
+  an item found mid-work is a todo or in scope (item-routing); `todo add
+  --routing` records the item with that answer and the choice on its
+  envelope. `learn propose` asks it which candidate scope a lesson
+  applies to (lesson-scope) and records the proposal with the lesson. Any
+  other kind, a review finding above all, is refused before Jev and kept
+  as a local trace.
 - `src/actions/todo.ts` and `next.ts` — `todo` records future work in
   `jflow/todos.json`, outside the plan, at any point, and authorizes
   nothing. Promotion records the developer's decision in their words and
@@ -290,8 +303,8 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
     proposed confidence threshold alone re-routes the stored answers
     without asking Jev. The report counts the answers, routes and reason
     codes that would change, and in which direction, by boundary kind and
-    by reason code, each change linked to its envelope. `classify`'s
-    content kinds join the breakdown with #29.
+    by reason code, each change linked to its envelope. `escalate` breaks
+    down by boundary kind and `classify` by content kind.
     Replay writes only traces: no envelope, record, fallback status,
     question or policy file. A decision with no envelopes is reported as
     nothing to replay.
@@ -314,8 +327,8 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions, `classify`'s call sites, and
-question-file proposals are not implemented yet; replay, which gates them,
+The other workflow actions and question-file proposals are not
+implemented yet; replay, which gates them,
 is. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
 

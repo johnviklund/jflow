@@ -73,6 +73,7 @@ export { runNext, type NextReport, type Recommendation } from "./actions/next.js
 export {
   promoteTodo,
   recordTodo,
+  routeItem,
   type PromotionResult,
   type TodoDraft,
   type TodoResult,
@@ -102,6 +103,16 @@ export {
 export { wrapSession, type WrapDraft, type WrapResult } from "./actions/wrap.js";
 
 export {
+  classifyContent,
+  CONTENT_KINDS,
+  contentKindOf,
+  UNCLEAR_SCOPE,
+  type ClassifyInput,
+  type ClassifyResult,
+  type ContentKind,
+} from "./actions/classify.js";
+
+export {
   NO_RECOMMENDATION,
   recommendModel,
   type SelectionDraft,
@@ -111,12 +122,15 @@ export {
 export {
   acceptPlan,
   authorizeExecution,
+  writeClassifiedPlan,
   writePlan,
   type Authorization,
+  type ClassifiedPlanResult,
   type PlanDraft,
   type PlanOutcome,
   type PlanResult,
   type TicketDraft,
+  type UntestableCriterion,
 } from "./actions/plan.js";
 
 export { refuse, unreadable, type Refusal } from "./actions/refusal.js";
@@ -191,6 +205,7 @@ export {
   type ConflictsRecord,
   type ConsequentialArea,
   type CriterionJudgment,
+  type CriterionTestability,
   type CriterionVerdict,
   type DecisionStatus,
   type DiscrepancySource,

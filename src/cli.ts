@@ -12,7 +12,8 @@ import { decideFinding, recordReview, startReview, type FindingInput, type Revie
 import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
 import { decideLesson, proposeLesson, type LessonDraft } from "./actions/learn.js";
 import { activeLessons, checkLesson, supersedeLesson } from "./actions/lesson-use.js";
-import { promoteTodo, recordTodo } from "./actions/todo.js";
+import { promoteTodo, recordTodo, routeItem } from "./actions/todo.js";
+import { classifyContent, type ClassifyInput, type ClassifyResult } from "./actions/classify.js";
 import { wrapSession, type WrapDraft } from "./actions/wrap.js";
 import { assignWorker, finishWorker, type WorkerDraft } from "./actions/workers.js";
 import { recommendModel, type SelectionDraft } from "./actions/model-selection.js";
@@ -46,7 +47,7 @@ import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
   authorizeExecution,
-  writePlan,
+  writeClassifiedPlan,
   type Authorization,
   type PlanDraft,
 } from "./actions/plan.js";
@@ -103,11 +104,13 @@ Usage:
   jflow specification confirm <decision> --basis <what the developer said> [--root <dir>]
   jflow specification reject  <decision> --basis <what the developer said> [--root <dir>]
   jflow specification accept  [--note <the developer's words>] [--root <dir>]
-  jflow plan write <draft.json>                                   [--root <dir>]
+  jflow plan write <draft.json>                   [--root <dir>] [--config <file>]
   jflow plan accept [--note <words>] [--authorize plan|ticket --ticket <id>] [--root <dir>]
   jflow plan authorize --scope plan|ticket [--ticket <id>] --note <words> [--root <dir>]
   jflow changes claim [<path>…] --owner developer|ticket --note <words> [--root <dir>]
-  jflow todo add <summary…> [--detail <context>] [--root <dir>]
+  jflow todo route <summary…> [--detail <context>] [--root <dir>] [--config <file>]
+  jflow todo add <summary…> [--detail <context>] [--routing <envelope>
+                    [--by agent|developer] [--reason <why>] [--evidence <what it rests on>]] [--root <dir>]
   jflow todo list                                [--root <dir>]
   jflow todo promote <id> --note <the developer's words> [--root <dir>]
   jflow learn propose <lesson.json>          [--stage <name>] [--root <dir>] [--config <file>]
@@ -167,11 +170,21 @@ constraints, exclusions and decisions (id, statement, basis); every
 decision is recorded as a proposal until the developer confirms it.
 A plan draft holds title, summary, source and tickets (id, title,
 acceptanceCriteria, dependsOn); a ticket without criteria is refused.
+"plan write" asks classify (testability) for every criterion first and
+records each answer on its ticket. A criterion classed untestable with
+confidence stops the write until it is rewritten, or set aside in
+testabilityOverrides (ticketId, criterion from 0, reason, evidence).
 "plan accept" alone accepts without authorizing; add --authorize when the
 developer's instruction also authorized execution.
 "changes claim" records who owns uncommitted changes jflow found and asked
 about: the developer (left out of the ticket) or the assigned ticket. With
 no paths it covers every unclaimed change. It never stages or discards.
+"todo route" asks Jev's advisory classify (item-routing) whether an item
+found mid-work is a todo or in scope for the assigned ticket, and writes
+no record. "todo add --routing <envelope>" records the item with that
+answer and the choice todo on its envelope; against in-scope it needs
+--reason and --evidence. Keeping the item in scope is "decide choose
+<envelope> --action in-scope".
 "todo add" records future work outside the plan and authorizes nothing;
 "todo promote" records the developer's decision to bring an item into the
 plan, and says whether plan or realign adds its ticket.
@@ -205,6 +218,9 @@ record and never commits, pushes, merges, publishes or cleans up.
 "wrap show" prints the resume record.
 "next" also asks Jev's advisory next-action decision and reports it under
 "jev" with its envelope; a missing key is reported there, never skipped.
+"decide ask classify" takes kind (item-routing, testability or
+lesson-scope), summary, excerpts and, for lesson-scope, scopes; any other
+kind, a review finding included, is refused and recorded as a trace.
 "decide ask" asks a declared Jev decision over an input holding taskSummary,
 candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
@@ -349,6 +365,7 @@ const KNOWN_OPTIONS = [
   "conflicts-with",
   "question",
   "threshold",
+  "routing",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -480,6 +497,11 @@ async function runRequest(request: string, options: ParsedArgs["options"], io: C
   return exitCodeFor(outcome);
 }
 
+/** A classify answer the agent may weigh; one below its threshold, or none, is the developer's to see. */
+function classifiedForAgent(result: ClassifyResult): boolean {
+  return result.ok && result.outcome.kind === "answered" && result.outcome.route !== "ask-human";
+}
+
 /** A decision that could not be asked waits on the developer: a missing key, or a failure awaiting approval. */
 function decisionWaits(decision: DecisionReport): boolean {
   return decision.kind === "needs-configuration" || (decision.kind === "failed" && decision.fallback === "awaiting-approval");
@@ -553,16 +575,21 @@ function parseAuthorization(
   };
 }
 
-function runPlan(args: ParsedArgs, io: CliIo): number {
+async function runPlan(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, target] = args.positional;
   const note = args.options["note"];
 
   switch (subcommand) {
     case "write": {
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
       const read = readDraft<PlanDraft>(target, "plan write", io);
       if (!read.ok) return read.exit;
-      return report(writePlan(root, read.draft, { now: new Date().toISOString() }), io);
+      return report(await writeClassifiedPlan(root, read.draft, decisionDependencies(built.context, io, "plan")), io);
     }
     case "accept": {
       const parsed = parseAuthorization(args.options["authorize"], args.options["ticket"], note);
@@ -613,22 +640,61 @@ function runChanges(args: ParsedArgs, io: CliIo): number {
   return report(result, io);
 }
 
-function runTodo(args: ParsedArgs, io: CliIo): number {
+async function runTodo(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [subcommand, ...rest] = args.positional;
 
   switch (subcommand) {
+    case "route": {
+      const summary = rest.join(" ").trim();
+      if (summary === "") {
+        io.stderr(`todo route needs a summary of the item\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const detail = args.options["detail"];
+      const result = await routeItem(
+        root,
+        detail === undefined ? { summary } : { summary, detail },
+        decisionDependencies(built.context, io, args.options["stage"]),
+      );
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return classifiedForAgent(result) ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
     case "add": {
       const summary = rest.join(" ").trim();
       if (summary === "") {
         io.stderr(`todo add needs a summary of the item\n${USAGE}`);
         return EXIT_NEEDS_HUMAN;
       }
-      const detail = args.options["detail"];
+      const { detail, routing, by, reason, evidence } = args.options;
+      if (by !== undefined && by !== "agent" && by !== "developer") {
+        io.stderr(`todo add --by is agent or developer\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
       return report(
-        recordTodo(root, detail === undefined ? { summary } : { summary, detail }, {
-          now: new Date().toISOString(),
-        }),
+        recordTodo(
+          root,
+          {
+            summary,
+            ...(detail === undefined ? {} : { detail }),
+            ...(routing === undefined
+              ? {}
+              : {
+                  routing: {
+                    envelope: routing,
+                    ...(by === undefined ? {} : { by }),
+                    ...(reason === undefined ? {} : { reason }),
+                    ...(evidence === undefined ? {} : { evidence: [evidence] }),
+                  },
+                }),
+          },
+          { now: new Date().toISOString() },
+        ),
         io,
       );
     }
@@ -669,6 +735,14 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
       if (!built.ok) {
         io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
         return built.exit;
+      }
+      if (target === "classify") {
+        // classify goes through its content kinds; a review finding, or any other kind, is refused and recorded.
+        const input = readDraft<ClassifyInput>(inputPath, "decide ask classify", io);
+        if (!input.ok) return input.exit;
+        const classified = await classifyContent(root, input.draft, decisionDependencies(built.context, io, args.options["stage"]));
+        io.stdout(`${JSON.stringify(classified, null, 2)}\n`);
+        return classifiedForAgent(classified) ? EXIT_OK : EXIT_NEEDS_HUMAN;
       }
       const read = readDraft<DecisionInput>(inputPath, "decide ask", io);
       if (!read.ok) return read.exit;

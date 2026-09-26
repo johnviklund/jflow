@@ -432,7 +432,8 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
       outcome: { lesson: { id: "L-1", status: "candidate" }, advice: { answer: "retain", route: "weigh" }, next: "decide" },
     });
     expect(refused.code).toBe(EXIT_NEEDS_HUMAN);
-    expect(answering.sent).toHaveLength(1);
+    // lesson-retention and classify's lesson-scope for the one lesson; the refused one asks nothing.
+    expect(answering.sent).toHaveLength(2);
     expect(incomplete.code).toBe(EXIT_NEEDS_HUMAN);
     expect(decided.code).toBe(EXIT_OK);
     expect(decided.json()).toMatchObject({
@@ -538,6 +539,29 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(assigned.code).toBe(EXIT_OK);
     expect(assigned.json()).toMatchObject({ ok: true, outcome: { assignment: { effort: "high", selection: envelope } } });
     expect(unkeyed.code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
+  it("has classify refuse a review finding, block an untestable plan, and route an item before it is recorded", async () => {
+    const h = harness({ state: { specificationAccepted: true } });
+    const drafts = harness();
+    drafts.writeFile("finding.json", JSON.stringify({ kind: "review-finding", summary: "off by one", excerpts: [] }));
+    drafts.writeFile(
+      "plan.json",
+      JSON.stringify({ title: "P", summary: "S", tickets: [{ id: "T1", title: "Button", acceptanceCriteria: ["it feels right"], dependsOn: [] }] }),
+    );
+
+    const finding = await run(["decide", "ask", "classify", drafts.path("finding.json")], h.root, {}, jev("todo", "clear-match"));
+    const blocked = await run(["plan", "write", drafts.path("plan.json")], h.root, {}, jev("untestable", "clear-match"));
+    const routed = await run(["todo", "route", "the", "export", "button", "is", "misaligned"], h.root, {}, jev("todo", "clear-match"));
+    const envelope = (routed.json()["outcome"] as { envelope: string }).envelope;
+    const recorded = await run(["todo", "add", "the", "export", "button", "is", "misaligned", "--routing", envelope], h.root);
+
+    expect(finding.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(finding.json()).toMatchObject({ ok: false, reason: expect.stringContaining("review finding") });
+    expect(blocked.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(blocked.json()).toMatchObject({ ok: false, untestable: [{ ticketId: "T1", criterion: 0 }] });
+    expect(routed.code).toBe(EXIT_OK);
+    expect(recorded.json()).toMatchObject({ ok: true, outcome: { item: { routing: { envelope, answer: "todo" } } } });
   });
 
   it("asks escalate at a boundary: proceed exits 0 with no ask, escalate and hard rules exit 1 with one", async () => {

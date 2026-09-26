@@ -4,13 +4,16 @@ import {
   validateRecord,
   writeRecord,
   type AuthorizationScope,
+  type CriterionTestability,
   type PlanRecord,
   type ProgressRecord,
   type TicketRecord,
   type TicketsRecord,
 } from "../project/records.js";
+import { readEnvelope, recordChoice, type DecisionDependencies } from "../jev/decisions.js";
 import { readProjectState } from "../project/state.js";
-import { isRecord } from "../validation.js";
+import { hasText, isRecord } from "../validation.js";
+import { classificationOf, classifyContent, TESTABILITY_CHOICES, type ClassifyResult } from "./classify.js";
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 
 /**
@@ -33,7 +36,30 @@ export interface PlanDraft {
   readonly summary: string;
   readonly source?: string;
   readonly tickets: readonly TicketDraft[];
+  /**
+   * Untestable answers the agent sets aside, each with a reason and the
+   * evidence it rests on (D6); `criterion` counts from 0 (issue #29).
+   */
+  readonly testabilityOverrides?: readonly {
+    readonly ticketId: string;
+    readonly criterion: number;
+    readonly reason: string;
+    readonly evidence?: readonly string[];
+  }[];
 }
+
+/** A criterion `classify` confidently classed untestable, to be rewritten before the breakdown is written. */
+export interface UntestableCriterion {
+  readonly ticketId: string;
+  readonly criterion: number;
+  readonly text: string;
+  readonly envelope: string;
+  readonly reasonCode: string;
+}
+
+export type ClassifiedPlanResult =
+  | PlanResult
+  | { readonly ok: false; readonly reason: string; readonly untestable: readonly UntestableCriterion[] };
 
 export interface PlanOutcome {
   readonly plan: PlanRecord;
@@ -122,11 +148,12 @@ function readTickets(root: string): TicketsRecord {
  * unaccepted plan cannot have been authorized, and any fix counters or
  * discrepancies it holds are the developer's history, not the plan's.
  */
-export function writePlan(
-  root: string,
-  draft: PlanDraft,
-  options: { readonly now: string },
-): PlanResult {
+type PreparedPlan =
+  | { readonly ok: true; readonly plan: PlanRecord; readonly tickets: TicketsRecord; readonly progress: ProgressRecord }
+  | Refusal;
+
+/** Everything `plan write` checks before anything is written or asked. */
+function preparePlan(root: string, draft: PlanDraft, options: { readonly now: string }): PreparedPlan {
   const state = readProjectState(root);
   if (state.kind === "malformed") return unreadableState(state);
   if (!state.state.specificationAccepted) {
@@ -154,13 +181,133 @@ export function writePlan(
   if (!plan.ok) return refuse("the plan is not complete", plan.issues);
   const progress = readProgress(root);
   if (!progress.ok) return progress;
+  return { ok: true, plan: plan.record, tickets: tickets.tickets, progress: progress.progress };
+}
 
-  writeRecord(root, "tickets", tickets.tickets);
-  writeRecord(root, "plan", plan.record);
-  return {
-    ok: true,
-    outcome: { plan: plan.record, tickets: tickets.tickets, progress: progress.progress },
-  };
+export function writePlan(
+  root: string,
+  draft: PlanDraft,
+  options: { readonly now: string },
+): PlanResult {
+  const prepared = preparePlan(root, draft, options);
+  if (!prepared.ok) return prepared;
+  writeRecord(root, "tickets", prepared.tickets);
+  writeRecord(root, "plan", prepared.plan);
+  return { ok: true, outcome: { plan: prepared.plan, tickets: prepared.tickets, progress: prepared.progress } };
+}
+
+/** How one criterion was classed, as the ticket records it. */
+function testabilityOf(criterion: string, result: ClassifyResult): CriterionTestability {
+  const classified = classificationOf(result);
+  return "envelope" in classified
+    ? { criterion, answer: classified.answer, envelope: classified.envelope, route: classified.route }
+    : { criterion, unavailable: classified.unavailable };
+}
+
+/** A criterion `classify` confidently classed untestable: it blocks the breakdown (D50, the developer's choice). */
+const blocks = (entry: CriterionTestability): entry is CriterionTestability & { envelope: string } =>
+  entry.answer === "untestable" && entry.route !== "ask-human" && entry.envelope !== undefined;
+
+/**
+ * `plan write` with each drafted criterion's testability classified first
+ * (issue #29, D50). A criterion `classify` confidently classes untestable
+ * stops the breakdown from being written until it is rewritten, or set
+ * aside with a reason and evidence recorded on its envelope. An answer not
+ * relied on, or none, is recorded and blocks nothing: the developer sees
+ * it when the breakdown is presented for acceptance.
+ */
+export async function writeClassifiedPlan(
+  root: string,
+  draft: PlanDraft,
+  dependencies: DecisionDependencies,
+): Promise<ClassifiedPlanResult> {
+  const now = dependencies.now();
+  const prepared = preparePlan(root, draft, { now });
+  if (!prepared.ok) return prepared;
+
+  const classified: { ticket: TicketRecord; testability: CriterionTestability[] }[] = [];
+  for (const ticket of prepared.tickets.tickets) {
+    const testability: CriterionTestability[] = [];
+    for (const criterion of ticket.acceptanceCriteria) {
+      const result = await classifyContent(
+        root,
+        {
+          kind: "testability",
+          summary: criterion,
+          excerpts: [{ source: `tickets/${ticket.id}`, text: ticket.title }],
+        },
+        { ...dependencies, stage: "plan" },
+      );
+      testability.push(testabilityOf(criterion, result));
+    }
+    classified.push({ ticket, testability });
+  }
+
+  const overrides = Array.isArray(draft.testabilityOverrides) ? draft.testabilityOverrides : [];
+  const overrideFor = (ticketId: string, index: number) =>
+    overrides.find((entry) => entry?.ticketId === ticketId && Number(entry.criterion) === index);
+  const untestable: UntestableCriterion[] = [];
+  for (const { ticket, testability } of classified) {
+    testability.forEach((entry, index) => {
+      if (!blocks(entry) || overrideFor(ticket.id, index) !== undefined) return;
+      const read = readEnvelope(root, entry.envelope);
+      untestable.push({
+        ticketId: ticket.id,
+        criterion: index,
+        text: entry.criterion,
+        envelope: entry.envelope,
+        reasonCode: read.ok ? read.envelope.answer.reasonCode : "unknown",
+      });
+    });
+  }
+  if (untestable.length > 0) {
+    return {
+      ok: false,
+      reason: `rewrite ${untestable.length === 1 ? "this criterion" : "these criteria"} so a check's output can show ${untestable.length === 1 ? "it" : "them"} met or not met, or set the answer aside with a reason and evidence (testabilityOverrides); nothing was written`,
+      untestable,
+    };
+  }
+
+  // Every set-aside is checked before anything is recorded: it must answer a blocking criterion, with a reason and evidence (D6).
+  const setAsides: { ticketId: string; index: number; envelope: string; reason: string; evidence: string[] }[] = [];
+  for (const override of overrides) {
+    const target = classified.find(({ ticket }) => ticket.id === override?.ticketId);
+    const index = Number(override?.criterion);
+    const entry = target?.testability[index];
+    if (target === undefined || entry === undefined || !blocks(entry)) {
+      return refuse(
+        `testabilityOverrides names ${String(override?.ticketId)} criterion ${String(override?.criterion)}, which classify did not class untestable; remove it`,
+      );
+    }
+    const reason = typeof override.reason === "string" ? override.reason.trim() : "";
+    const evidence = (Array.isArray(override.evidence) ? override.evidence : []).filter(hasText);
+    if (reason === "" || evidence.length === 0) {
+      return refuse(`setting aside ${target.ticket.id} criterion ${index}'s untestable answer needs a reason and the evidence it rests on`);
+    }
+    setAsides.push({ ticketId: target.ticket.id, index, envelope: entry.envelope, reason, evidence });
+  }
+  const tickets: TicketRecord[] = classified.map(({ ticket, testability }) => ({
+    ...ticket,
+    testability: testability.map((entry, index) => {
+      const aside = setAsides.find((item) => item.ticketId === ticket.id && item.index === index);
+      return aside === undefined ? entry : { ...entry, setAside: { reason: aside.reason, evidence: aside.evidence } };
+    }),
+  }));
+  const record = validateRecord("tickets", { tickets });
+  if (!record.ok) return refuse("the ticket breakdown cannot be recorded", record.issues);
+  for (const aside of setAsides) {
+    const chose = recordChoice(
+      root,
+      aside.envelope,
+      { action: "testable", by: "agent", reason: aside.reason, evidence: aside.evidence },
+      TESTABILITY_CHOICES,
+      { now },
+    );
+    if (!chose.ok) return chose;
+  }
+  writeRecord(root, "tickets", record.record);
+  writeRecord(root, "plan", prepared.plan);
+  return { ok: true, outcome: { plan: prepared.plan, tickets: record.record, progress: prepared.progress } };
 }
 
 /** Applies an authorization to the progress record, checking a named ticket exists. */

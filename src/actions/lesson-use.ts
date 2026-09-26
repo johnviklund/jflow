@@ -68,6 +68,8 @@ export type SupersessionResult =
 export interface UsableLesson {
   readonly lesson: LessonRecord;
   readonly contradicted: boolean;
+  /** The scope `classify` proposed when the lesson was assessed, to check the task against (issue #29). */
+  readonly proposedScope?: string;
 }
 
 /** Whether a check recorded new evidence against the lesson; applying it again then needs evidence it still holds. */
@@ -83,7 +85,14 @@ export function activeLessons(root: string): { readonly ok: true; readonly lesso
     ok: true,
     lessons: read.lessons.lessons
       .filter((lesson) => lesson.status === "active")
-      .map((lesson) => ({ lesson, contradicted: wasContradicted(lesson) })),
+      .map((lesson) => {
+        const proposed = lesson.retention?.scope;
+        return {
+          lesson,
+          contradicted: wasContradicted(lesson),
+          ...(proposed !== undefined && "answer" in proposed ? { proposedScope: proposed.answer } : {}),
+        };
+      }),
   };
 }
 

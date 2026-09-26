@@ -11,6 +11,7 @@ import {
   type DecisionRoute,
 } from "./decisions.js";
 import { escalationOf } from "./escalation.js";
+import { contentKindOf } from "../actions/classify.js";
 
 /**
  * Minimal replay (issue #27, D36, D46): a proposed question wording or
@@ -36,9 +37,8 @@ import { escalationOf } from "./escalation.js";
  *   accepted, under the proposed threshold or else the one the envelope
  *   was routed by, so a later policy change is not credited to the wording.
  *
- * Kinds: `escalate` breaks down by boundary kind. `classify`'s content
- * kinds arrive with its call sites (#29); until then every other decision
- * is one kind, `all`.
+ * Kinds: `escalate` breaks down by boundary kind and `classify` by content
+ * kind; every other decision is one kind, `all`.
  */
 
 export interface ReplayProposal {
@@ -107,11 +107,13 @@ export type ReplayResult =
   | { readonly ok: false; readonly askHuman: string };
 
 /** Decisions whose choices are built per call rather than read from the question file (issue #28). */
-const CHOICES_PER_CALL: ReadonlySet<string> = new Set(["model-selection"]);
+const CHOICES_PER_CALL: ReadonlySet<string> = new Set(["model-selection", "classify"]);
 
-/** Where an envelope was asked: the boundary kind for `escalate`. */
+/** Where an envelope was asked: the boundary kind for `escalate`, the content kind for `classify`. */
 function kindOf(envelope: DecisionEnvelope): string {
-  return envelope.decision === "escalate" ? escalationOf(envelope).boundary : "all";
+  if (envelope.decision === "escalate") return escalationOf(envelope).boundary;
+  if (envelope.decision === "classify") return contentKindOf(envelope);
+  return "all";
 }
 
 /** Counts from-to pairs in order of first appearance. */

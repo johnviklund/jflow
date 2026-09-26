@@ -128,6 +128,22 @@ export interface TicketRecord {
   readonly parkedReason?: string;
   /** The local commit created once the ticket passed checks and review (D34). */
   readonly commit?: string;
+  /** Each acceptance criterion's `classify` testability, as `plan write` asked it (issue #29). */
+  readonly testability?: readonly CriterionTestability[];
+}
+
+/**
+ * How `classify` classed one drafted criterion (D50): Jev's answer and
+ * envelope, or why there was none, and the agent's evidenced reason where
+ * it set an `untestable` answer aside (D6).
+ */
+export interface CriterionTestability {
+  readonly criterion: string;
+  readonly answer?: string;
+  readonly envelope?: string;
+  readonly route?: string;
+  readonly unavailable?: string;
+  readonly setAside?: { readonly reason: string; readonly evidence: readonly string[] };
 }
 
 export interface TicketsRecord {
@@ -420,6 +436,8 @@ export interface LessonDecision {
 /** How `learn` assessed a lesson (issue #19). */
 export interface LessonRetention {
   readonly advice: LessonAdvice;
+  /** `classify`'s proposed scope (lesson-scope), beside the scope the agent gave (issue #29). */
+  readonly scope?: LessonAdvice;
   /** Accepted decisions or retained lessons the lesson touches, by id. */
   readonly touches?: readonly string[];
   /**
@@ -623,6 +641,8 @@ export interface TodoItem {
   readonly recordedAt: string;
   readonly status: TodoStatus;
   readonly promotion?: { readonly decidedAt: string; readonly note: string };
+  /** The `classify` item-routing answer this item was weighed against (issue #29); the item itself is the choice. */
+  readonly routing?: { readonly envelope: string; readonly answer: string };
 }
 
 export interface TodosRecord {
@@ -990,7 +1010,7 @@ const validateTickets: Validator<TicketsRecord> = (value, issues) => {
     const ticket = requireObject(
       entry,
       path,
-      ["id", "title", "acceptanceCriteria", "dependsOn", "status", "parkedReason", "commit"],
+      ["id", "title", "acceptanceCriteria", "dependsOn", "status", "parkedReason", "commit", "testability"],
       issues,
     );
     if (!ticket) return;
@@ -1024,7 +1044,34 @@ const validateTickets: Validator<TicketsRecord> = (value, issues) => {
           dependsOn: validateStringArray(ticket["dependsOn"], `${path}.dependsOn`, issues),
           status: status ?? "ready",
         },
-        { parkedReason, commit: optionalString(ticket["commit"], `${path}.commit`, issues) },
+        {
+          parkedReason,
+          commit: optionalString(ticket["commit"], `${path}.commit`, issues),
+          testability: optionalList(ticket["testability"], `${path}.testability`, issues, (entry, itemPath) => {
+            const item = requireObject(entry, itemPath, ["criterion", "answer", "envelope", "route", "unavailable", "setAside"], issues);
+            if (!item) return undefined;
+            let setAside: CriterionTestability["setAside"];
+            if (item["setAside"] !== undefined) {
+              const aside = requireObject(item["setAside"], `${itemPath}.setAside`, ["reason", "evidence"], issues);
+              if (aside) {
+                setAside = {
+                  reason: requireNonEmptyString(aside["reason"], `${itemPath}.setAside.reason`, issues),
+                  evidence: validateStringArray(aside["evidence"], `${itemPath}.setAside.evidence`, issues),
+                };
+              }
+            }
+            return withOptional<CriterionTestability>(
+              { criterion: requireNonEmptyString(item["criterion"], `${itemPath}.criterion`, issues) },
+              {
+                answer: optionalString(item["answer"], `${itemPath}.answer`, issues),
+                envelope: optionalString(item["envelope"], `${itemPath}.envelope`, issues),
+                route: optionalString(item["route"], `${itemPath}.route`, issues),
+                unavailable: optionalString(item["unavailable"], `${itemPath}.unavailable`, issues),
+                setAside,
+              },
+            );
+          }),
+        },
       ),
     );
   });
@@ -1591,9 +1638,10 @@ function validateAdvice(value: unknown, path: string, issues: IssueCollector): L
 }
 
 function validateRetention(value: unknown, path: string, issues: IssueCollector): LessonRetention | undefined {
-  const doc = requireObject(value, path, ["advice", "touches", "conflict", "decision"], issues);
+  const doc = requireObject(value, path, ["advice", "scope", "touches", "conflict", "decision"], issues);
   if (!doc) return undefined;
   const advice = validateAdvice(doc["advice"], `${path}.advice`, issues);
+  const scope = doc["scope"] === undefined ? undefined : validateAdvice(doc["scope"], `${path}.scope`, issues);
 
   let conflict: LessonRetention["conflict"];
   if (doc["conflict"] !== undefined) {
@@ -1637,7 +1685,7 @@ function validateRetention(value: unknown, path: string, issues: IssueCollector)
   if (advice === undefined) return undefined;
   return withOptional<LessonRetention>(
     { advice },
-    { touches: optionalStringArray(doc["touches"], `${path}.touches`, issues), conflict, decision },
+    { scope, touches: optionalStringArray(doc["touches"], `${path}.touches`, issues), conflict, decision },
   );
 }
 
@@ -1949,6 +1997,16 @@ function optionalList<T>(
   });
 }
 
+function validateRouting(value: unknown, path: string, issues: IssueCollector): TodoItem["routing"] {
+  if (value === undefined) return undefined;
+  const item = requireObject(value, path, ["envelope", "answer"], issues);
+  if (!item) return undefined;
+  return {
+    envelope: requireNonEmptyString(item["envelope"], `${path}.envelope`, issues),
+    answer: requireNonEmptyString(item["answer"], `${path}.answer`, issues),
+  };
+}
+
 const validateTodos: Validator<TodosRecord> = (value, issues) => {
   const doc = requireObject(value, "", ["items"], issues);
   if (!doc) return undefined;
@@ -1963,7 +2021,7 @@ const validateTodos: Validator<TodosRecord> = (value, issues) => {
     const item = requireObject(
       entry,
       path,
-      ["id", "summary", "detail", "discoveredDuring", "recordedAt", "status", "promotion"],
+      ["id", "summary", "detail", "discoveredDuring", "recordedAt", "status", "promotion", "routing"],
       issues,
     );
     if (!item) return;
@@ -2003,6 +2061,7 @@ const validateTodos: Validator<TodosRecord> = (value, issues) => {
           detail: optionalString(item["detail"], `${path}.detail`, issues),
           discoveredDuring: optionalString(item["discoveredDuring"], `${path}.discoveredDuring`, issues),
           promotion,
+          routing: validateRouting(item["routing"], `${path}.routing`, issues),
         },
       ),
     );

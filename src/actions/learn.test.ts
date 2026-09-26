@@ -62,7 +62,7 @@ type Answer = readonly [choice: string, reason: string, confidence: number];
 
 /** A Jev answering each decision from its own queue, one answer per call. */
 function jev(
-  answers: Partial<Record<"lesson-retention" | "escalate", Answer[]>> = {},
+  answers: Partial<Record<"lesson-retention" | "escalate" | "classify", Answer[]>> = {},
 ): JevTransport & { readonly asked: (decision: string) => TransportRequest[] } {
   const sent: TransportRequest[] = [];
   const decisionOf = (request: TransportRequest) =>
@@ -70,7 +70,12 @@ function jev(
   const transport = async (request: TransportRequest) => {
     sent.push(request);
     const decision = decisionOf(request);
-    const answer = answers[decision as "lesson-retention" | "escalate"]?.shift();
+    // classify's lesson-scope agrees with the agent's own scope, the first choice, unless a test scripts it.
+    const agentsScope = () =>
+      Object.keys((JSON.parse(request.body) as { questions: { classify: { criteria: object } } }).questions.classify.criteria)[0]!;
+    const answer =
+      answers[decision as "lesson-retention" | "escalate" | "classify"]?.shift() ??
+      (decision === "classify" ? ([agentsScope(), "clear-match", above("classify")] as const) : undefined);
     if (answer === undefined) return { status: 500, body: "no scripted answer" };
     const [choice, reason, confidence] = answer;
     return {
@@ -206,6 +211,44 @@ describe("learn: retaining an evidence-backed lesson", () => {
     }
     expect(transport.asked("lesson-retention")).toHaveLength(0);
     expect(lessonsOf(h)).toEqual([]);
+  });
+});
+
+describe("learn: classify proposes the lesson's scope", () => {
+  it("asks classify with content kind lesson-scope over the agent's scope and alternatives, and records the proposal", async () => {
+    const h = project();
+    const transport = jev({ "lesson-retention": [retain()], classify: [["src/parser", "clear-match", above("classify")]] });
+
+    const proposed = await proposeLesson(h.root, { ...LESSON, scope: "src/parser tests", scopeAlternatives: ["src/parser"] }, dependencies(h, transport));
+
+    const [request] = transport.asked("classify");
+    expect(request!.body).toContain("Content: lesson-scope.");
+    expect(Object.keys((JSON.parse(request!.body) as { questions: { classify: { criteria: object } } }).questions.classify.criteria)).toEqual([
+      "src/parser tests",
+      "src/parser",
+      "unclear",
+    ]);
+    expect(proposed).toMatchObject({
+      ok: true,
+      outcome: {
+        lesson: {
+          scope: "src/parser tests",
+          retention: { scope: { answer: "src/parser", reasonCode: "clear-match", route: "weigh", envelope: expect.stringMatching(/^ENV-/) } },
+        },
+        report: { proposedScope: "src/parser" },
+      },
+    });
+  });
+
+  it("retains a lesson classify confidently found no clear scope for only with evidence", async () => {
+    const h = project();
+    await proposeLesson(h.root, LESSON, dependencies(h, jev({ "lesson-retention": [retain()], classify: [["unclear", "ambiguous", above("classify")]] })));
+
+    const bare = decideLesson(h.root, "L-1", { outcome: "retained", by: "agent" }, { now });
+    const evidenced = decideLesson(h.root, "L-1", { outcome: "retained", by: "agent", evidence: ["only src/parser tests read the fixture clock"] }, { now });
+
+    expect(bare).toMatchObject({ ok: false, reason: expect.stringContaining("no clear scope") });
+    expect(evidenced).toMatchObject({ ok: true, outcome: { lesson: { status: "active" } } });
   });
 });
 
