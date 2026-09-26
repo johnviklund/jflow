@@ -44,7 +44,7 @@ records or the workflow package cannot be read; stop and report the problem.
 | `scripts/jflow wrap <draft.json>`, `wrap show` | End a session: write the resume record a fresh session continues from, and report where the records and the project disagree without reconciling it. Never pushes, merges, publishes or cleans up; see `actions/wrap.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
 | `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
-| `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. |
+| `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. Run it before claiming anything about the host. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 | `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
 | `scripts/jflow traces list\|clean` | The local Jev traces under `.jflow/traces/`. `clean` deletes them; run it only when the developer asks. |
@@ -247,8 +247,6 @@ fix. A fix goes through an authorized `implement`.
 - `actions/` — one method file per action: `status.md`, `next.md`,
   `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md`,
   `troubleshoot.md` and `realign.md`.
-- `references/HOST.md` — what has been verified on which host, and what has
-  not. Consult it before claiming anything about the host.
 - `references/DECISIONS.md` — asking Jev's declared decisions, what each
   route allows, recording choices and overrides, and handling conflicts.
 - `scripts/jflow` — the helper.

@@ -374,14 +374,20 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
   `todo.md`, `learn.md`, `wrap.md`, `brainstorm.md`, `plan.md`, `implement.md`, `review.md`,
   `troubleshoot.md` and `realign.md`),
-  `scripts/jflow` (runs the helper), `references/HOST.md` (what is verified
-  on which host).
+  `scripts/jflow` (runs the helper).
 - `src/testing/` — the project-directory test harness: set up a directory in
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-Host capabilities were checked on the ChatGPT desktop app on 2026-09-26; see
-`skill/references/HOST.md`.
+## Tested on
+
+ChatGPT desktop 26.908.70816, Linux, 2026-09-26: all host checks pass
+except reading the app's own secret storage, which the app does not offer.
+The Jev key works as an environment variable when the app is started with
+it set after a full quit. Details are in #24.
+
+Not yet tested on macOS, Windows or Copilot Desktop. Run
+`skill/scripts/jflow check-host` to check your own setup.
 
 ## Release demonstrations
 
@@ -414,14 +420,13 @@ confident or unsure relative to whatever threshold is declared.
 What they show is the helper side only (D51): that the gates, records,
 asks and authorization behave as specified around Jev's answers. The
 instruction side, an agent following the skill on a host, is unverified
-for every demonstration until a run is recorded in
-`skill/references/HOST.md`.
+for every demonstration until a run is recorded under "Tested on".
 
 What they do not show: Jev's answers here are scripted, so nothing here
 measures whether Jev chooses better than the stated workflow rules or
 than ordinary primary-agent judgment. No such comparison has been made,
 and jflow makes no claim of better routing, lower cost, or support for any
-host or model beyond what `skill/references/HOST.md` records as verified
+host or model beyond what "Tested on" records as verified
 (D11, D36).
 
 ## Invariants enforced in code
