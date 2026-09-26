@@ -33,15 +33,40 @@ host, date and result.
 
 | Capability | What verifies it | Last recorded |
 | --- | --- | --- |
-| `project-files` | the helper writes, reads back and removes a probe file in the project | 2026-09-20, developer's Linux shell (not the desktop app): verified |
-| `shell` | the helper runs `git --version` | 2026-09-20, developer's Linux shell: verified |
-| `secret-environment` | `JFLOW_JEV_API_KEY` is set (value never recorded) | 2026-09-20, developer's Linux shell: unverified (not set) |
-| `secret-host-storage` | an integration wired to `resolveJevApiKey`'s `readHostSecret` returns a value | unverified; no integration exists (#16, #24 probe b) |
-| `distinct-agent-context` | a worker run on the host with a context confirmed separate from the conversation | unverified; helper cannot probe (#24 probe a1) |
-| `pinned-worker-model` | a worker pinned to a model on the host, with the model that ran confirmed | unverified; helper cannot probe (#24 probe a2) |
+| `project-files` | the helper writes, reads back and removes a probe file in the project | 2026-09-26, ChatGPT desktop app: verified |
+| `shell` | the helper runs `git --version` | 2026-09-26, ChatGPT desktop app: verified |
+| `secret-environment` | `JFLOW_JEV_API_KEY` is set (value never recorded) | 2026-09-26, ChatGPT desktop app: verified, when the app is started with the variable set after a full quit |
+| `secret-host-storage` | an integration wired to `resolveJevApiKey`'s `readHostSecret` returns a value | 2026-09-26, ChatGPT desktop app: unverified; the app exposes no tool for reading its own secret storage |
+| `distinct-agent-context` | a worker run on the host with a context confirmed separate from the conversation | 2026-09-26, ChatGPT desktop app: verified by the developer (#24 probe a1) |
+| `pinned-worker-model` | a worker pinned to a model on the host, with the model that ran confirmed | 2026-09-26, ChatGPT desktop app: verified by the developer from the app's session log (#24 probe a2) |
 
-**Nothing has been run on the ChatGPT desktop app yet.** #24 is the spike
-that does so; its findings replace the rows above.
+### ChatGPT desktop app, 2026-09-26 (#24)
+
+ChatGPT desktop 26.908.70816 on Linux. The developer opened this checkout as
+the project, added `skill/` as a skill, and ran each probe from a
+conversation on the model Astra.
+
+- **Files and shell.** `scripts/jflow check-host` wrote, read back and
+  removed its probe file and ran `git --version`. The app showed no approval
+  prompt for any probe in this run.
+- **Environment variable.** The first run reported `JFLOW_JEV_API_KEY` not
+  set: the app was already running, and a second launch hands off to the
+  running instance, which does not have the variable. After a full quit and
+  a launch from a shell with the variable set, a command in the project saw
+  it. The app did not filter the variable for having `KEY` in its name.
+- **Host secret storage.** Asked to read a secret from its own secret
+  storage, the app answered that no tool it has gives that access. Nothing
+  calls `readHostSecret`, and on this host nothing could supply it.
+- **Distinct agent context.** The conversation was told a codeword, then
+  started a sub-agent that was told only to say whether it knew a codeword
+  and to create a file. The sub-agent did not know the codeword and created
+  the file in the project, so it shares the workspace but not the
+  conversation. The app showed the sub-agent as its own run in the session.
+- **Pinned worker model.** A sub-agent started on `gpt-5.6-sol` at effort
+  `low`, from a conversation on Astra. The app's own session log
+  (`~/.codex/sessions/<date>/rollout-*.jsonl`, the `turn_context` entry)
+  records `{"model": "gpt-5.6-sol", "effort": "low"}` for the sub-agent.
+  That record is the app's, not the sub-agent's claim about itself.
 
 ## Release demonstrations — instruction side
 

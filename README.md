@@ -380,7 +380,7 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-Nothing has been run on the ChatGPT desktop app; see
+Host capabilities were checked on the ChatGPT desktop app on 2026-09-26; see
 `skill/references/HOST.md`.
 
 ## Release demonstrations
