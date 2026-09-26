@@ -128,7 +128,7 @@ read.
 
 ## Proposing a question or policy change
 
-Jev's questions and thresholds improve through proposals, never by
+Jev's questions and thresholds change only through proposals, never by
 editing `workflow/` (D35, D39, D46). When you notice the workflow asking
 the developer more than it should, or Jev's answers being set aside:
 1. `scripts/jflow proposal observations` lists the harness observations:

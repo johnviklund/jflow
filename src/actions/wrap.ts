@@ -13,7 +13,7 @@ import {
   type TicketRecord,
 } from "../project/records.js";
 import { readProjectState } from "../project/state.js";
-import { commitExists, readWorkingTree, type WorkingTree } from "../project/worktree.js";
+import { commitExists, readWorkingTree, ticketCommitExists, type WorkingTree } from "../project/worktree.js";
 import { hasText } from "../validation.js";
 import { runNext } from "./next.js";
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
@@ -113,7 +113,10 @@ export function findRecordDiscrepancies(
   }
   for (const ticket of tickets) {
     if (ticket.commit === undefined) {
-      if (ticket.status === "done" && observed.commitsExpected) add(`${ticket.id} is recorded done without a commit`, ticket.id);
+      // The tickets record cannot hold its own commit's hash; the commit is found by its ticket trailer.
+      if (ticket.status === "done" && observed.commitsExpected && !(tree.kind === "present" && ticketCommitExists(root, ticket.id))) {
+        add(`${ticket.id} is recorded done without a commit`, ticket.id);
+      }
     } else if (tree.kind === "present" && !commitExists(root, ticket.commit)) {
       add(`${ticket.id} is recorded ${ticket.status} at commit ${ticket.commit}, which the repository does not have`, ticket.id);
     }

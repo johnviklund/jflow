@@ -42,3 +42,19 @@ host, date and result.
 
 **Nothing has been run on the ChatGPT desktop app yet.** #24 is the spike
 that does so; its findings replace the rows above.
+
+## Release demonstrations — instruction side
+
+Each release demonstration (RELEASE-SCOPE.md, issue #23) has a helper side
+and an instruction side (D51). The helper side runs as automated tests in
+`src/demonstrations/` and passes in the developer's shell. The instruction
+side, a primary agent following `SKILL.md` and `actions/` through the
+demonstration on a host, is labelled here once a run is recorded.
+
+| Demonstration | Instruction side on a host |
+| --- | --- |
+| 1–14 | unverified: no host run recorded |
+
+A run is recorded with the host, the date, the model, the transcript's
+location and what was checked. Until then no demonstration's instruction
+side is claimed to work on any host.

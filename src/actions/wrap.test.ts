@@ -12,6 +12,7 @@ import {
   type TicketRecord,
 } from "../project/records.js";
 import { ensureLocalDirectory, TRACE_DIRECTORY } from "../jev/traces.js";
+import { TICKET_TRAILER } from "../project/worktree.js";
 import { createProjectHarness, type ProjectHarness } from "../testing/harness.js";
 import { wrapSession } from "./wrap.js";
 
@@ -291,6 +292,20 @@ describe("wrap reports discrepancies and reconciles none of them", () => {
         ],
       },
     });
+  });
+
+  it("finds a done ticket's commit by its ticket trailer, which the tickets record cannot hold", () => {
+    const { h } = project();
+    const tickets = readRecord(h.root, "tickets");
+    if (tickets.kind !== "present") throw new Error("no tickets");
+    writeRecord(h.root, "tickets", {
+      tickets: tickets.record.tickets.map((entry) => (entry.id === "T4" ? { ...entry, status: "done" as const } : entry)),
+    });
+    git(h, "commit", "--quiet", "--allow-empty", "-m", `T4: done\n\n${TICKET_TRAILER}: T4`);
+
+    const result = wrapSession(h.root, DRAFT, h.context, { now });
+
+    expect(result.ok && result.outcome.discrepancies.map((entry) => entry.summary)).not.toContain("T4 is recorded done without a commit");
   });
 
   it("carries a Jev fallback waiting for approval into the resume record", () => {

@@ -8,7 +8,7 @@ current ticket breakdown, and `CONTEXT.md` for project vocabulary.
 
 ## Status
 
-Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose #1 and #2):
+Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (TICKETS.md T1–T5 decompose #1 and #2). #23's instruction side and #24, the host spike, need runs on the host that have not been made. The foundation:
 
 - `workflow/jflow.workflow.json` — the single shipped workflow package
   (schema version 2): the action set, per-action roles, delegation limits,
@@ -19,9 +19,9 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   with a closed answer set and a closed reason-code set. The package checks
   that they resolve and are well-formed. Wording moves from `skeleton` to
   `proposed` to `accepted`, and accepted wording records when and in what
-  words the developer accepted it. The developer accepted the wording #17
-  proposed for `next-action`, `assignment` and `lesson-retention`. The rest
-  are skeletons owned by #25, #26, #28 and #29.
+  words the developer accepted it. The developer accepted the wording each
+  decision's issue proposed (#17, #25, #26, #28, #29); all seven are
+  accepted, and change only through a question-file proposal (#30).
 - `src/workflow/` — workflow package types, loading, and validation;
   `policy.ts` routes an answer above or below a declared threshold without
   any code or test treating the number itself as correct.
@@ -179,7 +179,7 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   released. A ticket-scope authorization ends with the ticket; whole-plan
   authorization continues.
 - `src/project/worktree.ts` — the helper's only access to Git (issues #7,
-  #10). Everything goes through `readOnlyGit` (`status`, `rev-parse`)
+  #10). Everything goes through `readOnlyGit` (`status`, `rev-parse`, `log`)
   except `commitPaths`, the ticket's commit. It runs `add
   --intent-to-add` and `commit --only` on the paths it is given, so no path
   initializes a repository, discards a change, absorbs pre-existing work,
@@ -382,6 +382,47 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
 
 Nothing has been run on the ChatGPT desktop app; see
 `skill/references/HOST.md`.
+
+## Release demonstrations
+
+The fourteen release demonstrations (RELEASE-SCOPE.md, issue #23) run as
+automated tests at the workflow-action-contract seam, one file each in
+`src/demonstrations/`. Each drives the helper's command line as the skill
+does, against a project directory with a real Git repository and a
+scripted Jev (`src/testing/demo.ts`). It asserts the records, the working
+tree and commits, the asks returned, and the authorization, never agent
+wording. No test asserts a threshold's value: a scripted answer is
+confident or unsure relative to whatever threshold is declared.
+
+| # | Demonstration | Test |
+| --- | --- | --- |
+| 1 | idea to accepted specification and plan, authorized multi-ticket implementation, per-ticket and integrated review | `01-idea-to-integrated-review` |
+| 2 | failed check, diagnosis and fix; blocking finding and re-review; the fix limit asks | `02-fix-loop` |
+| 3 | a blocked ticket parked; independent work proceeds; blocker and authorization kept | `03-park-and-independent-work` |
+| 4 | a fresh conversation reconciles interrupted work and continues from files | `04-fresh-conversation-resume` |
+| 5 | configured worker models and a separate reviewer; explicit fallback only | `05-worker-models-and-reviewer` |
+| 6 | Jev outage needs approval; conflicting and uncertain answers are inspectable | `06-jev-outage-and-uncertainty` |
+| 7 | a lesson retained and re-checked without changing workflow logic; a discovery stays a todo | `07-lessons-and-todos` |
+| 8 | invalid configuration, excluded evidence and missing review fail loudly; traces stay out of Git | `08-nothing-passes-silently` |
+| 9 | proceed asks nothing, escalate asks, a hard rule asks without Jev | `09-escalation` |
+| 10 | a ticket without criteria refused; validate's two outcomes; one fix counter across gates | `10-criteria-validate-counter` |
+| 11 | a mid-implementation realign re-scopes, re-checks and re-enters acceptance | `11-realign` |
+| 12 | an observation pattern yields a replayed proposal that changes nothing until accepted | `12-question-file-proposal` |
+| 13 | a binding answer acts; only a recorded reason gets past it; an undeclared authority fails | `13-binding-authority` |
+| 14 | a model outside the configured set is rejected; classify never gets a review finding | `14-model-selection-and-classify` |
+
+What they show is the helper side only (D51): that the gates, records,
+asks and authorization behave as specified around Jev's answers. The
+instruction side, an agent following the skill on a host, is unverified
+for every demonstration until a run is recorded in
+`skill/references/HOST.md`.
+
+What they do not show: Jev's answers here are scripted, so nothing here
+measures whether Jev chooses better than the stated workflow rules or
+than ordinary primary-agent judgment. No such comparison has been made,
+and jflow makes no claim of better routing, lower cost, or support for any
+host or model beyond what `skill/references/HOST.md` records as verified
+(D11, D36).
 
 ## Invariants enforced in code
 

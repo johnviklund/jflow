@@ -6,7 +6,7 @@ import {
   type TicketRecord,
   type TicketsRecord,
 } from "../project/records.js";
-import { commitPaths, readChangedRecords, readWorkingTree } from "../project/worktree.js";
+import { commitPaths, readChangedRecords, readWorkingTree, TICKET_TRAILER } from "../project/worktree.js";
 import { readWorkingTicket } from "./implement.js";
 import { refuse, unreadable, type Refusal } from "./refusal.js";
 import type { ResolutionContext } from "./resolve.js";
@@ -28,7 +28,6 @@ import type { ResolutionContext } from "./resolve.js";
  */
 
 const COMMIT_SETTING = "commitOnSuccess";
-const TICKET_TRAILER = "Jflow-Ticket";
 
 export interface CompletedTicket {
   readonly ticket: TicketRecord;

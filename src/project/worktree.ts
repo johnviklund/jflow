@@ -15,7 +15,7 @@ import { PROJECT_RECORD_DIRECTORY, type TreeEntry } from "./records.js";
  * not given, or push, publish or merge.
  */
 
-const READ_ONLY_SUBCOMMANDS = ["status", "rev-parse"] as const;
+const READ_ONLY_SUBCOMMANDS = ["status", "rev-parse", "log"] as const;
 
 /** The only writes: making a ticket's local commit. Never push, merge or anything that discards. */
 const COMMIT_SUBCOMMANDS = ["add", "commit"] as const;
@@ -161,6 +161,25 @@ export function readWorkingTree(root: string): WorkingTree {
     kind: "present",
     changedPaths: changedPaths(root, topLevel, output).filter((path) => !path.startsWith(records)),
   };
+}
+
+/** The trailer naming the ticket a jflow commit completed (issue #10). */
+export const TICKET_TRAILER = "Jflow-Ticket";
+
+/**
+ * Whether a commit carries `ticketId` in its ticket trailer, read-only. The
+ * tickets record cannot hold the commit's own hash, since the commit
+ * includes the records, so this is how a done ticket's commit is found.
+ * Ticket ids are unique within a plan; one reused across plans would match
+ * the earlier plan's commit.
+ */
+export function ticketCommitExists(root: string, ticketId: string): boolean {
+  try {
+    const trailers = readOnlyGit(root, ["log", `--format=%(trailers:key=${TICKET_TRAILER},valueonly)`]);
+    return trailers.split("\n").some((line) => line.trim() === ticketId);
+  } catch {
+    return false;
+  }
 }
 
 /** Whether the repository has `commit`, read-only (`rev-parse --verify`). */
