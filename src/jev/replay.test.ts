@@ -237,6 +237,79 @@ describe("replaying a proposed threshold", () => {
   });
 });
 
+describe("replaying a threshold for one kind (issue #30)", () => {
+  it("re-routes only the envelopes asked at that kind, and says which kind it replayed", async () => {
+    const h = await recorded();
+
+    const result = await replayDecision(h.root, "escalate", { threshold: 1, kind: "fix-failed" }, dependencies(h, jev([]), false));
+
+    expect(result).toMatchObject({
+      ok: true,
+      report: {
+        kind: "fix-failed",
+        envelopes: 2,
+        replayed: 2,
+        changed: 2,
+        routeChanges: [{ from: "act", to: "ask-human", count: 2 }],
+        byKind: { "fix-failed": { replayed: 2, changed: 2 } },
+      },
+    });
+    expect(result.ok && Object.keys(result.report.byKind)).toEqual(["fix-failed"]);
+  });
+
+  it("refuses a kind the decision is not split by, and a kind without a threshold", async () => {
+    const h = await recorded();
+
+    expect(await replayDecision(h.root, "escalate", { threshold: 0.5, kind: "testability" }, dependencies(h, jev([])))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("testability"),
+    });
+    expect(await replayDecision(h.root, "validate", { threshold: 0.5, kind: "all" }, dependencies(h, jev([])))).toMatchObject({ ok: false });
+    expect(await replayDecision(h.root, "escalate", { kind: "fix-failed", authority: "advisory" }, dependencies(h, jev([])))).toMatchObject({
+      ok: false,
+    });
+  });
+});
+
+describe("replaying a whole-decision threshold once a kind has its own (issue #30)", () => {
+  it("leaves the envelopes of that kind on their own threshold, as routing will after acceptance", async () => {
+    const h = await recorded();
+    const escalate = pkg.policy["escalate"]!;
+    const split = {
+      ...dependencies(h, jev([]), false),
+      context: {
+        ...h.context,
+        workflowPackage: { ...pkg, policy: { ...pkg.policy, escalate: { ...escalate, thresholds: { ...escalate.thresholds, "confidence:fix-failed": 0 } } } },
+      },
+    };
+
+    const result = await replayDecision(h.root, "escalate", { threshold: 1 }, split);
+
+    expect(result).toMatchObject({ ok: true, report: { replayed: 3, changed: 1, byKind: { "fix-failed": { changed: 0 }, "next-ticket": { changed: 1 } } } });
+  });
+});
+
+describe("replaying a proposed authority (issue #30)", () => {
+  it("re-routes the stored confident answers under the proposed authority, without asking Jev", async () => {
+    const h = await recorded();
+    const transport = jev([]);
+
+    const result = await replayDecision(h.root, "escalate", { authority: "advisory" }, dependencies(h, transport, false));
+
+    expect(transport.sent).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      report: { authority: "advisory", replayed: 3, changed: 3, directions: [], routeChanges: [{ from: "act", to: "weigh", count: 3 }] },
+    });
+  });
+
+  it("refuses an authority that is not binding or advisory", async () => {
+    const h = await recorded();
+
+    expect(await replayDecision(h.root, "escalate", { authority: "sovereign" as never }, dependencies(h, jev([])))).toMatchObject({ ok: false });
+  });
+});
+
 describe("what replay reads and writes", () => {
   it("says so when the decision has no stored envelopes, rather than reporting an empty success", async () => {
     const h = await recorded();

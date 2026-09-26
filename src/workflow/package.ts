@@ -784,18 +784,42 @@ export function validateWorkflowPackage(
   };
 }
 
-const SHIPPED_PACKAGE_DIRECTORY = fileURLToPath(new URL("../../workflow/", import.meta.url));
-const SHIPPED_PACKAGE_PATH = join(SHIPPED_PACKAGE_DIRECTORY, "jflow.workflow.json");
+/** Where the shipped package lives: the one a question-file proposal changes by default (issue #30). */
+export const SHIPPED_PACKAGE_DIRECTORY = fileURLToPath(new URL("../../workflow/", import.meta.url));
 
-/** Reads a question file relative to the shipped package; absent files resolve to undefined. */
-export function readShippedQuestionFile(relativePath: string): string | undefined {
+/** The package document's file name inside a package directory. */
+export const PACKAGE_FILE = "jflow.workflow.json";
+
+/** Reads a question file relative to a package directory; absent files resolve to undefined. */
+export function readQuestionFileIn(directory: string, relativePath: string): string | undefined {
   try {
-    return readFileSync(join(SHIPPED_PACKAGE_DIRECTORY, relativePath), "utf8");
+    return readFileSync(join(directory, relativePath), "utf8");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
     throw error;
   }
+}
+
+/** Reads a question file relative to the shipped package; absent files resolve to undefined. */
+export function readShippedQuestionFile(relativePath: string): string | undefined {
+  return readQuestionFileIn(SHIPPED_PACKAGE_DIRECTORY, relativePath);
+}
+
+/**
+ * Loads and validates the workflow package in `directory`, uncached.
+ *
+ * @throws {WorkflowPackageError} when the package fails validation.
+ */
+export function loadWorkflowPackage(directory: string): WorkflowPackage {
+  const raw = readFileSync(join(directory, PACKAGE_FILE), "utf8");
+  const result = validateWorkflowPackage(JSON.parse(raw), {
+    readQuestionFile: (relativePath) => readQuestionFileIn(directory, relativePath),
+  });
+  if (!result.ok) {
+    throw new WorkflowPackageError(result.issues);
+  }
+  return result.package;
 }
 
 let cached: WorkflowPackage | undefined;
@@ -806,15 +830,6 @@ let cached: WorkflowPackage | undefined;
  * @throws {WorkflowPackageError} when the shipped package fails validation.
  */
 export function loadShippedWorkflowPackage(): WorkflowPackage {
-  if (cached) return cached;
-
-  const raw = readFileSync(SHIPPED_PACKAGE_PATH, "utf8");
-  const result = validateWorkflowPackage(JSON.parse(raw), {
-    readQuestionFile: readShippedQuestionFile,
-  });
-  if (!result.ok) {
-    throw new WorkflowPackageError(result.issues);
-  }
-  cached = result.package;
+  cached ??= loadWorkflowPackage(SHIPPED_PACKAGE_DIRECTORY);
   return cached;
 }

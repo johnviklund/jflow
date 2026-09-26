@@ -21,6 +21,7 @@ import {
 } from "./client.js";
 import { recordFailure, recordRecovery } from "./fallback.js";
 import { buildEvidencePacket, sharingLimitsFrom, type EvidenceExcerpt, type EvidencePacket } from "./evidence.js";
+import { kindOfPacket } from "./kinds.js";
 import { ensureLocalDirectory } from "./traces.js";
 
 /**
@@ -152,11 +153,16 @@ export interface UnlistedAnswer {
   readonly traceReference: string;
 }
 
-/** Routes an answer by its question's acceptance, its confidence and the decision's authority. */
+/**
+ * Routes an answer by its question's acceptance, its confidence and the
+ * decision's authority. `kind` is where it was asked, for a threshold
+ * declared for that kind alone (issue #30).
+ */
 export function routeAnswer(
   workflowPackage: WorkflowPackage,
   question: DecisionQuestion,
   answer: { readonly confidence?: number },
+  kind?: string,
 ): { readonly route: DecisionRoute; readonly reason: string } {
   if (question.status !== "accepted") {
     return {
@@ -164,7 +170,7 @@ export function routeAnswer(
       reason: `the ${question.decision} question's wording is ${question.status}, not accepted, so its answer is recorded but not relied on`,
     };
   }
-  if (answer.confidence === undefined || routeByConfidence(workflowPackage, question.decision, answer.confidence) === "ask-human") {
+  if (answer.confidence === undefined || routeByConfidence(workflowPackage, question.decision, answer.confidence, kind) === "ask-human") {
     return {
       route: "ask-human",
       reason: `the answer's confidence is below the ${question.decision} threshold, so the developer decides`,
@@ -312,7 +318,7 @@ async function ask(
   if (!recovered.ok) return { kind: "refused", reason: recovered.reason };
 
   const { summary } = result;
-  const routed = routeAnswer(workflowPackage, question, summary);
+  const routed = routeAnswer(workflowPackage, question, summary, kindOfPacket(decision, packet.taskSummary));
   const envelope: DecisionEnvelope = {
     id: `ENV-${summary.answeredAt.replace(/[^0-9]/g, "")}-${decision}-${randomBytes(3).toString("hex")}`,
     decision,

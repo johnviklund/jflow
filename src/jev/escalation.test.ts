@@ -256,3 +256,26 @@ describe("the escalation record", () => {
     expect(escalationOf(overridden.envelope)).toEqual({ boundary: "fix-failed", ask: false });
   });
 });
+
+describe("a threshold declared for one boundary kind (issue #30)", () => {
+  it("routes answers at that boundary by it, and every other boundary by the decision's threshold", async () => {
+    const h = harness();
+    const lower = threshold / 2;
+    const between = (lower + threshold) / 2;
+    const escalate = pkg.policy["escalate"]!;
+    const split = {
+      ...h.context,
+      workflowPackage: {
+        ...pkg,
+        policy: { ...pkg.policy, escalate: { ...escalate, thresholds: { ...escalate.thresholds, "confidence:fix-failed": lower } } },
+      },
+    };
+    const deps = dependencies(h, jevAnswering("proceed", "routine", between), { context: split });
+
+    const atFixFailed = answered(await askEscalation(h.root, fixFailed, deps));
+    const atNextTicket = answered(await askEscalation(h.root, { kind: "next-ticket", summary: "T4 is next", excerpts: [] }, deps));
+
+    expect(atFixFailed).toMatchObject({ ask: false, decision: { route: "act" } });
+    expect(atNextTicket).toMatchObject({ ask: true, decision: { route: "ask-human" } });
+  });
+});

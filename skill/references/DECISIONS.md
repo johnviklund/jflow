@@ -104,10 +104,13 @@ show them what it would change. Write the proposed question file outside
 the project, in the same form as `workflow/questions/<decision>.json` with
 `status` `proposed`. Then run
 `scripts/jflow replay <decision> --question <file>`, or
-`--threshold <n>`, or both. A question is re-asked over every stored
-envelope of that decision. For `model-selection`, whose choices are the
-stage's options, each envelope keeps the options it was asked with. A threshold alone re-routes the stored answers
-without asking Jev. The report gives:
+`--threshold <n>`, or both, or `--authority binding|advisory`. A question
+is re-asked over every stored envelope of that decision. For
+`model-selection`, whose choices are the stage's options, each envelope
+keeps the options it was asked with. A threshold or authority alone
+re-routes the stored answers without asking Jev. `--kind` scopes a
+threshold to one boundary kind of `escalate` or content kind of
+`classify` and replays only the envelopes asked there. The report gives:
 - `changed` and `unchanged`;
 - `directions` (answer from → to), `routeChanges` and `reasonChanges`;
 - the same per boundary kind (`byKind`) and per reason code
@@ -122,6 +125,48 @@ against: no stored envelopes, or Jev could not be asked about any. Say
 so, and do not present that as a pass. `failed` lists the envelopes Jev
 could not be asked about, and `unreadable` the ones that could not be
 read.
+
+## Proposing a question or policy change
+
+Jev's questions and thresholds improve through proposals, never by
+editing `workflow/` (D35, D39, D46). When you notice the workflow asking
+the developer more than it should, or Jev's answers being set aside:
+1. `scripts/jflow proposal observations` lists the harness observations:
+   low-confidence answers, overrides, `escalate` answers of `escalate`,
+   calls Jev did not answer and tickets at the fix limit. They are read
+   from the stored envelopes, traces and progress record, unfiltered;
+   nothing stores or applies them.
+2. `scripts/jflow proposal patterns` groups the ones that recur by kind,
+   decision, place (boundary or content kind) and reason code, and says
+   which changes each points at.
+3. Draft one change for one decision in a file outside the project:
+   `decision`, `change`, `observations` (the pattern's ids, at least
+   one), optional `lessons` (retained lesson ids) and `rationale`. The
+   change is one of:
+   - `{ "kind": "question", "question": {…} }`: a new wording, in the
+     form of the question file. The answers must stay as they are.
+   - `{ "kind": "threshold", "threshold": n }` for the whole decision, or
+     with `"for": "<kind>"` for one boundary kind of `escalate` or content
+     kind of `classify`. That is how a decision is split by kind.
+   - `{ "kind": "authority", "authority": "binding" | "advisory" }`.
+   Choose the number or wording yourself from the observations. A
+   lesson alone never grounds a proposal.
+4. `scripts/jflow proposal draft <file>` replays the change against the
+   stored envelopes and records the proposal as `pending`. Nothing else
+   changes. Without a Jev key a wording is recorded without a report
+   (exit 1); `scripts/jflow proposal replay <id>` runs it once the key is
+   set.
+5. Show the developer the proposal: the change, the linked observations
+   and lessons, and the replay numbers as they are (see "Replaying a
+   proposal"). Then record what they say:
+   `scripts/jflow proposal accept <id> --note "<their words>"` or
+   `scripts/jflow proposal reject <id> --note "<their words>"`.
+
+Accepting writes the question or policy file and bumps the decision's
+version. It is refused without the developer's words, without a replay
+report that replayed something, or once the decision has changed since
+the proposal was replayed; draft it again then. Never accept on your own
+judgment, and never edit a question or policy file by hand.
 
 ## Escalating at a boundary
 

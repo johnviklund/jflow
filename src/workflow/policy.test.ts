@@ -55,4 +55,28 @@ describe("routeByConfidence", () => {
 
     expect(() => confidenceThreshold(withoutThreshold, "escalate")).toThrow(/confidence/);
   });
+
+  describe("a threshold for one kind (issue #30)", () => {
+    const threshold = confidenceThreshold(pkg, "escalate");
+    const lower = threshold / 2;
+    const split = {
+      ...pkg,
+      policy: {
+        ...pkg.policy,
+        escalate: { ...pkg.policy["escalate"]!, thresholds: { ...pkg.policy["escalate"]!.thresholds, "confidence:fix-failed": lower } },
+      },
+    };
+    const between = (lower + threshold) / 2;
+
+    it("routes that kind by its own threshold", () => {
+      expect(confidenceThreshold(split, "escalate", "fix-failed")).toBe(lower);
+      expect(routeByConfidence(split, "escalate", between, "fix-failed")).toBe("honour");
+    });
+
+    it("leaves every other kind on the decision's threshold", () => {
+      expect(confidenceThreshold(split, "escalate", "next-ticket")).toBe(threshold);
+      expect(routeByConfidence(split, "escalate", between, "next-ticket")).toBe("ask-human");
+      expect(routeByConfidence(split, "escalate", between)).toBe("ask-human");
+    });
+  });
 });

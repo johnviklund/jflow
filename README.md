@@ -307,14 +307,36 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
     down by boundary kind and `classify` by content kind.
     Replay writes only traces: no envelope, record, fallback status,
     question or policy file. A decision with no envelopes is reported as
-    nothing to replay.
+    nothing to replay. A proposed authority re-routes the stored answers
+    too, and a threshold for one kind replays only that kind's envelopes.
+  - `observations.ts` is the harness-observation view (issue #30, D35):
+    low-confidence answers, overrides, escalations, calls Jev did not
+    answer and tickets at the fix limit, read from the envelopes, traces
+    and progress record on every call. There is no store, and nothing is
+    filtered. `findPatterns` groups recurring ones by kind, decision,
+    place and reason code.
+  - `proposals.ts` is question-file proposals (issue #30, D39, D46). A
+    proposal names one decision and one change (a wording, a threshold
+    for the decision or for one kind, or an authority), links at least
+    one observation and any retained lessons, and carries its replay
+    report. It is kept under `.jflow/proposals/`. Only `acceptProposal`
+    writes the package: with the developer's words, a report that
+    replayed something, and the decision still at the version it was
+    replayed against. It bumps the decision's version in the question
+    file and declaration together. It edits the package text in place
+    (`workflow/json-edit.ts`), so the threshold itself is a one-line
+    change beside the version and basis lines it touches. A rejection is
+    recorded and changes nothing.
+  - `kinds.ts` reads where a decision was asked from its packet. A
+    threshold declared as `confidence:<kind>` in a decision's policy
+    routes that kind; every other kind keeps `confidence`.
   - `traces.ts` keeps traces under `.jflow/traces/` (the directory carries
     its own `.gitignore`) until `jflow traces clean`.
 - `src/host/` — host capability checks, verified by execution and labelled
   `verified`/`unverified`, never assumed from documentation.
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
-  `todo`, `learn`, `wrap`, `decide`, `escalate`, `replay`, `implement`, `review`, `troubleshoot`,
+  `todo`, `learn`, `wrap`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
   `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
@@ -327,9 +349,7 @@ Foundation slice (issues #1–#7, #14, #16 and #17; TICKETS.md T1–T5 decompose
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
 
-The other workflow actions and question-file proposals are not
-implemented yet; replay, which gates them,
-is. Nothing has been run
+The other workflow actions are not implemented yet. Nothing has been run
 on the ChatGPT desktop app; see `skill/references/HOST.md`.
 
 ## Invariants enforced in code
@@ -360,7 +380,9 @@ on the ChatGPT desktop app; see `skill/references/HOST.md`.
   control; project records carry trace references only.
 - A project lesson never changes the workflow: nothing in the package, its
   gates or Jev's questions reads the lessons record, and a lesson scoped to
-  the workflow is refused. An assessed lesson is active only on a recorded
+  the workflow is refused. A retained lesson may be linked to a
+  question-file proposal as a contributor, but a proposal needs an
+  observation of its decision and the developer's acceptance. An assessed lesson is active only on a recorded
   decision to retain it, and `learn` never changes an accepted decision.
 - `wrap` writes only the resume record. It reports discrepancies between
   the records and the project without reconciling them, and never

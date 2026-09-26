@@ -40,6 +40,17 @@ import {
 } from "./jev/decisions.js";
 import { askEscalation, type Boundary } from "./jev/escalation.js";
 import { replayDecision, type ReplayProposal } from "./jev/replay.js";
+import { findPatterns, readObservations } from "./jev/observations.js";
+import {
+  acceptProposal,
+  draftProposal,
+  listProposals,
+  readProposal,
+  rejectProposal,
+  replayProposal,
+  type ProposalDependencies,
+  type ProposalDraft,
+} from "./jev/proposals.js";
 import { assessWithoutJev, type AssessmentInput } from "./jev/assessment.js";
 import { approveFallback } from "./jev/fallback.js";
 import { overrideCriterion, validateTicket, type ValidationInput, type TicketValidationResult } from "./jev/ticket-validation.js";
@@ -62,7 +73,7 @@ import { resolveConfiguration, resolveJevApiKey } from "./config/configuration.j
 import { readRecord, type CriterionVerdict } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
-import { WorkflowPackageError, type WorkflowPackage } from "./workflow/types.js";
+import { WorkflowPackageError, type DecisionAuthority, type WorkflowPackage } from "./workflow/types.js";
 
 /**
  * The jflow helper's command line (D51, issue #4). The skill's instruction
@@ -90,6 +101,8 @@ export interface CliIo {
     /** Waits between retries; a real timer unless a test injects one. */
     readonly sleep?: (ms: number) => Promise<void>;
   };
+  /** The package directory an accepted proposal writes; the shipped package unless a test injects a copy. */
+  readonly packageDirectory?: string;
 }
 
 export const USAGE = `jflow helper
@@ -129,8 +142,16 @@ Usage:
   jflow decide show <envelope>               [--root <dir>]
   jflow decide choose <envelope> --action <a> --by workflow|agent|developer
                     [--reason <why>] [--evidence <what it rests on>] [--root <dir>]
-  jflow replay <decision> [--question <question.json>] [--threshold <0-1>]
-                    [--root <dir>] [--config <file>]
+  jflow replay <decision> [--question <question.json>] [--threshold <0-1> [--kind <kind>]]
+                    [--authority binding|advisory] [--root <dir>] [--config <file>]
+  jflow proposal observations                [--root <dir>] [--config <file>]
+  jflow proposal patterns                    [--root <dir>] [--config <file>]
+  jflow proposal draft <proposal.json>       [--root <dir>] [--config <file>]
+  jflow proposal replay <id>                 [--root <dir>] [--config <file>]
+  jflow proposal accept <id> --note <the developer's words> [--root <dir>]
+  jflow proposal reject <id> --note <the developer's words> [--root <dir>]
+  jflow proposal list                        [--root <dir>]
+  jflow proposal show <id>                   [--root <dir>]
   jflow escalate <boundary.json>             [--stage <name>] [--root <dir>] [--config <file>]
   jflow implement start [<ticket>]           [--root <dir>] [--config <file>]
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
@@ -226,15 +247,32 @@ candidates and excerpts (source, text); the answer's route says whether the
 workflow acts on it, you weigh it, or the developer decides. "decide
 choose" records the chosen action: it must be permitted by the workflow,
 and setting Jev's answer aside needs --reason and --evidence.
-"replay" tests a proposed question file and/or confidence threshold for
-one declared decision against its stored envelopes. A question is re-asked
-over each stored packet; a threshold alone re-routes the stored answers
-without asking Jev. It reports how many answers, routes and reason codes
+"replay" tests a proposed question file, confidence threshold and/or
+authority for one declared decision against its stored envelopes. A
+question is re-asked over each stored packet; a threshold or authority
+alone re-routes the stored answers without asking Jev. --kind scopes a
+threshold to one boundary kind of escalate or content kind of classify,
+and replays only the envelopes asked there. It reports how many answers, routes and reason codes
 would change and in which direction, by boundary kind and by reason code,
 each change linked to its envelope.
 It writes only traces: no envelope, record, question or policy file, and
 it decides nothing. A decision with no stored envelopes is reported as
 nothing to replay (exit 1).
+"proposal observations" lists the harness observations: low-confidence
+answers, overrides, escalations, calls Jev did not answer and tickets at
+the fix limit, read from the stored envelopes, traces and progress record,
+unfiltered and never stored. "proposal patterns" groups the ones that
+recur by kind, decision, place and reason code, with the changes each
+points at. "proposal draft" takes decision, change (kind question with
+question, kind threshold with threshold and optional for, or kind
+authority with authority), observations (ids, at least one), lessons
+(retained lesson ids, optional) and rationale. It replays the change and
+records the proposal; nothing else changes. Without a Jev key a wording is
+recorded without a report and exits 1: "proposal replay" it later.
+"proposal accept" applies the change in the developer's words and bumps
+the decision's version; it refuses without a report that replayed
+something, or once the decision changed since. "proposal reject" records
+the developer's no and changes nothing.
 "implement start" starts one ticket under recorded execution
 authorization: the authorized ticket, or under whole-plan authorization
 the one named. It refuses while another ticket is in progress and reports
@@ -366,6 +404,8 @@ const KNOWN_OPTIONS = [
   "question",
   "threshold",
   "routing",
+  "kind",
+  "authority",
 ];
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -1176,13 +1216,13 @@ function runWrap(args: ParsedArgs, io: CliIo): number {
 async function runReplay(args: ParsedArgs, io: CliIo): Promise<number> {
   const root = resolvePath(io.cwd, args.options["root"] ?? ".");
   const [decision] = args.positional;
-  const { question, threshold } = args.options;
+  const { question, threshold, kind, authority } = args.options;
   if (
     decision === undefined ||
-    (question === undefined && threshold === undefined) ||
+    (question === undefined && threshold === undefined && authority === undefined) ||
     (threshold !== undefined && (threshold.trim() === "" || Number.isNaN(Number(threshold))))
   ) {
-    io.stderr(`replay needs a decision and --question and/or --threshold (a number from 0 to 1)\n${USAGE}`);
+    io.stderr(`replay needs a decision and --question, --threshold (a number from 0 to 1) and/or --authority\n${USAGE}`);
     return EXIT_NEEDS_HUMAN;
   }
   const built = buildContext(args.options, io);
@@ -1190,7 +1230,11 @@ async function runReplay(args: ParsedArgs, io: CliIo): Promise<number> {
     io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
     return built.exit;
   }
-  let proposal: ReplayProposal = threshold === undefined ? {} : { threshold: Number(threshold) };
+  let proposal: ReplayProposal = {
+    ...(threshold === undefined ? {} : { threshold: Number(threshold) }),
+    ...(kind === undefined ? {} : { kind }),
+    ...(authority === undefined ? {} : { authority: authority as DecisionAuthority }),
+  };
   if (question !== undefined) {
     const read = readDraft<unknown>(question, "replay --question", io);
     if (!read.ok) return read.exit;
@@ -1199,6 +1243,78 @@ async function runReplay(args: ParsedArgs, io: CliIo): Promise<number> {
   const result = await replayDecision(root, decision, proposal, decisionDependencies(built.context, io));
   io.stdout(`${JSON.stringify(result, null, 2)}\n`);
   return result.ok && result.report.nothingToReplay === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+}
+
+async function runProposal(args: ParsedArgs, io: CliIo): Promise<number> {
+  const root = resolvePath(io.cwd, args.options["root"] ?? ".");
+  const [subcommand, target] = args.positional;
+  const note = args.options["note"] ?? "";
+  const now = new Date().toISOString();
+  const dependencies = (context: ResolutionContext): ProposalDependencies => ({
+    ...decisionDependencies(context, io),
+    ...(io.packageDirectory === undefined ? {} : { packageDirectory: io.packageDirectory }),
+  });
+
+  switch (subcommand) {
+    case "list":
+      return report(listProposals(root), io);
+    case "show":
+      if (target === undefined) {
+        io.stderr(`proposal show needs a proposal id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(readProposal(root, target), io);
+    case "reject":
+      if (target === undefined) {
+        io.stderr(`proposal reject needs a proposal id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(rejectProposal(root, target, { note }, { now }), io);
+    case "accept":
+      if (target === undefined) {
+        io.stderr(`proposal accept needs a proposal id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      return report(acceptProposal(root, target, { note }, { now: () => now, ...(io.packageDirectory === undefined ? {} : { packageDirectory: io.packageDirectory }) }), io);
+    case "observations":
+    case "patterns":
+    case "draft":
+    case "replay":
+      break;
+    default:
+      io.stderr(`proposal needs one of observations, patterns, draft, replay, accept, reject, list, show\n${USAGE}`);
+      return EXIT_NEEDS_HUMAN;
+  }
+
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  switch (subcommand) {
+    case "observations":
+      return report({ ok: true, ...readObservations(root, built.context) }, io);
+    case "patterns": {
+      const view = readObservations(root, built.context);
+      return report({ ok: true, patterns: findPatterns(view.observations), unreadable: view.unreadable }, io);
+    }
+    case "draft": {
+      const read = readDraft<ProposalDraft>(target, "proposal draft", io);
+      if (!read.ok) return read.exit;
+      const result = await draftProposal(root, read.draft, dependencies(built.context));
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+    default: {
+      if (target === undefined) {
+        io.stderr(`proposal replay needs a proposal id\n${USAGE}`);
+        return EXIT_NEEDS_HUMAN;
+      }
+      const result = await replayProposal(root, target, dependencies(built.context));
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      return result.ok && result.outcome.askHuman === undefined ? EXIT_OK : EXIT_NEEDS_HUMAN;
+    }
+  }
 }
 
 function runConflict(args: ParsedArgs, io: CliIo): number {
@@ -1339,6 +1455,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
 
     case "replay":
       return runReplay(args, io);
+
+    case "proposal":
+      return runProposal(args, io);
 
     case "implement":
       return runImplement(args, io);

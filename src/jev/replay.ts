@@ -1,6 +1,7 @@
-import type { ValidationIssue } from "../workflow/types.js";
+import { DECISION_AUTHORITIES, type DecisionAuthority, type ValidationIssue } from "../workflow/types.js";
 import { validateProposedQuestion } from "../workflow/package.js";
-import { confidenceThreshold } from "../workflow/policy.js";
+import { confidenceThreshold, thresholdFor, thresholdKeyFor } from "../workflow/policy.js";
+import { isOneOf } from "../validation.js";
 import { askJev, type DecisionQuestion } from "./client.js";
 import {
   jevClientOptions,
@@ -10,8 +11,9 @@ import {
   type DecisionEnvelope,
   type DecisionRoute,
 } from "./decisions.js";
-import { escalationOf } from "./escalation.js";
-import { contentKindOf } from "../actions/classify.js";
+import { BOUNDARY_KINDS } from "./escalation.js";
+import { kindOfPacket } from "./kinds.js";
+import { CONTENT_KINDS } from "../actions/classify.js";
 
 /**
  * Minimal replay (issue #27, D36, D46): a proposed question wording or
@@ -38,7 +40,13 @@ import { contentKindOf } from "../actions/classify.js";
  *   was routed by, so a later policy change is not credited to the wording.
  *
  * Kinds: `escalate` breaks down by boundary kind and `classify` by content
- * kind; every other decision is one kind, `all`.
+ * kind; every other decision is one kind, `all`. A threshold proposed for
+ * one kind (issue #30) replays only the envelopes asked at that kind, and a
+ * whole-decision threshold leaves a kind that declares its own on it.
+ *
+ * A proposed authority (issue #30) re-routes the stored answers as the
+ * threshold does: Jev is not asked, and each envelope keeps the threshold
+ * it was routed by unless a threshold is proposed too.
  */
 
 export interface ReplayProposal {
@@ -46,6 +54,10 @@ export interface ReplayProposal {
   readonly question?: unknown;
   /** A proposed confidence threshold, 0 to 1. */
   readonly threshold?: number;
+  /** The one kind the proposed threshold is for; the decision's other kinds keep theirs (issue #30). */
+  readonly kind?: string;
+  /** A proposed authority for the decision (issue #30). */
+  readonly authority?: DecisionAuthority;
 }
 
 export interface ReplayDirection {
@@ -83,6 +95,10 @@ export interface ReplayReport {
   readonly nothingToReplay?: string;
   readonly question?: { readonly version: number; readonly status: string };
   readonly threshold: number;
+  /** The one kind replayed, for a threshold proposed for that kind alone. */
+  readonly kind?: string;
+  /** The proposed authority, when one was proposed. */
+  readonly authority?: DecisionAuthority;
   readonly replayed: number;
   readonly changed: number;
   readonly unchanged: number;
@@ -111,9 +127,14 @@ const CHOICES_PER_CALL: ReadonlySet<string> = new Set(["model-selection", "class
 
 /** Where an envelope was asked: the boundary kind for `escalate`, the content kind for `classify`. */
 function kindOf(envelope: DecisionEnvelope): string {
-  if (envelope.decision === "escalate") return escalationOf(envelope).boundary;
-  if (envelope.decision === "classify") return contentKindOf(envelope);
-  return "all";
+  return kindOfPacket(envelope.decision, envelope.request.packet.taskSummary);
+}
+
+/** The kinds a decision is asked in and can be split by; undefined for a decision asked in one kind of place. */
+export function splitKindsOf(decision: string): readonly string[] | undefined {
+  if (decision === "escalate") return BOUNDARY_KINDS;
+  if (decision === "classify") return CONTENT_KINDS;
+  return undefined;
 }
 
 /** Counts from-to pairs in order of first appearance. */
@@ -170,12 +191,23 @@ export async function replayDecision(
     const known = Object.keys(workflowPackage.decisions).join(", ");
     return { ok: false, reason: `"${decision}" is not a declared decision; declared decisions are ${known}` };
   }
-  if (proposal.question === undefined && proposal.threshold === undefined) {
-    return { ok: false, reason: "replay needs a proposed question or a proposed threshold" };
+  if (proposal.question === undefined && proposal.threshold === undefined && proposal.authority === undefined) {
+    return { ok: false, reason: "replay needs a proposed question, threshold or authority" };
   }
-  const { threshold } = proposal;
+  const { threshold, kind, authority } = proposal;
   if (threshold !== undefined && (typeof threshold !== "number" || !(threshold >= 0 && threshold <= 1))) {
     return { ok: false, reason: `a proposed threshold is a number from 0 to 1, not ${String(threshold)}` };
+  }
+  if (authority !== undefined && !isOneOf(DECISION_AUTHORITIES, authority)) {
+    return { ok: false, reason: `a proposed authority is ${DECISION_AUTHORITIES.join(" or ")}, not ${String(authority)}` };
+  }
+  if (kind !== undefined) {
+    const kinds = splitKindsOf(decision);
+    if (kinds === undefined) return { ok: false, reason: `${decision} is asked in one kind of place, so it has no kind to propose a threshold for` };
+    if (!kinds.includes(kind)) return { ok: false, reason: `"${kind}" is not a kind ${decision} is asked in; its kinds are ${kinds.join(", ")}` };
+    if (threshold === undefined || proposal.question !== undefined || authority !== undefined) {
+      return { ok: false, reason: "a kind scopes a proposed threshold alone; propose a threshold for it and nothing else" };
+    }
   }
   let proposed: DecisionQuestion | undefined;
   if (proposal.question !== undefined) {
@@ -193,14 +225,16 @@ export async function replayDecision(
   for (const id of listEnvelopes(root)) {
     const read = readEnvelope(root, id);
     if (!read.ok) unreadable.push({ envelope: id, reason: read.reason });
-    else if (read.envelope.decision === decision) envelopes.push(read.envelope);
+    else if (read.envelope.decision === decision && (kind === undefined || kindOf(read.envelope) === kind)) envelopes.push(read.envelope);
   }
-  const current = confidenceThreshold(workflowPackage, decision);
+  const current = confidenceThreshold(workflowPackage, decision, kind);
   const base = {
     decision,
     envelopes: envelopes.length,
     ...(proposed === undefined ? {} : { question: { version: proposed.version, status: proposed.status } }),
     threshold: threshold ?? current,
+    ...(kind === undefined ? {} : { kind }),
+    ...(authority === undefined ? {} : { authority }),
   };
   const empty = {
     replayed: 0,
@@ -216,7 +250,8 @@ export async function replayDecision(
     unreadable,
   };
   if (envelopes.length === 0) {
-    return { ok: true, report: { ...base, ...empty, nothingToReplay: `there are no stored ${decision} envelopes, so there is nothing to replay` } };
+    const stored = kind === undefined ? decision : `${decision} ${kind}`;
+    return { ok: true, report: { ...base, ...empty, nothingToReplay: `there are no stored ${stored} envelopes, so there is nothing to replay` } };
   }
   if (proposed !== undefined && dependencies.apiKey.status === "missing") return { ok: false, askHuman: dependencies.apiKey.askHuman };
 
@@ -224,15 +259,20 @@ export async function replayDecision(
   const failed: { envelope: string; error: string }[] = [];
   for (const envelope of envelopes) {
     const from = { answer: envelope.answer.choice, route: envelope.route };
+    // Only the proposal varies: otherwise the threshold and authority the envelope was routed by.
+    // A whole-decision threshold does not reach a kind that declares its own, as routing will not after acceptance.
+    const ownThreshold = kind === undefined ? workflowPackage.policy[decision]!.thresholds[thresholdKeyFor(kindOf(envelope))] : undefined;
+    const routedBy = (threshold === undefined ? undefined : (ownThreshold ?? threshold)) ?? thresholdFor(envelope.policy.thresholds, kindOf(envelope)) ?? current;
+    const routedAs = authority ?? envelope.authority;
     let to: ReplayChange["to"];
     if (proposed === undefined) {
-      // A threshold alone: the stored answer, re-routed. Unaccepted wording still goes to the developer.
+      // A threshold or authority alone: the stored answer, re-routed. Unaccepted wording still goes to the developer.
       const accepted = envelope.request.question.status === "accepted";
       to = {
         answer: envelope.answer.choice,
         reasonCode: envelope.answer.reasonCode,
         ...(envelope.answer.confidence === undefined ? {} : { confidence: envelope.answer.confidence }),
-        route: accepted ? routeUnder(declaration.authority, envelope.answer.confidence, base.threshold) : "ask-human",
+        route: accepted ? routeUnder(routedAs, envelope.answer.confidence, routedBy) : "ask-human",
       };
     } else {
       // Asked once per envelope; a failure is reported, never retried into a fallback.
@@ -248,12 +288,11 @@ export async function replayDecision(
         continue;
       }
       const { summary } = result;
-      const routedBy = threshold ?? envelope.policy.thresholds["confidence"] ?? current;
       to = {
         answer: summary.answer,
         reasonCode: summary.reasonCode,
         ...(summary.confidence === undefined ? {} : { confidence: summary.confidence }),
-        route: routeUnder(declaration.authority, summary.confidence, routedBy),
+        route: routeUnder(routedAs, summary.confidence, routedBy),
       };
     }
     const differs = from.answer !== to.answer || from.route !== to.route;

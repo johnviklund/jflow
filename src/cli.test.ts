@@ -1,10 +1,12 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { EXIT_NEEDS_HUMAN, EXIT_OK, EXIT_UNREADABLE, runCli, type CliIo } from "./cli.js";
 import type { JevTransport } from "./jev/client.js";
 import { createProjectHarness, type ProjectHarness } from "./testing/harness.js";
+import { loadWorkflowPackage, SHIPPED_PACKAGE_DIRECTORY } from "./workflow/package.js";
 
 const harnesses: ProjectHarness[] = [];
 
@@ -35,6 +37,7 @@ async function run(
   cwd: string,
   env: Record<string, string> = {},
   jev: CliIo["jev"] = { env: {}, transport: noJev },
+  packageDirectory?: string,
 ): Promise<Run> {
   let stdout = "";
   let stderr = "";
@@ -44,6 +47,7 @@ async function run(
     stderr: (text) => (stderr += text),
     hostProbes: { env, exec: () => "git version test" },
     jev,
+    ...(packageDirectory === undefined ? {} : { packageDirectory }),
   });
   return { code, stdout, stderr, json: () => JSON.parse(stdout) as Record<string, unknown> };
 }
@@ -513,6 +517,44 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(nothing.json()).toMatchObject({ ok: true, report: { envelopes: 0, nothingToReplay: expect.any(String) } });
     expect(unproposed.code).toBe(EXIT_NEEDS_HUMAN);
     expect(blank.code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
+  it("has proposal draft a change from recurring observations, and change the package only on accept", async () => {
+    const h = harness();
+    const packageDirectory = mkdtempSync(join(tmpdir(), "jflow-package-"));
+    cpSync(SHIPPED_PACKAGE_DIRECTORY, packageDirectory, { recursive: true });
+    try {
+      for (const ticket of ["T1", "T2"]) {
+        h.writeFile("boundary.json", JSON.stringify({ kind: "fix-failed", summary: `${ticket} fix failed once`, excerpts: [] }));
+        await run(["escalate", "boundary.json"], h.root, {}, jev("escalate", "uncertain"));
+      }
+
+      const observations = await run(["proposal", "observations"], h.root);
+      const patterns = await run(["proposal", "patterns"], h.root);
+      const [pattern] = patterns.json()["patterns"] as { observations: string[] }[];
+      h.writeFile(
+        "proposal.json",
+        JSON.stringify({ decision: "escalate", change: { kind: "authority", authority: "advisory" }, observations: pattern!.observations, rationale: "Fix failures escalate every time." }),
+      );
+      const drafted = await run(["proposal", "draft", "proposal.json"], h.root, {}, { env: {}, transport: noJev }, packageDirectory);
+      const untouched = readFileSync(join(packageDirectory, "jflow.workflow.json"), "utf8");
+      const unsaid = await run(["proposal", "accept", "P-1"], h.root, {}, undefined, packageDirectory);
+      const accepted = await run(["proposal", "accept", "P-1", "--note", "Make it advisory."], h.root, {}, undefined, packageDirectory);
+      const listed = await run(["proposal", "list"], h.root);
+
+      expect(observations.code).toBe(EXIT_OK);
+      expect(observations.json()).toMatchObject({ ok: true, observations: [{ kind: "escalation" }, { kind: "escalation" }] });
+      expect(pattern!.observations).toHaveLength(2);
+      expect(drafted.code).toBe(EXIT_OK);
+      expect(drafted.json()).toMatchObject({ ok: true, outcome: { proposal: { id: "P-1", status: "pending", replay: { replayed: 2 } } } });
+      expect(untouched).toBe(readFileSync(join(SHIPPED_PACKAGE_DIRECTORY, "jflow.workflow.json"), "utf8"));
+      expect(unsaid.code).toBe(EXIT_NEEDS_HUMAN);
+      expect(accepted.code).toBe(EXIT_OK);
+      expect(loadWorkflowPackage(packageDirectory).decisions["escalate"]!.authority).toBe("advisory");
+      expect(listed.json()).toMatchObject({ ok: true, proposals: [{ id: "P-1", status: "accepted" }] });
+    } finally {
+      rmSync(packageDirectory, { recursive: true, force: true });
+    }
   });
 
   it("has worker recommend ask model-selection over the stage's options, and worker assign record following it", async () => {

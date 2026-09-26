@@ -347,7 +347,39 @@ export {
   type ReplayReport,
   type ReplayResult,
   type ReplayTally,
+  splitKindsOf,
 } from "./jev/replay.js";
+
+export { kindOfPacket } from "./jev/kinds.js";
+
+export {
+  findPatterns,
+  OBSERVATION_KINDS,
+  readObservations,
+  RECURRENCE_MINIMUM,
+  type HarnessObservation,
+  type ObservationKind,
+  type ObservationPattern,
+  type ObservationView,
+  type SuggestedChange,
+} from "./jev/observations.js";
+
+export {
+  acceptProposal,
+  draftProposal,
+  listProposals,
+  PROPOSAL_DIRECTORY,
+  readProposal,
+  rejectProposal,
+  replayProposal,
+  type Proposal,
+  type ProposalDependencies,
+  type ProposalDraft,
+  type ProposalOutcome,
+  type ProposalResult,
+  type ProposedChange,
+  type RecordedChange,
+} from "./jev/proposals.js";
 
 export {
   decideConflict,

@@ -124,7 +124,10 @@ when the contradiction bears on it. `learn` never changes that decision.
 
 Lessons are project knowledge only. A lesson about the workflow, its
 gates, Jev's questions or its policy is refused: such changes come only
-through a question-file proposal that the developer accepts. A retained
+through a question-file proposal that the developer accepts (see
+"Proposing a question or policy change" in `references/DECISIONS.md`). A
+retained lesson can be linked to such a proposal as a contributor, never
+as its only ground. A retained
 lesson never lifts a gate, never skips review and never grants
 authorization.
 
