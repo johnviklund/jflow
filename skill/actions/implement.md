@@ -121,7 +121,12 @@ Under whole-plan authorization, once a ticket is complete, run
   it from step 2.
 - `ask` (exit 1): put `askHuman` to the developer and wait. Without
   whole-plan authorization this is always the answer: each ticket needs
-  the developer's authorization, and Jev is not asked.
+  the developer's authorization, and Jev is not asked. With an
+  `escalation` envelope, record their answer with `scripts/jflow decide
+  choose <envelope> --action proceed|escalate --by developer --reason
+  "<their words>"`. On proceed, run `scripts/jflow implement next
+  --escalation <envelope>`, which starts the ticket without asking Jev
+  again. Plain `implement next` would ask Jev anew.
 - `needs-independence-check`: a ticket is parked, and `candidates` could
   start beside it once checked. Do the check below.
 - `waiting` (exit 1): nothing can safely proceed. Report each of

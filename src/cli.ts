@@ -168,7 +168,7 @@ Usage:
   jflow implement check <evidence.json>      [--root <dir>] [--config <file>]
   jflow implement complete [<ticket>]        [--root <dir>] [--config <file>]
   jflow implement fix <diagnosis> [--note <what was changed>] [--root <dir>]
-  jflow implement next                       [--root <dir>] [--config <file>]
+  jflow implement next [--escalation <env>]  [--root <dir>] [--config <file>]
   jflow implement park <ticket> --blocker <what blocks it> [--root <dir>]
   jflow implement independence <check.json>  [--root <dir>]
   jflow troubleshoot start <failure.json>    [--root <dir>]
@@ -331,7 +331,9 @@ records that the ticket in progress applied a diagnosis's recommended fix,
 under recorded execution authorization.
 "implement next" picks the next eligible ticket in plan order. Under
 whole-plan authorization it asks escalate at next-ticket and starts the
-ticket on proceed; otherwise it asks the developer without Jev. It returns
+ticket on proceed; otherwise it asks the developer without Jev. After the
+developer's proceed is recorded on that ask's envelope (decide choose),
+"--escalation <env>" starts the ticket on it without asking Jev again. It returns
 needs-independence-check while a parked ticket has not been checked
 against, and waiting, with the reasons, when nothing can proceed.
 "implement park" parks the ticket in progress with its blocker and keeps
@@ -446,6 +448,7 @@ const KNOWN_OPTIONS = [
   "routing",
   "kind",
   "authority",
+  "escalation",
   "source",
   "summary",
 ];
@@ -973,7 +976,12 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
     return built.exit;
   }
   if (subcommand === "next") {
-    const result = await nextTicket(root, decisionDependencies(built.context, io, "implement"));
+    const escalation = args.options["escalation"];
+    const result = await nextTicket(
+      root,
+      decisionDependencies(built.context, io, "implement"),
+      escalation === undefined ? {} : { escalation },
+    );
     io.stdout(`${JSON.stringify({ ok: result.kind !== "refused", ...result }, null, 2)}\n`);
     // Waiting and asking are the developer's; a start or a check to make is the agent's.
     return result.kind === "started" || result.kind === "needs-independence-check" || result.kind === "finished"

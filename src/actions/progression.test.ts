@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveConfiguration } from "../config/configuration.js";
 import type { JevTransport, TransportRequest } from "../jev/client.js";
-import type { DecisionDependencies } from "../jev/decisions.js";
+import { recordChoice, type DecisionDependencies } from "../jev/decisions.js";
 import { readRecord, writeRecord, type ProgressRecord, type TicketRecord } from "../project/records.js";
 import { readProjectState } from "../project/state.js";
 import { createProjectHarness, type ProjectHarness } from "../testing/harness.js";
@@ -175,6 +175,35 @@ describe("moving to the next ticket", () => {
     expect(result).toMatchObject({ kind: "ask", ticket: "T2", askHuman: { boundary: "next-ticket" } });
     expect(ticketsOf(h)["T2"]).toMatchObject({ status: "ready" });
     expect(progressOf(h).assignedTicketId).toBeUndefined();
+  });
+
+  it("starts the ticket on the developer's recorded proceed at that ask, without asking Jev again", async () => {
+    const h = project();
+    const transport = jev(ESCALATE);
+    const asked = await nextTicket(h.root, dependencies(h, transport));
+    if (asked.kind !== "ask" || asked.escalation === undefined) throw new Error("expected an ask with its envelope");
+    const chosen = recordChoice(h.root, asked.escalation, { action: "proceed", by: "developer", reason: "go ahead" }, ["proceed", "escalate"], { now });
+    if (!chosen.ok) throw new Error(chosen.reason);
+
+    const result = await nextTicket(h.root, dependencies(h, transport), { escalation: asked.escalation });
+
+    expect(result).toMatchObject({ kind: "started", ticket: { id: "T2" }, escalation: asked.escalation });
+    expect(transport.sent).toHaveLength(1);
+  });
+
+  it("refuses an escalation that records no proceed, or was asked for another start", async () => {
+    const h = project();
+    const asked = await nextTicket(h.root, dependencies(h, jev(ESCALATE)));
+    if (asked.kind !== "ask" || asked.escalation === undefined) throw new Error("expected an ask with its envelope");
+
+    const unchosen = await nextTicket(h.root, dependencies(h, jev()), { escalation: asked.escalation });
+    recordChoice(h.root, asked.escalation, { action: "escalate", by: "developer", reason: "not yet" }, ["proceed", "escalate"], { now });
+    const stopped = await nextTicket(h.root, dependencies(h, jev()), { escalation: asked.escalation });
+    writeRecord(h.root, "tickets", { tickets: [ticket("T1", "done"), ticket("T2", "done"), ticket("T3", "ready"), ticket("T4", "ready", ["T2"])] });
+    const other = await nextTicket(h.root, dependencies(h, jev()), { escalation: asked.escalation });
+
+    for (const result of [unchosen, stopped, other]) expect(result).toMatchObject({ kind: "refused" });
+    expect(ticketsOf(h)["T3"]).toMatchObject({ status: "ready" });
   });
 
   it("asks the developer without a Jev call when execution is not authorized for the whole plan", async () => {

@@ -1,4 +1,4 @@
-import type { DecisionDependencies } from "../jev/decisions.js";
+import { readEnvelope, type DecisionDependencies } from "../jev/decisions.js";
 import { askEscalation, humanAskAt, type EscalationAsk } from "../jev/escalation.js";
 import {
   EMPTY_PROGRESS,
@@ -91,7 +91,14 @@ function waitingReasons(tickets: TicketsRecord): readonly string[] {
  * dependencies are done and, beside a parked ticket, it has an independence
  * check covering every parked one.
  */
-export async function nextTicket(root: string, dependencies: DecisionDependencies): Promise<NextResult> {
+export async function nextTicket(
+  root: string,
+  dependencies: DecisionDependencies,
+  options: {
+    /** The envelope of the developer's (or the agent's evidenced) proceed at this ticket's next-ticket ask. */
+    readonly escalation?: string;
+  } = {},
+): Promise<NextResult> {
   const read = readRecords(root);
   if (!read.ok) return { kind: "refused", reason: read.reason };
   const { tickets, progress } = read.records;
@@ -144,6 +151,15 @@ export async function nextTicket(root: string, dependencies: DecisionDependencie
   }
 
   const boundary = summary(target.id, target.title);
+
+  // A proceed already chosen at this very boundary starts the ticket; asking Jev again would never let it.
+  if (options.escalation !== undefined) {
+    const chosen = chosenProceed(root, options.escalation, `Boundary: next-ticket. ${boundary}`);
+    if (!chosen.ok) return { kind: "refused", reason: chosen.reason };
+    const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
+    if (!started.ok) return { kind: "refused", reason: started.reason };
+    return { kind: "started", ...started.outcome, escalation: options.escalation };
+  }
 
   // Every start under whole-plan authorization is the next-ticket boundary, the first one included (D44).
   const check = progress.independenceChecks?.[target.id];
@@ -279,4 +295,25 @@ export function recordIndependence(root: string, input: IndependenceInput, optio
   if (!next.ok) return refuse("the independence check cannot be recorded", next.issues);
   writeRecord(root, "progress", next.record);
   return { ok: true, outcome: { check } };
+}
+
+/** Whether an escalate envelope was asked at this exact boundary and records a proceed. */
+function chosenProceed(
+  root: string,
+  envelopeId: string,
+  taskSummary: string,
+): { readonly ok: true } | { readonly ok: false; readonly reason: string } {
+  const read = readEnvelope(root, envelopeId);
+  if (!read.ok) return read;
+  const { envelope } = read;
+  if (envelope.decision !== "escalate" || envelope.request.packet.taskSummary !== taskSummary) {
+    return { ok: false, reason: `envelope ${envelopeId} was not asked at this boundary (${taskSummary}); run implement next without it` };
+  }
+  if (envelope.choice?.action !== "proceed") {
+    return {
+      ok: false,
+      reason: `envelope ${envelopeId} records no proceed; record the developer's answer with decide choose first`,
+    };
+  }
+  return { ok: true };
 }
