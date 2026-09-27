@@ -41,7 +41,12 @@ implementing it: without recorded authorization, ask. If the block is
      and go back to step 4. This is not a fix attempt.
    - exit 1 with `askHuman` (`awaiting-developer`, the fix limit, or Jev
      unavailable): put its reasons to the developer, with your
-     recommendation, and wait. Do not try another fix first.
+     recommendation, and wait. Do not try another fix first. For
+     `awaiting-developer`, show one row per criterion from `criteria`:
+     the criterion in short, Jev's answer and confidence, and what the
+     evidence did not show. Offer to add the missing tests or checks and
+     run `implement check` again, or the developer's own verdict on a
+     criterion they checked themselves (`ticket override`).
 5. Once `review` has passed the ticket (`actions/review.md`), run
    `scripts/jflow implement complete`. The helper refuses a ticket that has
    not passed `validate` and review. Otherwise it records the ticket

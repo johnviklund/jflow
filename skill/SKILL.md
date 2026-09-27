@@ -143,6 +143,12 @@ parts only the agent can honour.
 - A retained lesson is project knowledge. It never changes the workflow, a
   gate, a Jev question or policy, and never overrides an accepted decision.
   Re-check it against the task every time before applying it.
+- Every time you put an `askHuman` to the developer, explain it in plain
+  words: what jflow checked, what came back, and why that stops the work
+  here. Where Jev answered, give each answer with its confidence against
+  the threshold and the evidence it lacked, one line per item (a table
+  for several). Then give the options and your recommendation. The
+  developer should never have to open a record to know why you ask.
 - Secrets never go into project files or the conversation. Never read or
   print the Jev key file. If the helper reports the Jev API key missing,
   show the developer its message and wait, rather than proceeding without

@@ -62,7 +62,12 @@ For each ticket give:
   from recorded evidence (a test result, a check's output, a file that
   exists). "Works correctly" is not a criterion; "`npm test` passes with
   the new `export.test.ts` green" is. If you cannot say what evidence would
-  satisfy it, rewrite it or drop the ticket.
+  satisfy it, rewrite it or drop the ticket. A criterion about
+  documentation or other text (a README section, help output, a
+  changelog) names the check that proves it, for example "a test asserts
+  README.md has sections for usage, JSON fields and exit codes".
+  `validate` never sees file contents, so without such a check the
+  criterion always comes back unproven and goes to the developer.
 - `dependsOn` — the ticket ids that must be done first. Keep it minimal;
   the helper refuses a cycle.
 
