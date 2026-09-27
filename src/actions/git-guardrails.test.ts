@@ -88,7 +88,7 @@ describe("the helper's access to Git", () => {
     expect(spawning).toEqual(["actions/checks.ts", "host/capabilities.ts", "project/worktree.ts"]);
   });
 
-  it("writes to Git only to make a ticket's local commit, and never pushes, publishes or merges", () => {
+  it("writes to Git only to make a ticket's or a finished plan's local commit, and never pushes, publishes or merges", () => {
     const worktree = readFileSync(join(source, "project", "worktree.ts"), "utf8");
     const writes = [...worktree.matchAll(/\bgit\(root, \["([a-z-]+)"/g)].map((match) => match[1]);
 

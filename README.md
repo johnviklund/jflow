@@ -141,7 +141,10 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   `implement next` returns `needs-plan-review` until then, and `next`
   recommends it. `review plan start|record|decide` reuses ticket review's
   finding rule, dispute handling and reviewer check, against the
-  implementers of every ticket. A blocking finding holds the plan and asks
+  implementers of every ticket. A passed integrated review commits the
+  changed `jflow/` records in one local commit with a `Jflow-Plan` trailer
+  (issue #33), since the review runs after the last ticket's commit; with
+  `commitOnSuccess` off it commits nothing. A blocking finding holds the plan and asks
   the developer, since the fix is new work in the plan. A one-ticket
   plan's passing ticket review is recorded as the plan review too
   (`progress.planReview`, scope `single-ticket`), and no second review is

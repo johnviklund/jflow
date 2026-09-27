@@ -14,6 +14,7 @@ import {
   type TicketRecord,
   type TicketsRecord,
 } from "../project/records.js";
+import { commitPaths, PLAN_TRAILER, readChangedRecords, readWorkingTree } from "../project/worktree.js";
 import { hasText } from "../validation.js";
 import { decideConflict } from "./conflicts.js";
 import type { HumanAskEvent } from "./dispatch.js";
@@ -184,10 +185,43 @@ export function startPlanReview(root: string, context: ResolutionContext): Start
 }
 
 export type PlanReviewResult =
-  | { readonly ok: true; readonly review: PlanReview; readonly askHuman?: HumanAskEvent }
+  | {
+      readonly ok: true;
+      readonly review: PlanReview;
+      /** The local commit of the plan's records, made when the integrated review passed (#33). */
+      readonly commit?: { readonly hash: string; readonly paths: readonly string[] };
+      readonly askHuman?: HumanAskEvent;
+    }
   | Refusal;
 
-function writePlanReview(root: string, review: PlanReview, asks: readonly string[]): PlanReviewResult {
+/**
+ * Commits the changed records under `jflow/` once the integrated review has
+ * passed: the review runs after the last ticket's commit, so nothing else
+ * would ever commit them. Nothing outside `jflow/` is included, and nothing
+ * is pushed. Returns the commit, or why Git refused it.
+ */
+function commitPlanRecords(
+  root: string,
+  review: PlanReview,
+  context: ResolutionContext,
+): { readonly hash: string; readonly paths: readonly string[] } | { readonly refused: string } | undefined {
+  if (context.configuration.settings["commitOnSuccess"] === false) return undefined;
+  if (readWorkingTree(root).kind !== "present") return undefined;
+  const paths = readChangedRecords(root);
+  if (paths.length === 0) return undefined;
+  const message = [
+    "Plan complete: integrated review passed",
+    `Integrated review of ${review.tickets.join(", ")} passed by ${review.reviewer.agent}; committed by jflow on ${review.reviewedAt}.`,
+    `${PLAN_TRAILER}: complete`,
+  ].join("\n\n");
+  try {
+    return { hash: commitPaths(root, paths, message), paths };
+  } catch (error) {
+    return { refused: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function writePlanReview(root: string, review: PlanReview, asks: readonly string[], context: ResolutionContext): PlanReviewResult {
   // Disposing may have written todos and conflicts; progress is read afresh.
   const progress = readRecord(root, "progress");
   if (progress.kind === "malformed") return unreadable("progress", progress);
@@ -207,7 +241,16 @@ function writePlanReview(root: string, review: PlanReview, asks: readonly string
         .join("; ")}. The plan is not complete. Fixing this is new work in the plan, which realign adds; the decision is yours.`,
     );
   }
-  return { ok: true, review, ...(reasons.length === 0 ? {} : { askHuman: { kind: "human-ask", reasons } }) };
+  const committed = review.disposition === "passed" ? commitPlanRecords(root, review, context) : undefined;
+  if (committed !== undefined && "refused" in committed) {
+    reasons.push(`The plan is complete, but Git refused the commit of its records: ${committed.refused}. The records stay uncommitted.`);
+  }
+  return {
+    ok: true,
+    review,
+    ...(committed !== undefined && "hash" in committed ? { commit: committed } : {}),
+    ...(reasons.length === 0 ? {} : { askHuman: { kind: "human-ask", reasons } }),
+  };
 }
 
 /**
@@ -246,6 +289,7 @@ export async function recordPlanReview(
       reviewedAt: dependencies.now(),
     },
     disposed.asks,
+    dependencies.context,
   );
 }
 
@@ -281,7 +325,7 @@ export async function decidePlanFinding(
   if (review?.scope !== "integrated") return refuse("there is no integrated review to decide on");
   if (decision.outcome === "withdrawn" && hasText(decision.note)) {
     const withdrawn = withdrawBlocking(review, decision.finding, decision.note.trim());
-    if (withdrawn !== undefined) return writePlanReview(root, withdrawn, []);
+    if (withdrawn !== undefined) return writePlanReview(root, withdrawn, [], dependencies.context);
   }
   const decided = decideDispute(review, decision, SUBJECT);
   if (!decided.ok) return decided;
@@ -289,5 +333,5 @@ export async function decidePlanFinding(
     const resolved = decideConflict(root, decided.conflict, { note: decision.note.trim(), now: dependencies.now() });
     if (!resolved.ok) return resolved;
   }
-  return writePlanReview(root, decided.review, []);
+  return writePlanReview(root, decided.review, [], dependencies.context);
 }

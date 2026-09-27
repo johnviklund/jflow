@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveConfiguration } from "../config/configuration.js";
@@ -85,6 +87,15 @@ const complete = (h: ProjectHarness) => {
 };
 
 const REVIEWER = { agent: "plan-reviewer", model: "claude-sonnet-5" };
+
+const git = (h: ProjectHarness, ...args: string[]) => execFileSync("git", args, { cwd: h.root, encoding: "utf8" });
+const commits = (h: ProjectHarness) => {
+  try {
+    return Number(git(h, "rev-list", "--count", "HEAD").trim());
+  } catch {
+    return 0;
+  }
+};
 const CLASH = { kind: "correctness", summary: "T1's lexer and T2's printer disagree on line endings", evidence: ["src/lexer.ts:4"] } as const;
 
 describe("the integrated review gates a multi-ticket plan's completion", () => {
@@ -135,6 +146,43 @@ describe("the integrated review gates a multi-ticket plan's completion", () => {
     expect(result).toMatchObject({ ok: true, review: { scope: "integrated", disposition: "passed", reviewer: REVIEWER } });
     expect(complete(h)).toEqual({ complete: true });
     expect(await nextTicket(h.root, dependencies(h, transport))).toMatchObject({ kind: "finished" });
+  });
+
+  it("commits only the changed records when the integrated review passes, and nothing else in the tree", async () => {
+    const h = project();
+    h.writeFile("notes.md", "the developer's own notes\n");
+    const before = commits(h);
+
+    const result = await recordPlanReview(h.root, { reviewer: REVIEWER, findings: [] }, dependencies(h, silent()));
+
+    expect(result).toMatchObject({ ok: true, review: { disposition: "passed" }, commit: { hash: expect.any(String) } });
+    expect(commits(h)).toBe(before + 1);
+    const committed = git(h, "show", "--name-only", "--format=%B", "HEAD");
+    expect(committed).toContain("Jflow-Plan: complete");
+    expect(committed).toContain("jflow/progress.json");
+    expect(committed).not.toContain("notes.md");
+    expect(git(h, "status", "--porcelain")).toContain("notes.md");
+  });
+
+  it("commits nothing when the review does not pass, or with commitOnSuccess off", async () => {
+    const blocked = project();
+    const off = project();
+    const resolved = resolveConfiguration({ settings: { commitOnSuccess: false } }, pkg);
+    if (!resolved.ok) throw new Error("configuration");
+
+    const returned = await recordPlanReview(blocked.root, { reviewer: REVIEWER, findings: [CLASH] }, dependencies(blocked, silent()));
+    const passed = await recordPlanReview(
+      off.root,
+      { reviewer: REVIEWER, findings: [] },
+      dependencies(off, silent(), { workflowPackage: pkg, configuration: resolved.configuration }),
+    );
+
+    expect(returned).toMatchObject({ ok: true, review: { disposition: "returned-to-fix" } });
+    expect(returned).not.toHaveProperty("commit");
+    expect(passed).toMatchObject({ ok: true, review: { disposition: "passed" } });
+    expect(passed).not.toHaveProperty("commit");
+    expect(commits(blocked)).toBe(0);
+    expect(commits(off)).toBe(0);
   });
 
   it("refuses a reviewer that implemented any of the plan's tickets", async () => {

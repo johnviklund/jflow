@@ -117,7 +117,12 @@ It uses the same steps with `review plan`:
 3. Write the review file with `reviewer` and `findings` (no `ticketId`),
    the same kinds and disputes as above. Run `scripts/jflow review plan
    record <review.json>`.
-4. `passed`: the plan is complete; `wrap` comes next. `returned-to-fix`:
+4. `passed`: the plan is complete. Unless `commitOnSuccess` is off, the
+   helper also commits the changed records under `jflow/` in one local
+   commit (`commit.hash`, `commit.paths`) with a `Jflow-Plan` trailer;
+   nothing else is included and nothing is pushed. If Git refused it,
+   `askHuman` says why and the records stay uncommitted. `wrap` comes
+   next; its `jflow/resume.json` stays uncommitted. `returned-to-fix`:
    a blocking finding holds the plan. Fixing it is new work, which
    `realign` adds. Record that with `scripts/jflow realign recommend
    --source review --summary "<the finding and why it needs new work>"`,

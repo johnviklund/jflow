@@ -165,6 +165,8 @@ export function readWorkingTree(root: string): WorkingTree {
 
 /** The trailer naming the ticket a jflow commit completed (issue #10). */
 export const TICKET_TRAILER = "Jflow-Ticket";
+/** The trailer on the commit of a plan's records once its integrated review passed (#33). */
+export const PLAN_TRAILER = "Jflow-Plan";
 
 /**
  * Whether a commit carries `ticketId` in its ticket trailer, read-only. The
