@@ -84,6 +84,20 @@ For each ticket give:
   README.md has sections for usage, JSON fields and exit codes".
   `validate` never sees file contents, so without such a check the
   criterion always comes back unproven and goes to the developer.
+
+  One condition per criterion. `validate` judges each criterion as a
+  whole and answers `met` only when it is sure of every part, so a
+  criterion listing many conditions ("numbers align right, empty cells
+  stay empty, pipes are escaped, …") comes back unsure even when every
+  test passes. Write each condition as its own criterion, one a single
+  test name or check result can show. A ticket with many conditions has
+  many criteria, which is fine; if it has too many to check comfortably,
+  split the ticket.
+
+  A command written in a criterion is the command that proves it. Write
+  it exactly as it will run from the project root, and name it only when
+  that exact command matters; otherwise name the test or the behaviour
+  and leave the command to the ticket's checks.
 - `dependsOn` — the ticket ids that must be done first. Keep it minimal;
   the helper refuses a cycle.
 

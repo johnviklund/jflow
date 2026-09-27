@@ -100,8 +100,11 @@ review the ticket.
 
 The ticket's checks are the commands whose results its acceptance criteria
 depend on: the tests named in them, and the project's typecheck and test
-suite. List each one in `checks` exactly as it should run from the project
-root. jflow runs them, records their output and exit codes, blanks out
+suite. Every command a criterion names goes into `checks` exactly as the
+criterion writes it, character for character; a similar command (the
+whole suite instead of the named file, other flags) does not prove that
+criterion, and `validate` will not treat it as proof. List each check
+exactly as it should run from the project root. jflow runs them, records their output and exit codes, blanks out
 anything that looks like a credential, and cuts very long output in the
 middle. A check whose output is a diff is refused. Your own summary goes
 in as a `claim`. A claim never admits a ticket.
