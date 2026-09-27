@@ -244,7 +244,7 @@ describe("the acceptance gate", () => {
     });
     const after = loadWorkflowPackage(s.packageDirectory);
     expect(routeByConfidence(after, "escalate", between)).toBe("honour");
-    expect(routeByConfidence(after, "escalate", between, "next-ticket")).toBe("honour");
+    expect(routeByConfidence(after, "escalate", between, "review-dispute")).toBe("honour");
     expect(after.decisions["escalate"]!.version).toBe(before.decisions["escalate"]!.version + 1);
     expect(after.policy["escalate"]!.basis).toContain("P-1");
     // Every other decision is as it was.
@@ -362,7 +362,7 @@ describe("the acceptance gate", () => {
     await draftProposal(s.h.root, thresholdDraft(s, { kind: "threshold", threshold: lower }), s.deps());
     const path = join(s.packageDirectory, "jflow.workflow.json");
     const text = readFileSync(path, "utf8");
-    writeFileSync(path, text.replace(`"confidence": ${threshold} }`, `"confidence": ${above} }`));
+    writeFileSync(path, text.replace(`"confidence": ${threshold}`, `"confidence": ${above}`));
 
     expect(acceptProposal(s.h.root, "P-1", { note: "Accept." }, s.deps())).toMatchObject({ ok: false, reason: expect.stringContaining("threshold") });
   });

@@ -35,7 +35,7 @@
     },
     "escalate": {
       "question": "questions/escalate.json",
-      "version": 2,
+      "version": 3,
       "authority": "binding",
       "basis": "DISCOVERY.md D40, D43, D44: Jev's proceed/escalate signal decides whether the human is asked at every human-facing boundary; hard rules (D7, D16/D17, D27/D28) never reach it."
     },
@@ -68,8 +68,8 @@
       "basis": "Uncalibrated placeholder (D37, D50); conservative; lowered only by an accepted proposal after replay (D39, D46)."
     },
     "escalate": {
-      "thresholds": { "confidence": 0.95 },
-      "basis": "Uncalibrated placeholder, conservative per D37 and D45: below-threshold confidence routes to the human, and Jev must be clearly sure before proceed is honoured. Every over-ask is a harness observation (D35); to be lowered by proposal once a recorded corpus supports it (D39, D46). No test asserts this value."
+      "thresholds": { "confidence": 0.95, "confidence:next-ticket": 0.9 },
+      "basis": "Uncalibrated placeholder, conservative per D37 and D45: below-threshold confidence routes to the human, and Jev must be clearly sure before proceed is honoured. Every over-ask is a harness observation (D35); to be lowered by proposal once a recorded corpus supports it (D39, D46). No test asserts this value. Changed by accepted proposal P-1 on 2026-09-27 after replay over 2 stored envelopes (1 changed): \"yes, lower it to 90% for next-ticket\"."
     },
     "validate": {
       "thresholds": { "confidence": 0.9 },

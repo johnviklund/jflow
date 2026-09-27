@@ -194,12 +194,19 @@ describe("replaying a proposed question against the stored envelopes", () => {
   });
 });
 
+/** These replays assume escalate routes every kind by one threshold, whatever the shipped package splits off. */
+function oneThreshold(deps: DecisionDependencies): DecisionDependencies {
+  const escalate = pkg.policy["escalate"]!;
+  const single = { ...escalate, thresholds: { confidence: escalate.thresholds["confidence"]! } };
+  return { ...deps, context: { ...deps.context, workflowPackage: { ...pkg, policy: { ...pkg.policy, escalate: single } } } };
+}
+
 describe("replaying a proposed threshold", () => {
   it("re-routes the stored answers without asking Jev, so only the threshold's effect is reported", async () => {
     const h = await recorded();
     const replaying = jev([["", ["proceed", "routine", above]]]);
 
-    const result = await replayDecision(h.root, "escalate", { threshold: 1 }, dependencies(h, replaying, false));
+    const result = await replayDecision(h.root, "escalate", { threshold: 1 }, oneThreshold(dependencies(h, replaying, false)));
 
     expect(replaying.sent).toHaveLength(0);
     expect(result).toMatchObject({
@@ -279,7 +286,10 @@ describe("replaying a whole-decision threshold once a kind has its own (issue #3
       ...dependencies(h, jev([]), false),
       context: {
         ...h.context,
-        workflowPackage: { ...pkg, policy: { ...pkg.policy, escalate: { ...escalate, thresholds: { ...escalate.thresholds, "confidence:fix-failed": 0 } } } },
+        workflowPackage: {
+          ...pkg,
+          policy: { ...pkg.policy, escalate: { ...escalate, thresholds: { confidence: escalate.thresholds["confidence"]!, "confidence:fix-failed": 0 } } },
+        },
       },
     };
 

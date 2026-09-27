@@ -74,8 +74,8 @@ describe("routeByConfidence", () => {
     });
 
     it("leaves every other kind on the decision's threshold", () => {
-      expect(confidenceThreshold(split, "escalate", "next-ticket")).toBe(threshold);
-      expect(routeByConfidence(split, "escalate", between, "next-ticket")).toBe("ask-human");
+      expect(confidenceThreshold(split, "escalate", "review-dispute")).toBe(threshold);
+      expect(routeByConfidence(split, "escalate", between, "review-dispute")).toBe("ask-human");
       expect(routeByConfidence(split, "escalate", between)).toBe("ask-human");
     });
   });
