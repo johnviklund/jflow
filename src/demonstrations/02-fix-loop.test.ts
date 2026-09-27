@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { acceptedPlan, startAuthorizedTicket, demoProject, evidence, ticketDraft, type Demo } from "../testing/demo.js";
+import { acceptedPlan, checkEvidence, startAuthorizedTicket, demoProject, evidence, ticketDraft, type Demo } from "../testing/demo.js";
 
 /**
  * Demonstration 2 (RELEASE-SCOPE.md): a failed check invokes diagnosis and
@@ -28,7 +28,7 @@ describe("demonstration 2: diagnosis, fix, re-review and the fix limit", () => {
 
     // Troubleshoot diagnoses without editing; the fix goes through the authorized ticket.
     const tree = demo.snapshot();
-    const opened = await demo.run("troubleshoot", "start", demo.draft("failure.json", { check: evidence("T1", false).evidence[0] }));
+    const opened = await demo.run("troubleshoot", "start", demo.draft("failure.json", { check: checkEvidence("T1", false).evidence[0] }));
     const diagnosis = opened.json.outcome.diagnosis.id as string;
     await demo.run("troubleshoot", "record", demo.draft("diagnosis.json", { id: diagnosis, finding: "empty input throws", evidence: ["src/t1.ts:1"], recommendation: "return [] for empty input" }));
     const untouched = demo.snapshot();

@@ -47,6 +47,7 @@ async function run(
     stderr: (text) => (stderr += text),
     hostProbes: { env, exec: () => "git version test" },
     jev,
+    checkRunner: (command) => ({ output: `ran ${command}\n1 passed`, exitCode: 0, timedOut: false }),
     ...(packageDirectory === undefined ? {} : { packageDirectory }),
   });
   return { code, stdout, stderr, json: () => JSON.parse(stdout) as Record<string, unknown> };
@@ -685,7 +686,7 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     );
     h.writeFile(
       "evidence.json",
-      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 failed", exitCode: 1 }], checks: ["npm test"] }),
+      JSON.stringify({ ticketId: "T1", evidence: [], checks: ["npm test"] }),
     );
     const answering = jev("not-met", "evidence-contradicts");
 
@@ -702,6 +703,34 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(overridden.json()).toMatchObject({ ok: true, validation: { disposition: "admitted-to-review" } });
   });
 
+  it("runs the ticket's checks itself and refuses check output the agent wrote", async () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({ tickets: [{ id: "T1", title: "T1", acceptanceCriteria: ["parses an empty file"], dependsOn: [], status: "ready" }] }),
+    );
+    await run(["implement", "start"], h.root);
+    h.writeFile(
+      "written.json",
+      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "41 tests passed", exitCode: 0 }], checks: ["npm test"] }),
+    );
+    h.writeFile("named.json", JSON.stringify({ ticketId: "T1", evidence: [], checks: ["npm test"] }));
+    const answering = jev("met", "evidence-satisfies");
+
+    const written = await run(["implement", "check", "written.json"], h.root, {}, answering);
+    const named = await run(["implement", "check", "named.json"], h.root, {}, answering);
+
+    expect(written.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(written.json()).toMatchObject({ ok: false, reason: expect.stringContaining("jflow runs the checks itself") });
+    expect(named.code).toBe(EXIT_OK);
+    const stored = JSON.parse(readFileSync(join(h.root, ".jflow/evidence/T1.json"), "utf8")) as { evidence: unknown[] };
+    expect(stored.evidence).toEqual([{ kind: "check", source: "npm test", text: "ran npm test\n1 passed", exitCode: 0 }]);
+    expect(answering.sent[0]).toContain("ran npm test");
+  });
+
   it("starts only the authorized ticket and checks it through validate, recording the evidence", async () => {
     const h = harness({
       state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
@@ -714,7 +743,7 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     const second = await run(["implement", "start", "T2"], h.root);
     h.writeFile(
       "evidence.json",
-      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 passed", exitCode: 0 }], checks: ["npm test"] }),
+      JSON.stringify({ ticketId: "T1", evidence: [], checks: ["npm test"] }),
     );
     const checked = await run(["implement", "check", "evidence.json"], h.root, {}, jev("met", "evidence-satisfies"));
 
@@ -744,7 +773,7 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     const early = await run(["review", "start"], h.root);
     h.writeFile(
       "evidence.json",
-      JSON.stringify({ ticketId: "T1", evidence: [{ kind: "check", source: "npm test", text: "1 passed", exitCode: 0 }], checks: ["npm test"] }),
+      JSON.stringify({ ticketId: "T1", evidence: [], checks: ["npm test"] }),
     );
     await run(["implement", "check", "evidence.json"], h.root, {}, jev("met", "evidence-satisfies"));
     const started = await run(["review", "start"], h.root);

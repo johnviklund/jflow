@@ -255,6 +255,14 @@
         "default": true
       },
       {
+        "key": "checks.timeoutMs",
+        "type": "integer",
+        "summary": "Time limit for one check the helper runs for a ticket; a check still running is stopped and recorded as failed.",
+        "default": 600000,
+        "minimum": 1000,
+        "maximum": 3600000
+      },
+      {
         "key": "jev.retryCount",
         "type": "integer",
         "summary": "Retries after the initial attempt for a temporary Jev failure, before asking the human.",

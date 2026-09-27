@@ -82,8 +82,10 @@ describe("the helper's access to Git", () => {
       .sort();
 
     // worktree.ts admits read-only Git subcommands only; the host probe runs
-    // `git --version`. Anything new that spawns a process must justify itself here.
-    expect(spawning).toEqual(["host/capabilities.ts", "project/worktree.ts"]);
+    // `git --version`; checks.ts runs the check commands the agent names for a
+    // ticket (#32), which the agent could run itself, so the helper gains no
+    // reach it did not have. Anything new that spawns a process must justify itself here.
+    expect(spawning).toEqual(["actions/checks.ts", "host/capabilities.ts", "project/worktree.ts"]);
   });
 
   it("writes to Git only to make a ticket's local commit, and never pushes, publishes or merges", () => {

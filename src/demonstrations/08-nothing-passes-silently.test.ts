@@ -43,7 +43,7 @@ describe("demonstration 8: nothing passes silently", () => {
     await startAuthorizedTicket(demo, "T1");
     demo.edit("src/t1.ts", "export const t1 = true;\n");
 
-    const diff = await demo.run("ticket", "validate", demo.draft("diff.json", { ...evidence("T1"), evidence: [{ kind: "check", source: "git diff", text: "diff --git a/src/t1.ts b/src/t1.ts\n@@ -0,0 +1 @@" }] }));
+    const diff = await demo.run("ticket", "validate", demo.draft("diff.json", { ...evidence("T1"), checks: ["git diff"] }));
     expect(diff.code).toBe(1);
     expect(demo.jev.callsTo("validate")).toHaveLength(0);
 

@@ -5,6 +5,7 @@ import { claimChanges } from "./actions/changes.js";
 import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { completeTicket } from "./actions/completion.js";
+import { processCheckRunner, runTicketChecks, type CheckRunner } from "./actions/checks.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { nextTicket, parkTicket, recordIndependence, type IndependenceInput } from "./actions/progression.js";
 import { unreadable } from "./actions/refusal.js";
@@ -55,6 +56,7 @@ import {
 } from "./jev/proposals.js";
 import { assessWithoutJev, type AssessmentInput } from "./jev/assessment.js";
 import { approveFallback } from "./jev/fallback.js";
+import { sharingLimitsFrom } from "./jev/evidence.js";
 import { overrideCriterion, validateTicket, type ValidationInput, type TicketValidationResult } from "./jev/ticket-validation.js";
 import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
@@ -105,6 +107,8 @@ export interface CliIo {
     /** Waits between retries; a real timer unless a test injects one. */
     readonly sleep?: (ms: number) => Promise<void>;
   };
+  /** Runs a ticket's check commands; the real shell unless a test injects a script. */
+  readonly checkRunner?: CheckRunner;
   /** The package directory an accepted proposal writes; the shipped package unless a test injects a copy. */
   readonly packageDirectory?: string;
 }
@@ -888,6 +892,32 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
+/**
+ * Runs the checks an evidence draft names and returns the draft with their
+ * output (issue #32), or reports the refusal and returns its exit code.
+ */
+function withCheckOutput<T extends ValidationInput>(
+  draft: T,
+  root: string,
+  dependencies: DecisionDependencies,
+  io: CliIo,
+): { readonly ok: true; readonly draft: T } | { readonly ok: false; readonly exit: number } {
+  const settings = dependencies.context.configuration.settings;
+  const timeout = settings["checks.timeoutMs"];
+  const ran = runTicketChecks(draft, {
+    runner: io.checkRunner ?? processCheckRunner(process.env),
+    cwd: root,
+    timeoutMs: typeof timeout === "number" ? timeout : 600_000,
+    maxChars: sharingLimitsFrom(dependencies.context.configuration).maxPacketChars,
+    knownSecrets: dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [],
+  });
+  if (!ran.ok) {
+    io.stdout(`${JSON.stringify({ ok: false, kind: "refused", reason: ran.reason }, null, 2)}\n`);
+    return { ok: false, exit: EXIT_NEEDS_HUMAN };
+  }
+  return { ok: true, draft: { ...draft, ...ran.input } };
+}
+
 function reportValidation(result: TicketValidationResult | CheckResult, io: CliIo): number {
   const ok = result.kind === "validated";
   io.stdout(`${JSON.stringify({ ok, ...result }, null, 2)}\n`);
@@ -910,7 +940,9 @@ async function runTicket(args: ParsedArgs, io: CliIo): Promise<number> {
   if (subcommand === "validate") {
     const read = readDraft<ValidationInput>(target, "ticket validate", io);
     if (!read.ok) return read.exit;
-    return reportValidation(await validateTicket(root, read.draft, dependencies), io);
+    const checked = withCheckOutput(read.draft, root, dependencies, io);
+    if (!checked.ok) return checked.exit;
+    return reportValidation(await validateTicket(root, checked.draft, dependencies), io);
   }
 
   const { criterion, verdict, by, reason, evidence } = args.options;
@@ -999,7 +1031,10 @@ async function runImplement(args: ParsedArgs, io: CliIo): Promise<number> {
   }
   const read = readDraft<CheckInput>(target, "implement check", io);
   if (!read.ok) return read.exit;
-  return reportValidation(await checkTicket(root, read.draft, decisionDependencies(built.context, io, "implement")), io);
+  const dependencies = decisionDependencies(built.context, io, "implement");
+  const checked = withCheckOutput(read.draft, root, dependencies, io);
+  if (!checked.ok) return checked.exit;
+  return reportValidation(await checkTicket(root, checked.draft, dependencies), io);
 }
 
 async function runWorker(args: ParsedArgs, io: CliIo): Promise<number> {

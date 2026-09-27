@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writ
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
+import type { CheckRunner } from "../actions/checks.js";
 import { runCli } from "../cli.js";
 import type { TransportRequest } from "../jev/client.js";
 import { readRecord, type ProjectRecords, type RecordKind } from "../project/records.js";
@@ -193,6 +194,7 @@ export function demoProject(options: { readonly root?: string; readonly config?:
         stderr: (text) => (stderr += text),
         hostProbes: { env: {}, exec: () => "git version demo" },
         jev: { env: { JFLOW_JEV_API_KEY: DEMO_KEY }, transport: jev.transport, sleep: async () => undefined },
+        checkRunner: demoCheckRunner,
         packageDirectory,
       });
       const json: Json = stdout.trim() === "" ? undefined : JSON.parse(stdout);
@@ -244,14 +246,36 @@ export function ticketDraft(id: string, dependsOn: readonly string[] = []) {
   return { id, title: `Ticket ${id}`, acceptanceCriteria: [`npm test -- ${id.toLowerCase()} passes`], dependsOn };
 }
 
-/** Verification evidence for a ticket: its one check, passing or failing. */
+/** A ticket's one check command; the demo runner fails it when it carries `# failing`. */
+function checkCommand(ticketId: string, passing: boolean): string {
+  return `npm test -- ${ticketId.toLowerCase()}${passing ? "" : " # failing"}`;
+}
+
+/**
+ * The demos' check runner (issue #32): a ticket's `npm test` passes unless
+ * marked `# failing`, `git diff` prints a diff, and anything else is unknown.
+ */
+export const demoCheckRunner: CheckRunner = (command) => {
+  if (command.startsWith("git diff")) {
+    return { output: "diff --git a/src/t1.ts b/src/t1.ts\n@@ -0,0 +1 @@\n", exitCode: 0, timedOut: false };
+  }
+  if (command.startsWith("npm test")) {
+    const failing = command.endsWith("# failing");
+    return { output: failing ? "1 failed, 2 passed\n" : "3 passed\n", exitCode: failing ? 1 : 0, timedOut: false };
+  }
+  return { output: `sh: ${command}: not found\n`, exitCode: 127, timedOut: false };
+};
+
+/** An evidence file for a ticket: its one check for jflow to run, passing or failing. */
 export function evidence(ticketId: string, passing = true) {
-  const check = `npm test -- ${ticketId.toLowerCase()}`;
-  return {
-    ticketId,
-    evidence: [{ kind: "check", source: check, text: passing ? "3 passed" : "1 failed, 2 passed", exitCode: passing ? 0 : 1 }],
-    checks: [check],
-  };
+  return { ticketId, evidence: [], checks: [checkCommand(ticketId, passing)] };
+}
+
+/** That check's output as recorded evidence, for commands that take it as given (troubleshoot, resume verify). */
+export function checkEvidence(ticketId: string, passing = true) {
+  const check = checkCommand(ticketId, passing);
+  const run = demoCheckRunner(check, { cwd: ".", timeoutMs: 1000 });
+  return { ticketId, evidence: [{ kind: "check", source: check, text: run.output, exitCode: run.exitCode }], checks: [check] };
 }
 
 /**

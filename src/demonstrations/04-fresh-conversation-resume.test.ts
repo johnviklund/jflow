@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { writeRecord } from "../project/records.js";
-import { acceptedPlan, completeTicket, demoProject, evidence, ticketDraft, type Demo } from "../testing/demo.js";
+import { acceptedPlan, checkEvidence, completeTicket, demoProject, evidence, ticketDraft, type Demo } from "../testing/demo.js";
 
 /**
  * Demonstration 4 (RELEASE-SCOPE.md, D15): a fresh conversation reconciles
@@ -49,7 +49,7 @@ describe("demonstration 4: resuming in a fresh conversation", () => {
     // The unsupported claim is checked, not trusted: reconcile waits for it.
     expect((await second.run("resume", "reconcile")).code).toBe(1);
     second.jev.answer("validate", "not-met", "evidence-contradicts");
-    const verified = await second.run("resume", "verify", second.draft("t3.json", evidence("T3", false)));
+    const verified = await second.run("resume", "verify", second.draft("t3.json", checkEvidence("T3", false)));
     expect(verified.json).toMatchObject({ validation: { disposition: "returned-to-fix" } });
     expect(second.record("tickets").tickets.find((ticket) => ticket.id === "T3")).toMatchObject({ status: "done" });
 
