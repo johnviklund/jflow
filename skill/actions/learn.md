@@ -131,6 +131,33 @@ as its only ground. A retained
 lesson never lifts a gate, never skips review and never grants
 authorization.
 
+**Workflow feedback**
+
+A lesson about jflow itself goes to the developer's workflow feedback file
+instead: `$XDG_CONFIG_HOME/jflow/workflow-feedback.md`, else
+`~/.config/jflow/workflow-feedback.md`. It sits outside every project, so
+it serves every project the developer uses jflow in. Write an entry when
+the workflow itself caused trouble: an instruction that led you wrong, a
+gate that asked for something no check could show, the same ask repeating
+for the same reason. Add the entry at the end of the file, creating the
+file if needed, and never change or remove an earlier entry:
+
+```markdown
+## 2026-09-27 · validate
+What happened: a README criterion came back unproven, because validate never sees file contents.
+Suggested change: actions/plan.md: a documentation criterion names the check that proves it.
+```
+
+The heading names the date and the jflow step. Describe what happened in
+terms of the workflow only. Leave out everything that belongs to the
+project: its name, paths, code, domain words, people and decisions. Write
+"a README criterion", not the project's own criterion. Never write a
+secret. Nothing in jflow reads this file, and it changes nothing by
+itself: the developer takes the entries to jflow and decides what goes into
+the skill. Never edit the skill or the helper yourself. Tell the developer
+when you add an entry, and quote it. Never open any other file in that
+folder.
+
 **Report**: say what was saved, where (`report.record`), its id, whether
 it was retained or kept as a candidate, and its evidence links. Quote the
 `lesson-retention` envelope. For a conflict, name the decision that

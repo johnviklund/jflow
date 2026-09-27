@@ -399,6 +399,15 @@ The file sits outside every project, so no project read or commit reaches
 it. `JFLOW_JEV_API_KEY`, when set, takes precedence. `check-host` reports
 whether the key file was found, never its value.
 
+## Workflow feedback
+
+When the workflow itself causes trouble in a project, the agent adds an
+entry to `~/.config/jflow/workflow-feedback.md`: the date, the jflow step,
+what happened and a suggested change to the skill. Entries describe the
+workflow only, never the project, so nothing project-specific moves between
+projects. Nothing reads the file automatically. Bring it to this
+repository from time to time and decide what goes into the skill.
+
 ## Tested on
 
 ChatGPT desktop 26.908.70816, Linux, 2026-09-26: all host checks pass

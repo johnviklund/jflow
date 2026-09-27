@@ -149,6 +149,10 @@ parts only the agent can honour.
   the threshold and the evidence it lacked, one line per item (a table
   for several). Then give the options and your recommendation. The
   developer should never have to open a record to know why you ask.
+- When the workflow itself caused trouble, add an entry to the
+  developer's workflow feedback file (`actions/learn.md`, "Workflow
+  feedback"). It holds workflow mechanics only, never anything from the
+  project.
 - Secrets never go into project files or the conversation. Never read or
   print the Jev key file. If the helper reports the Jev API key missing,
   show the developer its message and wait, rather than proceeding without
