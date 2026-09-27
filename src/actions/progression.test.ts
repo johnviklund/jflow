@@ -129,6 +129,26 @@ describe("moving to the next ticket", () => {
     expect(progressOf(h)).toMatchObject({ assignedTicketId: "T2", authorizationScope: "plan" });
   });
 
+  it("starts the first ticket after the developer's whole-plan authorization without asking Jev, then asks again", async () => {
+    const h = project([ticket("T1", "ready"), ticket("T2", "ready", ["T1"])], { ...WHOLE_PLAN, firstStartAuthorized: true });
+    const transport = jev(PROCEED);
+
+    const first = await nextTicket(h.root, dependencies(h, transport));
+
+    expect(first).toMatchObject({ kind: "started", ticket: { id: "T1" } });
+    expect(first).not.toHaveProperty("escalation");
+    expect(transport.sent).toHaveLength(0);
+    expect(progressOf(h).firstStartAuthorized).toBeUndefined();
+
+    writeRecord(h.root, "tickets", { tickets: [ticket("T1", "done"), ticket("T2", "ready", ["T1"])] });
+    const { assignedTicketId: _started, ...between } = progressOf(h);
+    writeRecord(h.root, "progress", between);
+    const second = await nextTicket(h.root, dependencies(h, transport));
+
+    expect(second).toMatchObject({ kind: "started", ticket: { id: "T2" }, escalation: expect.any(String) });
+    expect(transport.sent).toHaveLength(1);
+  });
+
   it("gives escalate the authorization, the ticket's dependencies and the latest review, so a routine start can proceed", async () => {
     const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], {
       ...WHOLE_PLAN,

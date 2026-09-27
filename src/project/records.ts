@@ -322,6 +322,12 @@ export interface ProgressRecord {
   readonly authorizationScope?: AuthorizationScope;
   /** The developer's words of authorization, recorded as said (D28). */
   readonly authorizationNote?: string;
+  /**
+   * Whole-plan authorization no ticket has started under yet: the
+   * developer's authorization is itself the decision at that first start,
+   * so `escalate` is not asked there (D44 as amended 2026-09-27).
+   */
+  readonly firstStartAuthorized?: boolean;
   readonly assignedTicketId?: string;
   /** The assigned ticket has changes available to assess. */
   readonly ticketChangesPresent: boolean;
@@ -1187,6 +1193,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
       "executionAuthorized",
       "authorizationScope",
       "authorizationNote",
+      "firstStartAuthorized",
       "assignedTicketId",
       "ticketChangesPresent",
       "fixAttempts",
@@ -1227,6 +1234,13 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
   const authorizationNote = optionalString(doc["authorizationNote"], "authorizationNote", issues);
   if (!executionAuthorized && authorizationNote !== undefined) {
     issues.add("authorizationNote", "must be absent when execution is not authorized");
+  }
+  let firstStartAuthorized: boolean | undefined;
+  if (doc["firstStartAuthorized"] !== undefined) {
+    firstStartAuthorized = requireBoolean(doc["firstStartAuthorized"], "firstStartAuthorized", issues);
+    if (!executionAuthorized || authorizationScope !== "plan") {
+      issues.add("firstStartAuthorized", "only whole-plan authorization covers its first start");
+    }
   }
 
   let fixAttempts: Record<string, number> | undefined;
@@ -1436,6 +1450,7 @@ const validateProgress: Validator<ProgressRecord> = (value, issues) => {
     {
       authorizationScope,
       authorizationNote,
+      firstStartAuthorized,
       assignedTicketId: optionalString(doc["assignedTicketId"], "assignedTicketId", issues),
       changeOwnership,
       fixAttempts,

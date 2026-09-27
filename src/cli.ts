@@ -341,7 +341,8 @@ records that the ticket in progress applied a diagnosis's recommended fix,
 under recorded execution authorization.
 "implement next" picks the next eligible ticket in plan order. Under
 whole-plan authorization it asks escalate at next-ticket and starts the
-ticket on proceed; otherwise it asks the developer without Jev. After the
+ticket on proceed, except the first start after the developer authorized,
+which their authorization covers; otherwise it asks the developer without Jev. After the
 developer's proceed is recorded on that ask's envelope (decide choose),
 "--escalation <env>" starts the ticket on it without asking Jev again. It returns
 needs-independence-check while a parked ticket has not been checked

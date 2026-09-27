@@ -189,7 +189,8 @@ export function startTicket(
     tickets: tickets.tickets.map((entry) => (entry.id === target ? started : entry)),
   });
   if (!nextTickets.ok) return refuse("the ticket cannot be started as recorded", nextTickets.issues);
-  const nextProgress = validateRecord("progress", { ...progress, assignedTicketId: target, ticketChangesPresent: true });
+  const { firstStartAuthorized: _covered, ...unstarted } = progress;
+  const nextProgress = validateRecord("progress", { ...unstarted, assignedTicketId: target, ticketChangesPresent: true });
   if (!nextProgress.ok) return refuse("the progress record cannot be updated", nextProgress.issues);
   writeRecord(root, "tickets", nextTickets.record);
   writeRecord(root, "progress", nextProgress.record);

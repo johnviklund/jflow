@@ -168,6 +168,7 @@ describe("acceptPlan", () => {
         executionAuthorized: true,
         authorizationScope: "plan",
         authorizationNote: "approved, implement the whole plan",
+        firstStartAuthorized: true,
       },
     });
     expect(readRecord(h.root, "plan")).toMatchObject({ record: { status: "accepted" } });

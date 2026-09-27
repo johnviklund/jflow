@@ -155,7 +155,8 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
 - `src/actions/progression.ts`, `independence.ts` — whole-plan progress
   (issue #12, D29, D30). `implement next` picks the next eligible ticket
   in plan order. Under whole-plan authorization it asks `escalate` at
-  `next-ticket` before every start, and `proceed` starts the ticket;
+  `next-ticket` before every start but the first one after the developer
+  authorized (`progress.firstStartAuthorized`, D44 as amended), and `proceed` starts the ticket;
   `implement start` there only restarts the ticket in progress. Without whole-plan
   authorization it asks the developer without Jev. It reports
   `needs-independence-check`, or `waiting` with reasons, and then starts

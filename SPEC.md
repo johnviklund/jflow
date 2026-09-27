@@ -451,7 +451,11 @@ claim that Jev improves routing (D36).
   - `escalate` (**binding**, D44): one general question at every
     human-facing boundary (next ticket under whole-plan authorization, a
     failed fix attempt, a disputed finding, a conflicting lesson, a resume
-    discrepancy): must the human be consulted before proceeding? Answer
+    discrepancy): must the human be consulted before proceeding? The first
+    ticket start after the developer authorizes the whole plan is not asked:
+    their authorization is the decision there (amended 2026-09-27, third
+    jflow trial; Jev could not judge a start the developer had just
+    authorized and answered unsure every time). Answer
     `proceed` or `escalate` with a closed reason code and confidence; the
     packet carries the boundary kind so it can be split per boundary later
     by D46 replay. First threshold conservative (D45).

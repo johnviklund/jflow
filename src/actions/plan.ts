@@ -368,7 +368,7 @@ export function recordSetAsides(root: string, setAsides: readonly TestabilitySet
 
 /** Applies an authorization to the progress record, checking a named ticket exists. */
 function authorize(root: string, progress: ProgressRecord, authorization: Authorization): Progressed {
-  const { assignedTicketId: _previous, ...rest } = progress;
+  const { assignedTicketId: _previous, firstStartAuthorized: _unused, ...rest } = progress;
   if (authorization.scope === "plan") {
     if (authorization.ticketId !== undefined) {
       return refuse(
@@ -382,6 +382,8 @@ function authorize(root: string, progress: ProgressRecord, authorization: Author
         executionAuthorized: true,
         authorizationScope: "plan",
         authorizationNote: authorization.note,
+        // The developer's authorization is the decision at the first start (D44).
+        firstStartAuthorized: true,
       },
     };
   }

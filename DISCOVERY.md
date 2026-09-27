@@ -868,6 +868,12 @@ Hard rules never reach Jev and always ask: D7 consequential conflicts
 (requirements, scope, workflow rules, permissions), D16/D17 continuing without
 Jev, and the D27/D28 acceptance gates. They are not escalation call sites.
 
+Amended 2026-09-27 (developer's decision after the third jflow trial): the
+first ticket start after the developer authorizes the whole plan is not a
+call site. Their authorization is the human decision at that start; asking
+whether to consult them again, with nothing run since, is redundant, and in
+three trials Jev answered it unsure every time. Every later start is asked.
+
 ### D45: The first escalation threshold is conservative, lowered only by proposal
 
 Source: user's acceptance of grill Q3, 2026-09-20. Applies D37's basis rule to

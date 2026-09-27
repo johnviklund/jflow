@@ -152,6 +152,14 @@ export async function nextTicket(
 
   const boundary = summary(target.id, target.title);
 
+  // The developer has just authorized the whole plan and nothing has started
+  // since: their authorization is the decision at this start, so Jev is not asked (D44).
+  if (progress.firstStartAuthorized === true) {
+    const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
+    if (!started.ok) return { kind: "refused", reason: started.reason };
+    return { kind: "started", ...started.outcome };
+  }
+
   // A proceed already chosen at this very boundary starts the ticket; asking Jev again would never let it.
   if (options.escalation !== undefined) {
     const chosen = chosenProceed(root, options.escalation, `Boundary: next-ticket. ${boundary}`);

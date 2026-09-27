@@ -21,10 +21,17 @@ describe("demonstration 9: when the developer is asked", () => {
     await demo.run("plan", "authorize", "--scope", "plan", "--note", "implement the whole plan");
     const boundary = (kind: string) => demo.draft(`${kind}.json`, { kind, summary: `at ${kind}`, excerpts: [{ source: "records", text: "T1 is next" }] });
 
+    // The first start right after the developer's whole-plan authorization is theirs already: Jev is not asked.
+    const before = demo.jev.calls.length;
+    const first = await demo.run("implement", "next");
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ kind: "started", ticket: { id: "T1" } });
+    expect(demo.jev.calls).toHaveLength(before);
+
     demo.jev.answer("escalate", "proceed", "routine");
-    const proceeded = await demo.run("implement", "next");
+    const proceeded = await demo.run("escalate", boundary("other"));
     expect(proceeded.code).toBe(0);
-    expect(proceeded.json).toMatchObject({ kind: "started", ticket: { id: "T1" } });
+    expect(proceeded.json).toMatchObject({ ask: false });
     expect(demo.asks).toEqual([]);
 
     demo.jev.answer("escalate", "escalate", "consequential");
