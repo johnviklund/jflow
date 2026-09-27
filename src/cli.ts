@@ -912,19 +912,19 @@ function withCheckOutput<T extends ValidationInput>(
   io: CliIo,
 ): { readonly ok: true; readonly draft: T } | { readonly ok: false; readonly exit: number } {
   const settings = dependencies.context.configuration.settings;
-  const timeout = settings["checks.timeoutMs"];
-  const ran = runTicketChecks(draft, {
+  const checked = runTicketChecks(draft, {
     runner: io.checkRunner ?? processCheckRunner(process.env),
     cwd: root,
-    timeoutMs: typeof timeout === "number" ? timeout : 600_000,
+    // resolveConfiguration fills in the package default.
+    timeoutMs: settings["checks.timeoutMs"] as number,
     maxChars: sharingLimitsFrom(dependencies.context.configuration).maxPacketChars,
     knownSecrets: dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [],
   });
-  if (!ran.ok) {
-    io.stdout(`${JSON.stringify({ ok: false, kind: "refused", reason: ran.reason }, null, 2)}\n`);
+  if (!checked.ok) {
+    io.stdout(`${JSON.stringify({ ok: false, kind: "refused", reason: checked.reason }, null, 2)}\n`);
     return { ok: false, exit: EXIT_NEEDS_HUMAN };
   }
-  return { ok: true, draft: { ...draft, ...ran.input } };
+  return { ok: true, draft: checked.input as T };
 }
 
 function reportValidation(result: TicketValidationResult | CheckResult, io: CliIo): number {
@@ -1576,7 +1576,10 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   const code = await runCommand(argv, {
     ...io,
     stdout: (text) => (stdout += text),
-    onJevDecision: (entry) => decisions.push(entry),
+    onJevDecision: (entry) => {
+      decisions.push(entry);
+      io.onJevDecision?.(entry);
+    },
   });
   io.stdout(withDecisions(stdout, decisions));
   return code;

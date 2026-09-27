@@ -241,7 +241,8 @@ function writePlanReview(root: string, review: PlanReview, asks: readonly string
         .join("; ")}. The plan is not complete. Fixing this is new work in the plan, which realign adds; the decision is yours.`,
     );
   }
-  const committed = review.disposition === "passed" ? commitPlanRecords(root, review, context) : undefined;
+  // A plan still waiting on the developer is not closed by a commit.
+  const committed = review.disposition === "passed" && reasons.length === 0 ? commitPlanRecords(root, review, context) : undefined;
   if (committed !== undefined && "refused" in committed) {
     reasons.push(`The plan is complete, but Git refused the commit of its records: ${committed.refused}. The records stay uncommitted.`);
   }

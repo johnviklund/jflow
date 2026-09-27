@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { constants } from "node:os";
 
 import { redact } from "../jev/evidence.js";
 import type { ValidationInput, VerificationEvidence } from "../jev/ticket-validation.js";
@@ -79,15 +80,24 @@ export function runTicketChecks(draft: ValidationInput, options: CheckOptions): 
 }
 
 /**
- * The real runner: `sh -c` in the project, stderr merged into stdout, the
- * Jev key removed from the environment, and the command killed at its limit.
+ * Runs `command` as a job in its own process group and, on the timeout's
+ * SIGTERM, kills that whole group, so nothing the check started (a test
+ * runner's workers, a server) outlives it. Stderr is merged into stdout.
+ */
+function shellScript(command: string): string {
+  return ["exec 2>&1", "set -m", `( ${command}`, ") &", "job=$!", `trap 'kill -KILL -$job 2>/dev/null; exit ${TIMEOUT_EXIT}' TERM`, "wait $job"].join("\n");
+}
+
+/**
+ * The real runner: `sh` in the project, the Jev key removed from the
+ * environment, and the check with everything it started stopped at its limit.
  */
 export function processCheckRunner(env: Readonly<Record<string, string | undefined>>): CheckRunner {
   const childEnv = Object.fromEntries(
     Object.entries(env).filter((entry): entry is [string, string] => entry[0] !== JEV_API_KEY_ENV_VAR && entry[1] !== undefined),
   );
   return (command, { cwd, timeoutMs }) => {
-    const result = spawnSync("sh", ["-c", `exec 2>&1\n${command}`], {
+    const result = spawnSync("sh", ["-c", shellScript(command)], {
       cwd,
       env: childEnv,
       timeout: timeoutMs,
@@ -98,6 +108,13 @@ export function processCheckRunner(env: Readonly<Record<string, string | undefin
     if (result.error !== undefined && !timedOut) {
       return { output: `jflow could not run the check: ${result.error.message}`, exitCode: 127, timedOut: false };
     }
-    return { output: result.stdout ?? "", exitCode: timedOut ? null : result.status, timedOut };
+    const output = result.stdout ?? "";
+    if (timedOut) return { output, exitCode: null, timedOut: true };
+    if (result.status === null && result.signal !== null) {
+      // Killed by a signal, not by jflow's limit: the shell's convention, 128 plus the signal number.
+      const number = constants.signals[result.signal as keyof typeof constants.signals] ?? 0;
+      return { output: `${output}[jflow: the check was killed by ${result.signal}]\n`, exitCode: 128 + number, timedOut: false };
+    }
+    return { output, exitCode: result.status, timedOut: false };
   };
 }

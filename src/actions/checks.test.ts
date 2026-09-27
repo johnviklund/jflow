@@ -1,3 +1,7 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { processCheckRunner, runTicketChecks, type CheckOptions, type CheckRunner } from "./checks.js";
@@ -118,6 +122,27 @@ describe("processCheckRunner", () => {
     const result = run('echo "key=${JFLOW_JEV_API_KEY:-unset}"', { cwd: process.cwd(), timeoutMs: 10_000 });
 
     expect(result.output).toBe("key=unset\n");
+  });
+
+  it("stops everything the check started when it runs out of time", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "jflow-check-"));
+    const run = processCheckRunner({ PATH: process.env["PATH"] });
+
+    run(`sh -c 'sleep 1; echo late > ${dir}/marker'; echo after`, { cwd: dir, timeoutMs: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    expect(existsSync(join(dir, "marker"))).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reports a check killed by a signal as failed, not as out of time", () => {
+    const run = processCheckRunner({ PATH: process.env["PATH"] });
+
+    const result = run("kill -KILL $$", { cwd: process.cwd(), timeoutMs: 10_000 });
+
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).not.toBeNull();
   });
 
   it("stops a check at its time limit", () => {
