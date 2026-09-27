@@ -232,6 +232,7 @@ describe("jflow helper CLI", () => {
     const written = await run(["plan", "write", draft], h.root);
     const looksGood = await run(["plan", "accept", "--note", "looks good"], h.root);
     const implementAsks = await run(["run", "implement"], h.root);
+    h.writeFile("jflow/config.json", JSON.stringify({ stageModels: { review: { model: "gpt-sol" } } }));
     const go = await run(["plan", "authorize", "--scope", "ticket", "--ticket", "T1", "--note", "go ahead with T1"], h.root);
     const implementReady = await run(["run", "implement"], h.root);
 
@@ -320,12 +321,34 @@ describe("jflow helper CLI", () => {
 
     const both = await run(["plan", "accept", "--note", "approved, implement the whole plan", "--authorize", "plan"], h.root);
 
-    expect(both.code).toBe(EXIT_OK);
+    // No models are configured: the authorization is recorded, and the developer is asked for them.
+    expect(both.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(both.json()).toMatchObject({ ok: true, missingStageModels: ["implement", "review"], askHuman: { kind: "human-ask" } });
     const outcome = both.json()["outcome"] as Record<string, Record<string, unknown>>;
     expect(outcome["plan"]?.["status"]).toBe("accepted");
     expect(outcome["progress"]?.["authorizationScope"]).toBe("plan");
     expect((await run(["plan", "accept", "--authorize", "sideways"], h.root)).code).toBe(EXIT_NEEDS_HUMAN);
     expect((await run(["plan", "authorize", "--scope", "plan"], h.root)).code).toBe(EXIT_NEEDS_HUMAN);
+  });
+
+  it("asks for the models of the stages an authorization will run, reading jflow/config.json by default", async () => {
+    const h = harness({ state: { specificationAccepted: true } });
+    writeFileSync(
+      join(h.root, "plan.json"),
+      JSON.stringify({ title: "p", summary: "s", tickets: [{ id: "T1", title: "t", acceptanceCriteria: ["c"], dependsOn: [] }] }),
+    );
+    await run(["plan", "write", "plan.json"], h.root);
+    await run(["plan", "accept", "--note", "looks good"], h.root);
+
+    const oneTicket = await run(["plan", "authorize", "--scope", "ticket", "--ticket", "T1", "--note", "do T1"], h.root);
+    h.writeFile("jflow/config.json", JSON.stringify({ stageModels: { implement: { model: "gpt-terra" }, review: { model: "gpt-sol" } } }));
+    const configured = await run(["plan", "authorize", "--scope", "plan", "--note", "implement the whole plan"], h.root);
+
+    expect(oneTicket.code).toBe(EXIT_NEEDS_HUMAN);
+    expect(oneTicket.json()).toMatchObject({ ok: true, missingStageModels: ["review"] });
+    expect(configured.code).toBe(EXIT_OK);
+    expect(configured.json()).not.toHaveProperty("askHuman");
+    expect(configured.json()).not.toHaveProperty("missingStageModels");
   });
 });
 

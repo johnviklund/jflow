@@ -158,6 +158,9 @@ const asksIn = (json: Json): Json[] => {
  * nothing of jflow's yet. `root` reopens an existing project in a new
  * session, with a new Jev and no memory of the last one.
  */
+/** The configuration a demo runs with unless it passes its own: a model for every stage that runs sub-agents. */
+const DEMO_CONFIG = { stageModels: { implement: { model: "demo-implementer" }, review: { model: "demo-reviewer" } } };
+
 export function demoProject(options: { readonly root?: string; readonly config?: unknown } = {}): Demo {
   const fresh = options.root === undefined;
   const root = options.root ?? mkdtempSync(join(tmpdir(), "jflow-demo-"));
@@ -174,8 +177,9 @@ export function demoProject(options: { readonly root?: string; readonly config?:
     git("add", "README.md");
     git("commit", "--quiet", "-m", "initial");
   }
-  const config = options.config === undefined ? undefined : join(drafts, "config.json");
-  if (config !== undefined) writeFileSync(config, JSON.stringify(options.config));
+  // A developer who has chosen their models; a demo about configuration passes its own.
+  const config = join(drafts, "config.json");
+  writeFileSync(config, JSON.stringify(options.config ?? DEMO_CONFIG));
   const jev = new ScriptedJev();
   const asks: Demo["asks"] = [];
 
@@ -188,7 +192,7 @@ export function demoProject(options: { readonly root?: string; readonly config?:
       let stdout = "";
       let stderr = "";
       const takesConfig = !["specification", "changes", "conflict", "traces", "check-host"].includes(argv[0]!) && !argv.includes("--config");
-      const code = await runCli(config !== undefined && takesConfig ? [...argv, "--config", config] : argv, {
+      const code = await runCli(takesConfig ? [...argv, "--config", config] : argv, {
         cwd: root,
         stdout: (text) => (stdout += text),
         stderr: (text) => (stderr += text),

@@ -45,7 +45,7 @@ asked, answered or not (see "Rules the helper cannot enforce for you").
 | `scripts/jflow resume`, `resume verify\|reconcile\|settle` | Start of a fresh conversation on existing work: reconcile the records with the files and evidence before continuing; see "Resuming in a fresh conversation". |
 | `scripts/jflow wrap <draft.json>`, `wrap show` | End a session: write the resume record a fresh session continues from, and report where the records and the project disagree without reconciling it. Never pushes, merges, publishes or cleans up; see `actions/wrap.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
-| `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. |
+| `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. Every command reads the project's configuration from `jflow/config.json` unless `--config` names another file. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. Run it before claiming anything about the host. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 | `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
@@ -195,8 +195,8 @@ write an assignment file outside the project with `stage`, `role`,
 - `askHuman` (exit 1): no model is configured, or the model is
   unavailable and there is no fallback, or the fallback is unavailable
   too. Ask the developer which model to use, and start nothing. Their
-  answer goes into the configuration (`stageModels`); then assign the
-  worker again.
+  answer goes into the configuration (`stageModels` in
+  `jflow/config.json`); then assign the worker again.
 - A role the stage does not declare, or more workers than the stage
   allows at once, is refused. Choose within them.
 - Where the stage configures `efforts`, add `"effort"`: one of them.

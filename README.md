@@ -415,6 +415,21 @@ refused, and the agent's own account goes in as a `claim`.
   it started.
 - Output that is a diff is refused.
 
+## Models and configuration
+
+Each project keeps its configuration in `jflow/config.json`; every command
+reads it unless `--config` names another file. `stageModels` sets the model
+for each stage that runs sub-agents:
+
+```json
+{ "stageModels": { "implement": { "model": "<model>" }, "review": { "model": "<model>" } } }
+```
+
+When you authorize implementation and a stage it will run sub-agents in has
+no model (review always; implement when you authorize the whole plan), the
+authorization is recorded and you are asked for the models before anything
+starts. jflow never picks a model itself.
+
 ## Jev key
 
 Put your Jev API key in a file in your home folder, once per computer. This

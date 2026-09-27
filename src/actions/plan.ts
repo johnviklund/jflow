@@ -15,6 +15,7 @@ import { readEnvelope, recordChoice, type DecisionDependencies } from "../jev/de
 import { readProjectState } from "../project/state.js";
 import { hasText, isRecord } from "../validation.js";
 import { classificationOf, classifyContent, TESTABILITY_CHOICES, type ClassifyResult } from "./classify.js";
+import type { ResolutionContext } from "./resolve.js";
 import { refuse, unreadable, unreadableState, type Refusal } from "./refusal.js";
 
 /**
@@ -480,4 +481,20 @@ export function authorizeExecution(root: string, authorization: Authorization): 
     ok: true,
     outcome: { plan: existing.record, tickets: readTickets(root), progress: progress.record },
   };
+}
+
+/**
+ * The stages an authorization will run sub-agents in that have no model
+ * configured: review always (its reviewer is a sub-agent), and implement
+ * under whole-plan authorization while each ticket goes to its own
+ * implementer (`implement.ticketWorker`). The developer is asked for them
+ * when they authorize, not at the first sub-agent.
+ */
+export function stagesWithoutModel(context: ResolutionContext, scope: Authorization["scope"]): string[] {
+  const { configuration } = context;
+  const stages = [
+    ...(scope === "plan" && configuration.settings["implement.ticketWorker"] !== false ? ["implement"] : []),
+    "review",
+  ];
+  return stages.filter((stage) => configuration.stageModels[stage] === undefined);
 }

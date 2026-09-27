@@ -43,6 +43,15 @@ tickets against an unaccepted specification.
    Record only what was said; `--note` is stored as the authorization's
    basis. If you cannot tell whether they authorized, ask; do not pick the
    wider reading.
+4. An authorization that returns `missingStageModels` (exit 1, with
+   `askHuman`) is recorded, but a stage it will run sub-agents in has no
+   model: `implement` (one sub-agent per ticket under whole-plan
+   authorization) or `review` (always). Ask the developer which model each
+   stage should use, and start nothing until they answer. Write their
+   answer into `jflow/config.json` under `stageModels`, for example
+   `{"stageModels": {"implement": {"model": "<model>"}, "review": {"model": "<model>"}}}`,
+   keeping anything already in the file, and run `scripts/jflow validate`.
+   Never pick the models yourself.
 
 **Method**
 

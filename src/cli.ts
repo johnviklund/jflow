@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve as resolvePath } from "node:path";
 
 import { claimChanges } from "./actions/changes.js";
 import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
@@ -63,9 +63,11 @@ import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
   authorizeExecution,
+  stagesWithoutModel,
   writeClassifiedPlan,
   type Authorization,
   type PlanDraft,
+  type PlanResult,
 } from "./actions/plan.js";
 import type { ResolutionContext } from "./actions/resolve.js";
 import {
@@ -514,9 +516,13 @@ function readDraft<T>(target: string | undefined, what: string, io: CliIo): Draf
   }
 }
 
-function readConfigurationDocument(path: string | undefined, cwd: string): unknown {
-  if (path === undefined) return {};
-  return JSON.parse(readFileSync(resolvePath(cwd, path), "utf8"));
+/** Where a project keeps its configuration when no `--config` names another file. */
+const PROJECT_CONFIG = join("jflow", "config.json");
+
+function readConfigurationDocument(path: string | undefined, cwd: string, root: string): unknown {
+  if (path !== undefined) return JSON.parse(readFileSync(resolvePath(cwd, path), "utf8"));
+  const projectConfig = join(root, PROJECT_CONFIG);
+  return existsSync(projectConfig) ? JSON.parse(readFileSync(projectConfig, "utf8")) : {};
 }
 
 function buildContext(options: ParsedArgs["options"], io: CliIo): ContextResult {
@@ -532,7 +538,7 @@ function buildContext(options: ParsedArgs["options"], io: CliIo): ContextResult 
 
   let document: unknown;
   try {
-    document = readConfigurationDocument(options["config"], io.cwd);
+    document = readConfigurationDocument(options["config"], io.cwd, resolvePath(io.cwd, options["root"] ?? "."));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -704,14 +710,12 @@ async function runPlan(args: ParsedArgs, io: CliIo): Promise<number> {
         io.stderr(`${parsed.message}\n${USAGE}`);
         return EXIT_NEEDS_HUMAN;
       }
-      return report(
-        acceptPlan(root, {
-          now: new Date().toISOString(),
-          ...(note === undefined ? {} : { note }),
-          ...(parsed.authorization === undefined ? {} : { authorize: parsed.authorization }),
-        }),
-        io,
-      );
+      const accepted = acceptPlan(root, {
+        now: new Date().toISOString(),
+        ...(note === undefined ? {} : { note }),
+        ...(parsed.authorization === undefined ? {} : { authorize: parsed.authorization }),
+      });
+      return parsed.authorization === undefined ? report(accepted, io) : reportAuthorization(accepted, parsed.authorization, args, io);
     }
     case "authorize": {
       const parsed = parseAuthorization(args.options["scope"], args.options["ticket"], note);
@@ -719,12 +723,37 @@ async function runPlan(args: ParsedArgs, io: CliIo): Promise<number> {
         io.stderr(`${parsed.ok ? "plan authorize needs --scope plan|ticket" : parsed.message}\n${USAGE}`);
         return EXIT_NEEDS_HUMAN;
       }
-      return report(authorizeExecution(root, parsed.authorization), io);
+      return reportAuthorization(authorizeExecution(root, parsed.authorization), parsed.authorization, args, io);
     }
     default:
       io.stderr(`plan needs one of write, accept, authorize\n${USAGE}`);
       return EXIT_NEEDS_HUMAN;
   }
+}
+
+/**
+ * Reports a recorded authorization and, when a stage it will run sub-agents
+ * in has no model configured, asks the developer for them before anything
+ * starts, rather than at the first sub-agent.
+ */
+function reportAuthorization(result: PlanResult, authorization: Authorization, args: ParsedArgs, io: CliIo): number {
+  if (!result.ok) return report(result, io);
+  const built = buildContext(args.options, io);
+  if (!built.ok) {
+    io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+    return built.exit;
+  }
+  const missing = stagesWithoutModel(built.context, authorization.scope);
+  if (missing.length === 0) return report(result, io);
+  const askHuman: HumanAskEvent = {
+    kind: "human-ask",
+    reasons: [
+      `Execution is authorized, but no model is configured for ${missing.join(" and ")}. ` +
+        `Which model should each use? Record them under stageModels in ${PROJECT_CONFIG} before implementation starts.`,
+    ],
+  };
+  io.stdout(`${JSON.stringify({ ...result, missingStageModels: missing, askHuman }, null, 2)}\n`);
+  return EXIT_NEEDS_HUMAN;
 }
 
 function runChanges(args: ParsedArgs, io: CliIo): number {
