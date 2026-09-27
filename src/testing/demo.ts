@@ -271,13 +271,6 @@ export function evidence(ticketId: string, passing = true) {
   return { ticketId, evidence: [], checks: [checkCommand(ticketId, passing)] };
 }
 
-/** That check's output as recorded evidence, for troubleshoot, which takes the failed check as given. */
-export function checkEvidence(ticketId: string, passing = true) {
-  const check = checkCommand(ticketId, passing);
-  const run = demoCheckRunner(check, { cwd: ".", timeoutMs: 1000 });
-  return { ticketId, evidence: [{ kind: "check", source: check, text: run.output, exitCode: run.exitCode }], checks: [check] };
-}
-
 /**
  * Takes a project from idea to an accepted plan: specification written,
  * its decision confirmed and accepted in the developer's words, the plan

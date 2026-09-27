@@ -5,10 +5,10 @@ import { claimChanges } from "./actions/changes.js";
 import { decideConflict, raiseConflict, type ConflictDraft } from "./actions/conflicts.js";
 import { dispatch, type DispatchOutcome, type HumanAskEvent } from "./actions/dispatch.js";
 import { completeTicket } from "./actions/completion.js";
-import { processCheckRunner, runTicketChecks, type CheckRunner } from "./actions/checks.js";
+import { processCheckRunner, runCheck, runTicketChecks, type CheckOptions, type CheckRunner } from "./actions/checks.js";
 import { checkTicket, startTicket, type CheckInput, type CheckResult } from "./actions/implement.js";
 import { nextTicket, parkTicket, recordIndependence, type IndependenceInput } from "./actions/progression.js";
-import { unreadable } from "./actions/refusal.js";
+import { refuse, unreadable } from "./actions/refusal.js";
 import { decideFinding, recordReview, startReview, type FindingInput, type ReviewInput } from "./actions/review.js";
 import { decidePlanFinding, recordPlanReview, startPlanReview } from "./actions/plan-review.js";
 import { decideLesson, proposeLesson, type LessonDraft } from "./actions/learn.js";
@@ -178,7 +178,7 @@ Usage:
   jflow implement next [--escalation <env>]  [--root <dir>] [--config <file>]
   jflow implement park <ticket> --blocker <what blocks it> [--root <dir>]
   jflow implement independence <check.json>  [--root <dir>]
-  jflow troubleshoot start <failure.json>    [--root <dir>]
+  jflow troubleshoot start <failure.json>    [--root <dir>] [--config <file>]
   jflow troubleshoot record <diagnosis.json> [--root <dir>]
   jflow review start                         [--root <dir>] [--config <file>]
   jflow review record <review.json>          [--root <dir>] [--config <file>]
@@ -352,8 +352,9 @@ changes authorization. "implement independence" records why a ready
 ticket may start beside the parked ones: ticketId, dependencies,
 decisions and partialEdits.
 "troubleshoot start" takes ticketId (default: the ticket in progress) and
-the failed check (source, text, exitCode), and records it with a snapshot
-of the working tree. "troubleshoot record" takes id, finding, evidence and
+the failed check's command (check.source), runs it, and records its output
+and exit code with a snapshot of the working tree; output in the file is
+refused, and so is a check that passes when jflow runs it. "troubleshoot record" takes id, finding, evidence and
 recommendation. It is refused if the working tree changed meanwhile:
 troubleshoot never edits code.
 "review start" opens review of the assigned ticket once validate found
@@ -901,6 +902,19 @@ async function runDecide(args: ParsedArgs, io: CliIo): Promise<number> {
   }
 }
 
+/** How the helper runs checks here: the project root, the configured time limit, the evidence limit and the Jev key to blank. */
+function checkOptions(root: string, dependencies: DecisionDependencies, io: CliIo): CheckOptions {
+  const { configuration } = dependencies.context;
+  return {
+    runner: io.checkRunner ?? processCheckRunner(process.env),
+    cwd: root,
+    // resolveConfiguration fills in the package default.
+    timeoutMs: configuration.settings["checks.timeoutMs"] as number,
+    maxChars: sharingLimitsFrom(configuration).maxPacketChars,
+    knownSecrets: dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [],
+  };
+}
+
 /**
  * Runs the checks an evidence draft names and returns the draft with their
  * output (issue #32), or reports the refusal and returns its exit code.
@@ -911,15 +925,7 @@ function withCheckOutput<T extends ValidationInput>(
   dependencies: DecisionDependencies,
   io: CliIo,
 ): { readonly ok: true; readonly draft: T } | { readonly ok: false; readonly exit: number } {
-  const settings = dependencies.context.configuration.settings;
-  const checked = runTicketChecks(draft, {
-    runner: io.checkRunner ?? processCheckRunner(process.env),
-    cwd: root,
-    // resolveConfiguration fills in the package default.
-    timeoutMs: settings["checks.timeoutMs"] as number,
-    maxChars: sharingLimitsFrom(dependencies.context.configuration).maxPacketChars,
-    knownSecrets: dependencies.apiKey.status === "configured" ? [dependencies.apiKey.key] : [],
-  });
+  const checked = runTicketChecks(draft, checkOptions(root, dependencies, io));
   if (!checked.ok) {
     io.stdout(`${JSON.stringify({ ok: false, kind: "refused", reason: checked.reason }, null, 2)}\n`);
     return { ok: false, exit: EXIT_NEEDS_HUMAN };
@@ -1090,7 +1096,21 @@ function runTroubleshoot(args: ParsedArgs, io: CliIo): number {
     case "start": {
       const read = readDraft<DiagnosisStart>(target, "troubleshoot start", io);
       if (!read.ok) return read.exit;
-      return report(startDiagnosis(root, read.draft, { now }), io);
+      const check = read.draft?.check as Partial<DiagnosisStart["check"]> | undefined;
+      if (check !== undefined && (check.text !== undefined || check.exitCode !== undefined)) {
+        return report(
+          refuse("the failure file holds the check's output; jflow runs the failed check itself, so give only its command as check.source"),
+          io,
+        );
+      }
+      if (typeof check?.source !== "string" || check.source.trim() === "") return report(startDiagnosis(root, read.draft, { now }), io);
+      const built = buildContext(args.options, io);
+      if (!built.ok) {
+        io.stdout(`${JSON.stringify(built.output, null, 2)}\n`);
+        return built.exit;
+      }
+      const ran = runCheck(check.source.trim(), checkOptions(root, decisionDependencies(built.context, io), io));
+      return report(startDiagnosis(root, { ...read.draft, check: { source: ran.source, text: ran.text, exitCode: ran.exitCode } }, { now }), io);
     }
     case "record": {
       const read = readDraft<DiagnosisFinding>(target, "troubleshoot record", io);

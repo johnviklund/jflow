@@ -11,16 +11,18 @@ never edits code, not even to try out a fix.
 
    ```json
    {
-     "check": { "source": "npm test -- parser", "text": "<the output>", "exitCode": 1 }
+     "check": { "source": "npm test -- parser" }
    }
    ```
 
-   `source` is the exact command, and `text` is its output as it ran. The
+   `source` is the exact command that failed, as it runs from the project
+   root. Never put its output in the file; jflow runs it again itself. The
    ticket in progress is used unless you add `"ticketId"`.
-2. `scripts/jflow troubleshoot start <failure.json>`. The helper records
-   the failure as a diagnosis (`DIAG-1`, `DIAG-2`, …) and snapshots the
-   working tree. A refusal means the check did not fail, names no ticket in
-   the plan, or could not be recorded.
+2. `scripts/jflow troubleshoot start <failure.json>`. The helper runs the
+   check, records its output and exit code as a diagnosis (`DIAG-1`,
+   `DIAG-2`, …) and snapshots the working tree. A refusal means the check
+   passed when jflow ran it, the file held output, it names no ticket in
+   the plan, or it could not be recorded.
 3. Diagnose it (Method below).
 4. Write the diagnosis file outside the project:
 

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { constants } from "node:os";
 
-import { redact } from "../jev/evidence.js";
+import { cutMiddle, redact } from "../jev/evidence.js";
 import type { ValidationInput, VerificationEvidence } from "../jev/ticket-validation.js";
 import { JEV_API_KEY_ENV_VAR } from "../secrets.js";
 
@@ -38,16 +38,6 @@ export type CheckRunResult = { readonly ok: true; readonly input: ValidationInpu
 /** The exit code recorded for a check stopped at its time limit, as `timeout(1)` reports it. */
 const TIMEOUT_EXIT = 124;
 
-/** Keeps the start and end of long output, where test names and totals are. */
-function cutMiddle(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const note = (removed: number) => `\n[… ${removed} characters cut from the middle by jflow …]\n`;
-  const room = max - note(text.length).length;
-  const head = Math.ceil(room / 2);
-  const tail = Math.floor(room / 2);
-  return `${text.slice(0, head)}${note(text.length - head - tail)}${text.slice(text.length - tail)}`;
-}
-
 /**
  * Runs every check the draft names and returns the draft with their output
  * as check evidence, followed by the agent's claims. Check output the agent
@@ -70,13 +60,16 @@ export function runTicketChecks(draft: ValidationInput, options: CheckOptions): 
   }
 
   const perCheck = Math.max(200, Math.floor((options.maxChars * 0.8) / commands.length));
-  const ran: VerificationEvidence[] = commands.map((command) => {
-    const run = options.runner(command, { cwd: options.cwd, timeoutMs: options.timeoutMs });
-    const stopped = run.timedOut ? `\n[jflow: stopped after ${options.timeoutMs} ms; the check did not finish]` : "";
-    const text = cutMiddle(redact(`${run.output}${stopped}`, options.knownSecrets), perCheck);
-    return { kind: "check", source: command, text, exitCode: run.timedOut || run.exitCode === null ? TIMEOUT_EXIT : run.exitCode };
-  });
+  const ran = commands.map((command) => runCheck(command, { ...options, maxChars: perCheck }));
   return { ok: true, input: { ...draft, evidence: [...ran, ...supplied], checks: commands } };
+}
+
+/** Runs one check and records it as check evidence: output redacted and cut to `maxChars`, a timeout as failed. */
+export function runCheck(command: string, options: CheckOptions): VerificationEvidence & { readonly exitCode: number } {
+  const run = options.runner(command, { cwd: options.cwd, timeoutMs: options.timeoutMs });
+  const stopped = run.timedOut ? `\n[jflow: stopped after ${options.timeoutMs} ms; the check did not finish]` : "";
+  const text = cutMiddle(redact(`${run.output}${stopped}`, options.knownSecrets), options.maxChars);
+  return { kind: "check", source: command, text, exitCode: run.timedOut || run.exitCode === null ? TIMEOUT_EXIT : run.exitCode };
 }
 
 /**

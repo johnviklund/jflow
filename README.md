@@ -167,7 +167,8 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   `implement start` and `next` refuse a ticket beside a parked one
   without such a check, or one that depends on a parked ticket.
 - `src/actions/troubleshoot.ts` — the helper side of `troubleshoot`
-  (issue #11). `troubleshoot start` records a failed check in
+  (issue #11). `troubleshoot start` runs the failed check again, as
+  `implement check` does, and records its output in
   `jflow/diagnoses.json` with a snapshot of the working tree: HEAD and a
   hash of each changed path. `troubleshoot record` adds the finding,
   evidence and recommended fix. It is refused if the tree changed in the
@@ -393,7 +394,8 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
 ## Checks run by jflow
 
 `implement check`, `ticket validate` and `resume verify` run the check
-commands an evidence file lists, with `sh -c` in the project, and record
+commands an evidence file lists, and `troubleshoot start` the failed check
+it names, with `sh` in the project, and record
 what they print (standard output and error together) and their exit codes.
 An agent never writes check output itself; a file that holds some is
 refused, and the agent's own account goes in as a `claim`.
@@ -405,7 +407,11 @@ refused, and the agent's own account goes in as a `claim`.
   is recorded or sent to Jev.
 - Output longer than the evidence limit (`evidenceSharing.maxPacketChars`,
   shared between the checks) is cut in the middle, keeping the start and
-  the end, where test names and totals usually are.
+  the end, where test names and totals usually are. When a Jev packet is
+  over its limit, its excerpts share it: short ones go whole, long ones
+  are cut in the middle to equal shares, so no excerpt crowds out another.
+- A check still running at its limit is stopped together with everything
+  it started.
 - Output that is a diff is refused.
 
 ## Jev key

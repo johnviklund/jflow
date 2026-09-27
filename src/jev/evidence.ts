@@ -95,6 +95,50 @@ function cut(text: string, length: number): string {
   return text.slice(0, code >= 0xd800 && code <= 0xdbff ? length - 1 : length);
 }
 
+/** The last `length` UTF-16 units, backing off rather than splitting a surrogate pair. */
+function cutEnd(text: string, length: number): string {
+  if (length <= 0) return "";
+  const start = text.length - length;
+  const code = text.charCodeAt(start);
+  return text.slice(code >= 0xdc00 && code <= 0xdfff ? start + 1 : start);
+}
+
+/**
+ * `text` in at most `max` units, keeping its start and its end and saying
+ * how much was cut between them: test names lead check output, and totals
+ * close it.
+ */
+export function cutMiddle(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const note = (removed: number) => `\n[… ${removed} characters cut from the middle by jflow …]\n`;
+  const room = max - note(text.length).length;
+  if (room <= 0) return cut(text, Math.max(0, max));
+  const head = cut(text, Math.ceil(room / 2));
+  const tail = cutEnd(text, Math.floor(room / 2));
+  return `${head}${note(text.length - head.length - tail.length)}${tail}`;
+}
+
+/** Below this many characters a cut excerpt says too little to be worth sending. */
+const MIN_EXCERPT_CHARS = 80;
+
+/**
+ * Shares `budget` among texts so the short ones go whole and the long ones
+ * get equal shares of what is left, each cut in the middle to its share.
+ */
+function shareBudget(lengths: readonly number[], budget: number): number[] {
+  const shares = lengths.map(() => 0);
+  const order = lengths.map((_, index) => index).sort((a, b) => lengths[a]! - lengths[b]!);
+  let left = Math.max(0, budget);
+  let remaining = lengths.length;
+  for (const index of order) {
+    const share = Math.floor(left / remaining);
+    shares[index] = Math.min(lengths[index]!, share);
+    left -= shares[index]!;
+    remaining -= 1;
+  }
+  return shares;
+}
+
 export function buildEvidencePacket(
   input: EvidenceInput,
   limits: SharingLimits,
@@ -119,7 +163,7 @@ export function buildEvidencePacket(
   }
   budget -= taskSummary.length;
 
-  const excerpts: { source: string; text: string }[] = [];
+  const shareable: { source: string; text: string }[] = [];
   for (const excerpt of input.excerpts) {
     const source = redact(excerpt.source, secrets);
     const scope = excerpt.scope ?? "excerpt";
@@ -130,19 +174,26 @@ export function buildEvidencePacket(
         continue;
       }
     }
-    const text = clean(source, excerpt.text);
-    if (budget <= 0) {
+    shareable.push({ source, text: clean(source, excerpt.text) });
+  }
+
+  // Excerpts share what is left fairly, so no single one crowds out the rest,
+  // and a cut one keeps its start and end (issue #32's review).
+  const shares = shareBudget(
+    shareable.map((excerpt) => excerpt.text.length),
+    budget,
+  );
+  const excerpts: { source: string; text: string }[] = [];
+  for (const [index, { source, text }] of shareable.entries()) {
+    const share = shares[index]!;
+    if (share >= text.length) {
+      excerpts.push({ source, text });
+    } else if (share < MIN_EXCERPT_CHARS) {
       omitted.push({ source, reason: "dropped: packet size limit reached" });
-      continue;
+    } else {
+      excerpts.push({ source, text: cutMiddle(text, share) });
+      omitted.push({ source, reason: "cut in the middle to the packet size limit" });
     }
-    if (text.length > budget) {
-      excerpts.push({ source, text: cut(text, budget) });
-      omitted.push({ source, reason: "truncated to the packet size limit" });
-      budget = 0;
-      continue;
-    }
-    excerpts.push({ source, text });
-    budget -= text.length;
   }
 
   return { decision: input.decision, taskSummary, candidates, excerpts, omitted };

@@ -82,30 +82,32 @@ describe("buildEvidencePacket", () => {
     expect(allowed.excerpts).toHaveLength(3);
   });
 
-  it("stays within the packet size limit, truncating and then dropping excerpts in order", () => {
+  it("stays within the packet size limit, sharing it so every excerpt keeps its start and end", () => {
+    const long = (label: string) => `${label}-START ${"x".repeat(900)} ${label}-END`;
     const packet = buildEvidencePacket(
       {
         decision: "validate",
         taskSummary: "s",
         candidates: [],
         excerpts: [
-          { source: "a", text: "x".repeat(900) },
-          { source: "b", text: "y".repeat(900) },
-          { source: "c", text: "z".repeat(900) },
+          { source: "a", text: long("A") },
+          { source: "b", text: long("B") },
+          { source: "c", text: "a short claim" },
         ],
       },
       { ...limits, maxPacketChars: 1500 },
     );
 
-    const sizes = packet.excerpts.map((excerpt) => excerpt.text.length);
-    expect(sizes.reduce((sum, size) => sum + size, 0) + "s".length).toBe(1500);
-    expect(packet.excerpts[0]?.text).toHaveLength(900);
-    expect(packet.omitted).toEqual(
-      expect.arrayContaining([
-        { source: "b", reason: "truncated to the packet size limit" },
-        { source: "c", reason: "dropped: packet size limit reached" },
-      ]),
-    );
+    const texts = packet.excerpts.map((excerpt) => excerpt.text);
+    expect(texts.reduce((sum, text) => sum + text.length, 0) + "s".length).toBeLessThanOrEqual(1500);
+    expect(packet.excerpts.map((excerpt) => excerpt.source)).toEqual(["a", "b", "c"]);
+    expect(texts[0]).toMatch(/^A-START[\s\S]*cut from the middle[\s\S]*A-END$/);
+    expect(texts[1]).toMatch(/^B-START[\s\S]*cut from the middle[\s\S]*B-END$/);
+    expect(texts[2]).toBe("a short claim");
+    expect(packet.omitted).toEqual([
+      { source: "a", reason: "cut in the middle to the packet size limit" },
+      { source: "b", reason: "cut in the middle to the packet size limit" },
+    ]);
   });
 
   it("cuts an oversized task summary to the limit rather than sending it whole", () => {

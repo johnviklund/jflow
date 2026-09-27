@@ -47,7 +47,10 @@ async function run(
     stderr: (text) => (stderr += text),
     hostProbes: { env, exec: () => "git version test" },
     jev,
-    checkRunner: (command) => ({ output: `ran ${command}\n1 passed`, exitCode: 0, timedOut: false }),
+    checkRunner: (command) =>
+      command.endsWith("# failing")
+        ? { output: `ran ${command}\n1 failed`, exitCode: 1, timedOut: false }
+        : { output: `ran ${command}\n1 passed`, exitCode: 0, timedOut: false },
     ...(packageDirectory === undefined ? {} : { packageDirectory }),
   });
   return { code, stdout, stderr, json: () => JSON.parse(stdout) as Record<string, unknown> };
@@ -858,15 +861,25 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     );
     await run(["implement", "start"], h.root);
     const drafts = join(h.root, ".jflow");
-    h.writeFile(".jflow/failure.json", JSON.stringify({ check: { source: "npm test", text: "1 failed", exitCode: 1 } }));
+    h.writeFile(".jflow/written.json", JSON.stringify({ check: { source: "npm test", text: "1 failed", exitCode: 1 } }));
+    h.writeFile(".jflow/passing.json", JSON.stringify({ check: { source: "npm test" } }));
+    h.writeFile(".jflow/failure.json", JSON.stringify({ check: { source: "npm test # failing" } }));
     h.writeFile(".jflow/diagnosis.json", JSON.stringify({ id: "DIAG-1", finding: "empty input", evidence: ["src/p.ts:1"], recommendation: "return []" }));
 
+    const written = await run(["troubleshoot", "start", join(drafts, "written.json")], h.root);
+    const passing = await run(["troubleshoot", "start", join(drafts, "passing.json")], h.root);
     const started = await run(["troubleshoot", "start", join(drafts, "failure.json")], h.root);
     const recorded = await run(["troubleshoot", "record", join(drafts, "diagnosis.json")], h.root);
     const fixed = await run(["implement", "fix", "DIAG-1", "--note", "returned []"], h.root);
 
+    expect(written.json()).toMatchObject({ ok: false, reason: expect.stringContaining("jflow runs the failed check itself") });
+    expect(passing.json()).toMatchObject({ ok: false, reason: expect.stringContaining("exited 0") });
     expect(started.code).toBe(EXIT_OK);
-    expect(started.json()).toMatchObject({ ok: true, outcome: { diagnosis: { id: "DIAG-1", ticketId: "T1" } } });
+    expect(started.json()).toMatchObject({
+      ok: true,
+      outcome: { diagnosis: { id: "DIAG-1", ticketId: "T1", check: { source: "npm test # failing", exitCode: 1 } } },
+    });
+    expect(JSON.stringify(started.json())).toContain("ran npm test # failing");
     expect(recorded.json()).toMatchObject({ ok: true, outcome: { diagnosis: { status: "diagnosed" } } });
     expect(fixed.code).toBe(EXIT_OK);
     expect(fixed.json()).toMatchObject({ ok: true, outcome: { diagnosis: { status: "applied", application: { ticketId: "T1" } } } });
