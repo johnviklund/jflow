@@ -38,6 +38,7 @@ import {
   reportDecision,
   type ChoiceMaker,
   type DecisionDependencies,
+  type JevDecisionEntry,
   type DecisionInput,
   type DecisionReport,
 } from "./jev/decisions.js";
@@ -109,6 +110,8 @@ export interface CliIo {
   };
   /** Runs a ticket's check commands; the real shell unless a test injects a script. */
   readonly checkRunner?: CheckRunner;
+  /** Told of each Jev decision asked while the command runs; `runCli` lists them in its output. */
+  readonly onJevDecision?: (entry: JevDecisionEntry) => void;
   /** The package directory an accepted proposal writes; the shipped package unless a test injects a copy. */
   readonly packageDirectory?: string;
 }
@@ -199,7 +202,9 @@ Usage:
   jflow traces clean [--root <dir>]
   jflow help
 
-Every command prints one JSON object. <request> is an action name or a
+Every command prints one JSON object, with jevDecisions listing each Jev
+decision it asked (answer, confidence, threshold, route, envelope, or why Jev
+could not be asked). <request> is an action name or a
 sentence; an ambiguous request returns a question rather than a guess.
 A specification draft holds title, problem, scenarios, acceptanceCriteria,
 constraints, exclusions and decisions (id, statement, basis); every
@@ -571,6 +576,7 @@ function decisionDependencies(context: ResolutionContext, io: CliIo, stage?: str
     transport: jev.transport,
     now: () => new Date().toISOString(),
     ...(jev.sleep === undefined ? {} : { sleep: jev.sleep }),
+    ...(io.onJevDecision === undefined ? {} : { onDecision: io.onJevDecision }),
     ...(stage === undefined ? {} : { stage }),
   };
 }
@@ -1559,7 +1565,37 @@ function runTraces(args: ParsedArgs, io: CliIo): number {
   }
 }
 
+/**
+ * Runs one command. Its JSON output also lists every Jev decision the command
+ * asked (issue #34), answered or not, under `jevDecisions`, so the agent can
+ * tell the developer about each one; a command that asked nothing lists none.
+ */
 export async function runCli(argv: readonly string[], io: CliIo): Promise<number> {
+  let stdout = "";
+  const decisions: JevDecisionEntry[] = [];
+  const code = await runCommand(argv, {
+    ...io,
+    stdout: (text) => (stdout += text),
+    onJevDecision: (entry) => decisions.push(entry),
+  });
+  io.stdout(withDecisions(stdout, decisions));
+  return code;
+}
+
+/** Adds `jevDecisions` to a command's one JSON object; any other output (help text) is left as it is. */
+function withDecisions(stdout: string, decisions: readonly JevDecisionEntry[]): string {
+  if (stdout.trim() === "") return stdout;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return stdout;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return stdout;
+  return `${JSON.stringify({ ...parsed, jevDecisions: decisions }, null, 2)}\n`;
+}
+
+async function runCommand(argv: readonly string[], io: CliIo): Promise<number> {
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);

@@ -6,7 +6,7 @@ import { runNext, type NextReport } from "../actions/next.js";
 import { resolveAction, type ResolutionContext } from "../actions/resolve.js";
 import type { JevApiKeyResult } from "../config/configuration.js";
 import { readProjectState } from "../project/state.js";
-import { routeByConfidence } from "../workflow/policy.js";
+import { confidenceThreshold, routeByConfidence } from "../workflow/policy.js";
 import type { DecisionAuthority, WorkflowPackage } from "../workflow/types.js";
 import {
   askJev,
@@ -111,7 +111,24 @@ export interface DecisionDependencies {
   readonly sleep?: (ms: number) => Promise<void>;
   /** The stage asking, for a fallback approved for one stage (issue #18). */
   readonly stage?: string;
+  /** Told of every decision asked, answered or not, so the developer can see it (issue #34). */
+  readonly onDecision?: (entry: JevDecisionEntry) => void;
 }
+
+/** One Jev decision as the developer is told of it: what was asked, what came back and what it led to. */
+export type JevDecisionEntry =
+  | {
+      readonly decision: string;
+      readonly status: "answered";
+      readonly answer: string;
+      readonly reasonCode?: string;
+      readonly confidence?: number;
+      readonly threshold: number;
+      readonly route: DecisionRoute;
+      readonly envelope: string;
+    }
+  | { readonly decision: string; readonly status: "needs-configuration" | "failed"; readonly note: string }
+  | { readonly decision: string; readonly status: "unlisted"; readonly answer: string };
 
 /** The first retry waits this long; each later one twice as long as the one before. */
 const RETRY_BACKOFF_MS = 1000;
@@ -302,11 +319,17 @@ async function ask(
     result = await askJev({ question, evidence: packet }, options);
     attempts += 1;
   }
-  if (result.kind === "needs-configuration") return result;
+  const tell = dependencies.onDecision ?? (() => undefined);
+  if (result.kind === "needs-configuration") {
+    tell({ decision, status: "needs-configuration", note: result.askHuman });
+    return result;
+  }
   if (result.kind === "failed" && rejectUnlisted && result.failure.unlisted !== undefined) {
+    tell({ decision, status: "unlisted", answer: result.failure.unlisted });
     return { kind: "unlisted", answer: result.failure.unlisted, traceReference: result.failure.traceReference };
   }
   if (result.kind === "failed") {
+    tell({ decision, status: "failed", note: `Jev could not be asked after ${attempts} attempt${attempts === 1 ? "" : "s"}: ${result.failure.error}` });
     const recorded = recordFailure(root, decision, result.failure, {
       now: dependencies.now(),
       ...(dependencies.stage === undefined ? {} : { stage: dependencies.stage }),
@@ -338,6 +361,16 @@ async function ask(
   };
   // Recorded before anyone reads the answer (issue #17).
   writeEnvelope(root, envelope);
+  tell({
+    decision,
+    status: "answered",
+    answer: summary.answer,
+    ...(summary.reasonCode === undefined ? {} : { reasonCode: summary.reasonCode }),
+    ...(summary.confidence === undefined ? {} : { confidence: summary.confidence }),
+    threshold: confidenceThreshold(workflowPackage, decision, kindOfPacket(decision, packet.taskSummary)),
+    route: routed.route,
+    envelope: envelope.id,
+  });
   return { kind: "answered", envelope };
 }
 

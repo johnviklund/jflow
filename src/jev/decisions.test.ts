@@ -19,6 +19,7 @@ import {
   routeAnswer,
   type DecisionDependencies,
   type DecisionEnvelope,
+  type JevDecisionEntry,
 } from "./decisions.js";
 import { listTraces } from "./traces.js";
 
@@ -151,6 +152,58 @@ describe("asking a declared decision by name", () => {
     expect(result).toMatchObject({ kind: "needs-configuration", askHuman: "No Jev API key is configured." });
     expect(transport.sent).toEqual([]);
     expect(listEnvelopes(h.root)).toEqual([]);
+  });
+});
+
+describe("telling the caller about every decision asked", () => {
+  it("reports an answered decision with its answer, confidence, threshold, route and envelope", async () => {
+    const h = harness();
+    const seen: JevDecisionEntry[] = [];
+    const confidence = above("escalate");
+    const transport = jevAnswering("escalate", "proceed", "routine", confidence);
+
+    const result = await askDecision(
+      h.root,
+      "escalate",
+      input,
+      dependencies(h, transport, { readQuestion: acceptedQuestion, onDecision: (entry) => seen.push(entry) }),
+    );
+
+    if (result.kind !== "answered") throw new Error("expected an answer");
+    expect(seen).toEqual([
+      {
+        decision: "escalate",
+        status: "answered",
+        answer: "proceed",
+        reasonCode: "routine",
+        confidence,
+        threshold: confidenceThreshold(pkg, "escalate"),
+        route: "act",
+        envelope: result.envelope.id,
+      },
+    ]);
+  });
+
+  it("reports a missing key and a failed call as decisions that got no answer", async () => {
+    const h = harness();
+    const seen: JevDecisionEntry[] = [];
+    const failing: JevTransport = async () => ({ status: 401, body: "unauthorized" });
+
+    await askDecision(
+      h.root,
+      "escalate",
+      input,
+      dependencies(h, failing, {
+        apiKey: { status: "missing", askHuman: "No Jev API key is configured.", mayProceedWithoutJev: false },
+        onDecision: (entry) => seen.push(entry),
+      }),
+    );
+    await askDecision(h.root, "escalate", input, dependencies(h, failing, { onDecision: (entry) => seen.push(entry) }));
+
+    expect(seen).toEqual([
+      { decision: "escalate", status: "needs-configuration", note: "No Jev API key is configured." },
+      { decision: "escalate", status: "failed", note: expect.any(String) },
+    ]);
   });
 });
 

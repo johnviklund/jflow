@@ -297,9 +297,9 @@ describe("jflow helper CLI", () => {
     const cleaned = await run(["traces", "clean"], h.root);
     const after = await run(["traces", "list"], h.root);
 
-    expect(listed.json()).toEqual({ ok: true, traces: [".jflow/traces/2026-09-23-escalate-abc.json"] });
-    expect(cleaned.json()).toEqual({ ok: true, removed: [".jflow/traces/2026-09-23-escalate-abc.json"] });
-    expect(after.json()).toEqual({ ok: true, traces: [] });
+    expect(listed.json()).toEqual({ ok: true, traces: [".jflow/traces/2026-09-23-escalate-abc.json"], jevDecisions: [] });
+    expect(cleaned.json()).toEqual({ ok: true, removed: [".jflow/traces/2026-09-23-escalate-abc.json"], jevDecisions: [] });
+    expect(after.json()).toEqual({ ok: true, traces: [], jevDecisions: [] });
     expect((await run(["traces", "purge"], h.root)).code).toBe(EXIT_NEEDS_HUMAN);
   });
 
@@ -701,6 +701,37 @@ describe("jflow helper CLI: Jev decisions and conflicts", () => {
     expect(unexplained.json()).toMatchObject({ ok: false, reason: expect.stringContaining("evidence-based reason") });
     expect(overridden.code).toBe(EXIT_OK);
     expect(overridden.json()).toMatchObject({ ok: true, validation: { disposition: "admitted-to-review" } });
+  });
+
+  it("lists every Jev decision a command asked in its output, and none when it asked nothing", async () => {
+    const h = harness({
+      state: { specificationAccepted: true, planAccepted: true, executionAuthorized: true, assignedTicketId: "T1" },
+      gitRepository: true,
+    });
+    h.writeFile(
+      "jflow/tickets.json",
+      JSON.stringify({
+        tickets: [{ id: "T1", title: "T1", acceptanceCriteria: ["parses an empty file", "reports a bad date"], dependsOn: [], status: "ready" }],
+      }),
+    );
+    const started = await run(["implement", "start"], h.root);
+    h.writeFile("named.json", JSON.stringify({ ticketId: "T1", evidence: [], checks: ["npm test"] }));
+    const checked = await run(["implement", "check", "named.json"], h.root, {}, jev("met", "evidence-satisfies"));
+
+    expect(started.json()).toMatchObject({ ok: true, jevDecisions: [] });
+    const decisions = checked.json()["jevDecisions"] as Array<Record<string, unknown>>;
+    expect(decisions).toHaveLength(2);
+    for (const entry of decisions) {
+      expect(entry).toMatchObject({
+        decision: "validate",
+        status: "answered",
+        answer: "met",
+        confidence: expect.any(Number),
+        threshold: expect.any(Number),
+        route: expect.any(String),
+        envelope: expect.stringMatching(/^ENV-/),
+      });
+    }
   });
 
   it("runs the ticket's checks itself and refuses check output the agent wrote", async () => {

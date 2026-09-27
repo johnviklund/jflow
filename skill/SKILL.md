@@ -20,6 +20,8 @@ checkout, built once with `npm run build`. Every command prints one
 JSON object on stdout. Exit code 0: the command ran. 1: the developer is
 needed (blocked, ambiguous, unknown, invalid configuration). 2: the project
 records or the workflow package cannot be read; stop and report the problem.
+Every object also carries `jevDecisions`: each Jev decision the command
+asked, answered or not (see "Rules the helper cannot enforce for you").
 
 | Command | Use |
 | --- | --- |
@@ -143,6 +145,13 @@ parts only the agent can honour.
 - A retained lesson is project knowledge. It never changes the workflow, a
   gate, a Jev question or policy, and never overrides an accepted decision.
   Re-check it against the task every time before applying it.
+- Tell the developer about every entry in `jevDecisions`, also when nothing
+  stops and nothing is asked: one plain line per decision, a table for
+  several. Say what was decided, Jev's answer, its confidence against
+  `threshold`, and what happened because of it, for example "Jev: proceed
+  at next-ticket (97%, threshold 95%); T3 started." For `failed` or
+  `needs-configuration`, say that Jev could not be asked and why (`note`).
+  Keep the envelope id to hand if the developer asks for it.
 - Every time you put an `askHuman` to the developer, explain it in plain
   words: what jflow checked, what came back, and why that stops the work
   here. Where Jev answered, give each answer with its confidence against

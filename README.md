@@ -375,7 +375,11 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
 - `src/cli.ts`, `bin/jflow.js` — the helper's command line (`status`, `run`,
   `validate`, `check-host`, `specification`, `plan`, `changes`, `next`,
   `todo`, `learn`, `wrap`, `resume`, `realign`, `decide`, `escalate`, `replay`, `proposal`, `implement`, `review`, `troubleshoot`,
-  `ticket`, `conflict`, `traces`); one JSON object per command. `npm run build`
+  `ticket`, `conflict`, `traces`); one JSON object per command. Each object
+  also lists `jevDecisions`: every Jev decision the command asked, with the
+  answer, confidence, threshold, route and envelope id, or why Jev could not
+  be asked (issue #34), so the agent can tell the developer about each one.
+  `npm run build`
   emits `dist/`.
 - `skill/` — the `jflow` skill directory in the layout the host documents:
   `SKILL.md`, `actions/<action>.md` method files (`status.md`, `next.md`,
