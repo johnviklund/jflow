@@ -216,14 +216,14 @@ asks the developer, because continuing without Jev needs their approval.
 
 ## Validating a ticket
 
-After the ticket's checks have run, write an evidence file outside the
-project:
+Once the ticket's checks pass when you run them, write an evidence file
+outside the project. It names the checks and holds your own account; it
+never holds check output:
 
 ```json
 {
   "ticketId": "T3",
   "evidence": [
-    { "kind": "check", "source": "npm test", "text": "<the output>", "exitCode": 0 },
     { "kind": "claim", "source": "implementer", "text": "<what you did>" }
   ],
   "checks": ["npm test", "npm run typecheck"]
@@ -231,19 +231,22 @@ project:
 ```
 
 While implementing, run `scripts/jflow implement check <evidence.json>`
-instead (see `actions/implement.md`): it records the evidence and counts a
-`not-met` on the ticket's fix counter. Otherwise run
-`scripts/jflow ticket validate <evidence.json>`. Evidence is
-check output, with the exact command as `source`, or your own claim.
-Never put a diff or file contents in it. `checks` lists every check the
-ticket has, so the helper can tell which ones have not run yet. Jev judges
-each accepted criterion separately. Act on `validation.disposition`:
+(see `actions/implement.md`): it also counts a `not-met` on the ticket's
+fix counter. Otherwise run `scripts/jflow ticket validate <evidence.json>`.
+Both run every command in `checks` in the project and record its output
+and exit code as check evidence, with the command as `source`: the
+evidence is what jflow saw, never what an agent copied or summarized. A
+file with `"kind": "check"` entries is refused. Each check stops at
+`checks.timeoutMs` and is then recorded as failed; credentials and the Jev
+key are blanked out of the output, and very long output is cut in the
+middle. A check whose output is a diff is refused. Jev judges each
+accepted criterion separately. Act on `validation.disposition`:
 
 - `returned-to-fix`: a criterion is not met, or no check covers it and
   `escalate` let you proceed. Fix it or add the missing check, run the
   checks again and validate again.
-- `needs-check`: run the commands in `missingChecks`, add their output to
-  the evidence and validate again.
+- `needs-check`: add the commands in `missingChecks` to `checks` and
+  validate again.
 - `admitted-to-review`: the ticket goes to review (`actions/review.md`).
 - `awaiting-developer` (exit 1): put `askHuman` to the developer and wait.
 

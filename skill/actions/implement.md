@@ -20,15 +20,20 @@ implementing it: without recorded authorization, ask. If the block is
 2. Implement the ticket (Method below). When the outcome says
    `ticketWorker: true`, a fresh sub-agent does steps 2 and 3 (see
    "One sub-agent per ticket" below).
-3. Run every check the ticket has. Write the evidence file outside the
-   project, in the shape `references/DECISIONS.md` shows under
-   "Validating a ticket". Once the ticket has failed before, also add
+3. Run the ticket's checks yourself until they pass. Then write the
+   evidence file outside the project, in the shape `references/DECISIONS.md`
+   shows under "Validating a ticket": the check commands in `checks`, and
+   your own account as a `claim`. Never put check output in it; jflow runs
+   the checks itself in step 4. Once the ticket has failed before, also add
    `"recommendation"`: the next step you would suggest to the developer
    if this attempt fails too. The helper refuses the check without one
    when this attempt could reach the limit.
-4. `scripts/jflow implement check <evidence.json>`. The helper records the
-   evidence under `.jflow/evidence/<ticket>.json`, asks `validate`, and
-   counts a `not-met`. Act on `validation.disposition`:
+4. `scripts/jflow implement check <evidence.json>`. The helper runs every
+   command in `checks` in the project, records their output and exit codes
+   with your claim under `.jflow/evidence/<ticket>.json`, asks `validate`,
+   and counts a `not-met`. A check still running at `checks.timeoutMs`
+   (default 10 minutes) is stopped and recorded as failed. It refuses an
+   evidence file that holds check output. Act on `validation.disposition`:
    - `admitted-to-review`: stop implementing. The ticket goes to `review`
      (`actions/review.md`). Report what was done and the evidence.
    - `returned-to-fix`: fix what `criteria` shows as `not-met`, or add the
@@ -37,8 +42,8 @@ implementing it: without recorded authorization, ask. If the block is
      not clear, diagnose it first with `troubleshoot`
      (`actions/troubleshoot.md`). Once its fix is made, record it with
      `scripts/jflow implement fix <id>` before checking again.
-   - `needs-check`: run the commands in `missingChecks`, add their output
-     and go back to step 4. This is not a fix attempt.
+   - `needs-check`: add the commands in `missingChecks` to `checks` and
+     go back to step 4. This is not a fix attempt.
    - exit 1 with `askHuman` (`awaiting-developer`, the fix limit, or Jev
      unavailable): put its reasons to the developer, with your
      recommendation, and wait. Do not try another fix first. For
@@ -82,8 +87,11 @@ the ticket, with role `implementer`, and record it first, as `SKILL.md`
 says under "Stage workers". Give it only what the ticket needs: the ticket
 id, title and accepted criteria, the parts of the specification they rest
 on, the test-naming rule below, and where the evidence file goes. It
-implements the ticket, runs the checks, writes the evidence file, and
-returns the files it changed and a few lines on what it did. It runs no
+implements the ticket, runs the checks while it works, writes the
+evidence file with the check commands and its claim, and returns the
+files it changed and a few lines on what it did. Only jflow's run of the
+checks in step 4 counts as evidence, so the sub-agent never copies or
+summarizes check output into the file. It runs no
 `scripts/jflow` command and never commits. You run steps 4 and 5, and the
 review, from its report. If the ticket comes back `returned-to-fix`, start
 a new sub-agent with the criteria not met or the blocking findings. List
@@ -92,17 +100,19 @@ review the ticket.
 
 The ticket's checks are the commands whose results its acceptance criteria
 depend on: the tests named in them, and the project's typecheck and test
-suite. Record the output of each check exactly as it ran, with the exact
-command as `source` and its exit code. Never record a diff or file
-contents. Your own summary goes in as a `claim`. A claim never admits a
-ticket.
+suite. List each one in `checks` exactly as it should run from the project
+root. jflow runs them, records their output and exit codes, blanks out
+anything that looks like a credential, and cuts very long output in the
+middle. A check whose output is a diff is refused. Your own summary goes
+in as a `claim`. A claim never admits a ticket.
 
 `validate` sees only that output, so make each criterion visible in it.
 Write one test per condition a criterion names, and name the test after
 the condition: "missing argument exits nonzero", "unreadable file exits
 nonzero", "invalid UTF-8 exits nonzero", not one "reports input errors"
-test for all three. Run the tests with a reporter that prints each test's
-name. A condition no test name shows reads as unproven, and the verdict
+test for all three. Name a test command whose reporter prints each test's
+name (for example `node --test --test-reporter=spec`). A condition no test
+name shows reads as unproven, and the verdict
 comes back unsure and goes to the developer.
 
 A failed test is the normal reason to ask the developer during

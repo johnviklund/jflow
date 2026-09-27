@@ -69,11 +69,11 @@ are what you have.
      edits. Continue it from those edits. Do not restart it, discard the
      edits or redo finished work. Changes that appeared since wrap are
      not in the list; they are discrepancies, not the ticket's work.
-   - `unverified`: done tickets that no validation supports. Run their
+   - `unverified`: done tickets that no validation supports. Name their
      checks (`checks` lists the recorded ones; otherwise the ticket's own
-     test commands) and record the output with
-     `scripts/jflow resume verify <evidence.json>`, the evidence file of
-     `ticket validate`. It never changes the ticket's status. Reconcile
+     test commands) in the evidence file of `ticket validate` and run
+     `scripts/jflow resume verify <evidence.json>`; jflow runs them and
+     records the output. It never changes the ticket's status. Reconcile
      refuses until every one is verified: a claim is checked, never
      trusted.
    - `affected`: the only tickets to look at. Leave the others alone.

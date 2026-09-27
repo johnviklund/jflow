@@ -322,7 +322,8 @@ authorization: the authorized ticket, or under whole-plan authorization
 the one named. It refuses while another ticket is in progress and reports
 the delegation limits and the fix counter. "implement check" takes the
 same evidence file as "ticket validate" plus an optional recommendation,
-records it under .jflow/evidence, asks validate, and counts a not-met on
+runs its checks, records their output with the claims under
+.jflow/evidence, asks validate, and counts a not-met on
 the ticket's one fix counter; at the limit it asks escalate, and an
 attempt that could reach the limit needs the recommendation. Its
 "workers" lists the sub-agents that worked on the ticket. It never
@@ -383,10 +384,12 @@ to choose, Jev not asked) or rejected: an answer outside the options,
 recorded in the workers record, on which no worker starts. Pass the
 envelope to "worker assign" as selection (envelope, and by, reason and
 evidence when setting it aside) to record following or overriding it.
-"ticket validate" asks the binding validate decision once per accepted
-criterion over ticketId, evidence (kind check or claim, source, text,
-exitCode) and checks (the ticket's commands). The validation's disposition
-is returned-to-fix, admitted-to-review, needs-check (run missingChecks) or
+"ticket validate" runs every command in checks in the project, records its
+output and exit code, and asks the binding validate decision once per
+accepted criterion over that output and the evidence file's claims (kind
+claim, source, text); check output written into the file is refused. Each
+check stops at the checks.timeoutMs setting. The validation's disposition
+is returned-to-fix, admitted-to-review, needs-check (add missingChecks) or
 awaiting-developer; it exits 1 only with "askHuman". "ticket override" sets
 one criterion's verdict aside (--criterion is zero-based) and settles the
 ticket again; an agent needs --reason and --evidence.
@@ -1322,7 +1325,10 @@ async function runResume(args: ParsedArgs, io: CliIo): Promise<number> {
     case "verify": {
       const read = readDraft<ValidationInput>(target, "resume verify", io);
       if (!read.ok) return read.exit;
-      return reportValidation(await verifyTicket(root, read.draft, decisionDependencies(built.context, io)), io);
+      const dependencies = decisionDependencies(built.context, io);
+      const checked = withCheckOutput(read.draft, root, dependencies, io);
+      if (!checked.ok) return checked.exit;
+      return reportValidation(await verifyTicket(root, checked.draft, dependencies), io);
     }
     case "reconcile": {
       let draft: ReconcileDraft = {};

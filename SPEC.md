@@ -458,7 +458,11 @@ claim that Jev improves routing (D36).
   - `validate` (**binding**, D47): per criterion `met` / `not-met` /
     `insufficient-evidence` over the ticket's accepted acceptance criteria
     and the recorded verification evidence (test results, check outputs,
-    the implementer's claim). Not the diff, not the repository. It judges
+    the implementer's claim). Check output is recorded by the helper, which
+    runs the check commands the agent names; the agent never supplies it
+    (changed 2026-09-27, issue #32: in two trials an agent summarized test
+    output in place of the output, and validate could not judge it). Not
+    the diff, not the repository. It judges
     whether evidence satisfies stated criteria, not code quality or omitted
     requirements. `not-met` returns the ticket to fix; all `met` admits it
     to review; `insufficient-evidence` runs the missing check or, if none

@@ -271,7 +271,7 @@ export function evidence(ticketId: string, passing = true) {
   return { ticketId, evidence: [], checks: [checkCommand(ticketId, passing)] };
 }
 
-/** That check's output as recorded evidence, for commands that take it as given (troubleshoot, resume verify). */
+/** That check's output as recorded evidence, for troubleshoot, which takes the failed check as given. */
 export function checkEvidence(ticketId: string, passing = true) {
   const check = checkCommand(ticketId, passing);
   const run = demoCheckRunner(check, { cwd: ".", timeoutMs: 1000 });

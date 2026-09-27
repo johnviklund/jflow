@@ -69,8 +69,9 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   and `ticketWorker`: under whole-plan authorization, with
   `implement.ticketWorker` on (the default), each ticket goes to a fresh
   implementer sub-agent so the main conversation stays short.
-  `implement check` records the ticket's check output under
-  `.jflow/evidence/` in the form `validate` consumes, asks `validate`, and
+  `implement check` runs the ticket's checks (`src/actions/checks.ts`,
+  issue #32), records their output under `.jflow/evidence/` in the form
+  `validate` consumes, asks `validate`, and
   keeps the ticket's one fix counter (`progress.fixAttempts`, D48). The
   ticket's first failure only returns it to fix; each later one is an
   unsuccessful fix attempt. At `review.fixRetryLimit` (default 2)
@@ -381,6 +382,24 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
 - `src/testing/` — the project-directory test harness: set up a directory in
   a known workflow state, run a request, assert the resulting files and the
   human-ask events raised. Test scaffolding, not library API.
+
+## Checks run by jflow
+
+`implement check`, `ticket validate` and `resume verify` run the check
+commands an evidence file lists, with `sh -c` in the project, and record
+what they print (standard output and error together) and their exit codes.
+An agent never writes check output itself; a file that holds some is
+refused, and the agent's own account goes in as a `claim`.
+
+- Each check stops at `checks.timeoutMs` (default 600000, 10 minutes) and
+  is then recorded as failed, with a note saying it did not finish.
+- `JFLOW_JEV_API_KEY` is removed from the checks' environment. Output that
+  looks like a credential, and the Jev key itself, is blanked out before it
+  is recorded or sent to Jev.
+- Output longer than the evidence limit (`evidenceSharing.maxPacketChars`,
+  shared between the checks) is cut in the middle, keeping the start and
+  the end, where test names and totals usually are.
+- Output that is a diff is refused.
 
 ## Jev key
 
