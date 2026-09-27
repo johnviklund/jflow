@@ -43,15 +43,22 @@ tickets against an unaccepted specification.
    Record only what was said; `--note` is stored as the authorization's
    basis. If you cannot tell whether they authorized, ask; do not pick the
    wider reading.
-4. An authorization that returns `missingStageModels` (exit 1, with
-   `askHuman`) is recorded, but a stage it will run sub-agents in has no
-   model: `implement` (one sub-agent per ticket under whole-plan
+4. A recorded authorization reports `stageModels`: the model each stage
+   it will run sub-agents in uses, from the developer's defaults
+   (`~/.config/jflow/config.json`) or this project's `jflow/config.json`,
+   which overrides them. Tell the developer which models the work will use,
+   and that they can name others for this plan.
+   With `missingStageModels` (exit 1, with `askHuman`) a stage has no
+   model at all: `implement` (one sub-agent per ticket under whole-plan
    authorization) or `review` (always). Ask the developer which model each
-   stage should use, and start nothing until they answer. Write their
-   answer into `jflow/config.json` under `stageModels`, for example
+   stage should use, and whether it is for this project only or their
+   default for every project. Start nothing until they answer. Write it
+   under `stageModels` in `jflow/config.json` or in their defaults file,
+   for example
    `{"stageModels": {"implement": {"model": "<model>"}, "review": {"model": "<model>"}}}`,
    keeping anything already in the file, and run `scripts/jflow validate`.
-   Never pick the models yourself.
+   A model named for this plan only goes into `jflow/config.json`. Never
+   pick the models yourself.
 
 **Method**
 

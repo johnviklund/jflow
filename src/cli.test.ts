@@ -331,6 +331,35 @@ describe("jflow helper CLI", () => {
     expect((await run(["plan", "authorize", "--scope", "plan"], h.root)).code).toBe(EXIT_NEEDS_HUMAN);
   });
 
+  it("uses the developer's default models, lets the project override them, and says which models the plan will use", async () => {
+    const h = harness({ state: { specificationAccepted: true } });
+    writeFileSync(
+      join(h.root, "plan.json"),
+      JSON.stringify({ title: "p", summary: "s", tickets: [{ id: "T1", title: "t", acceptanceCriteria: ["c"], dependsOn: [] }] }),
+    );
+    await run(["plan", "write", "plan.json"], h.root);
+    await run(["plan", "accept", "--note", "looks good"], h.root);
+    const home = mkdtempSync(join(tmpdir(), "jflow-user-"));
+    const userConfigFile = join(home, "config.json");
+    writeFileSync(userConfigFile, JSON.stringify({ stageModels: { implement: { model: "gpt-terra" }, review: { model: "gpt-sol" } } }));
+    h.writeFile("jflow/config.json", JSON.stringify({ stageModels: { review: { model: "claude-sonnet-5" } } }));
+
+    let stdout = "";
+    const code = await runCli(["plan", "authorize", "--scope", "plan", "--note", "implement the whole plan"], {
+      cwd: h.root,
+      stdout: (text) => (stdout += text),
+      stderr: () => undefined,
+      jev: { env: {}, transport: noJev },
+      userConfigFile,
+    });
+    rmSync(home, { recursive: true, force: true });
+
+    expect(code).toBe(EXIT_OK);
+    const output = JSON.parse(stdout) as Record<string, unknown>;
+    expect(output).not.toHaveProperty("askHuman");
+    expect(output["stageModels"]).toEqual({ implement: { model: "gpt-terra" }, review: { model: "claude-sonnet-5" } });
+  });
+
   it("asks for the models of the stages an authorization will run, reading jflow/config.json by default", async () => {
     const h = harness({ state: { specificationAccepted: true } });
     writeFileSync(

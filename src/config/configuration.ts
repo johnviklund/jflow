@@ -350,6 +350,37 @@ export function jevKeyFilePath(
   return join(configHome, "jflow", "jev-key");
 }
 
+/** The developer's own defaults for every project: `jflow/config.json` beside the key file. */
+export function userConfigPath(
+  env: Readonly<Record<string, string | undefined>>,
+  home: string = homedir(),
+): string {
+  const configHome = env["XDG_CONFIG_HOME"]?.trim() || join(home, ".config");
+  return join(configHome, "jflow", "config.json");
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * The developer's defaults with the project's configuration over them: each
+ * stage's model entry and each setting the project names replaces the
+ * default one, and everything else keeps the default. A layer that is not an
+ * object is returned as it is, for validation to report.
+ */
+export function layerConfiguration(defaults: unknown, project: unknown): unknown {
+  if (defaults === undefined) return project;
+  if (project === undefined) return defaults;
+  if (!isPlainObject(defaults) || !isPlainObject(project)) return isPlainObject(project) ? defaults : project;
+  const layered: Record<string, unknown> = { ...defaults, ...project };
+  for (const key of ["stageModels", "settings"] as const) {
+    if (isPlainObject(defaults[key]) && isPlainObject(project[key])) {
+      layered[key] = { ...defaults[key], ...project[key] };
+    }
+  }
+  return layered;
+}
+
 /** Reads the user's key file; undefined when it does not exist. */
 export function readJevKeyFile(env: Readonly<Record<string, string | undefined>>): string | undefined {
   try {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
-import { jevKeyFilePath, resolveConfiguration, resolveJevApiKey } from "./configuration.js";
+import { jevKeyFilePath, layerConfiguration, resolveConfiguration, resolveJevApiKey, userConfigPath } from "./configuration.js";
 
 const workflowPackage = loadShippedWorkflowPackage();
 
@@ -300,5 +300,35 @@ describe("jevKeyFilePath", () => {
 
   it("follows XDG_CONFIG_HOME when it is set", () => {
     expect(jevKeyFilePath({ XDG_CONFIG_HOME: "/cfg" }, "/home/dev")).toBe("/cfg/jflow/jev-key");
+  });
+});
+
+describe("userConfigPath", () => {
+  it("sits beside the key file, outside any project", () => {
+    expect(userConfigPath({}, "/home/dev")).toBe("/home/dev/.config/jflow/config.json");
+    expect(userConfigPath({ XDG_CONFIG_HOME: "/cfg" }, "/home/dev")).toBe("/cfg/jflow/config.json");
+  });
+});
+
+describe("layerConfiguration", () => {
+  it("lets the project override the developer's defaults stage by stage and setting by setting", () => {
+    const user = {
+      primaryModel: "gpt-astra",
+      stageModels: { implement: { model: "gpt-terra" }, review: { model: "gpt-sol", efforts: ["low"] } },
+      settings: { commitOnSuccess: false, "checks.timeoutMs": 60000 },
+    };
+    const project = { stageModels: { review: { model: "claude-sonnet-5" } }, settings: { commitOnSuccess: true } };
+
+    expect(layerConfiguration(user, project)).toEqual({
+      primaryModel: "gpt-astra",
+      stageModels: { implement: { model: "gpt-terra" }, review: { model: "claude-sonnet-5" } },
+      settings: { commitOnSuccess: true, "checks.timeoutMs": 60000 },
+    });
+  });
+
+  it("uses either layer alone, and leaves anything that is not an object for validation to report", () => {
+    expect(layerConfiguration(undefined, { settings: { commitOnSuccess: false } })).toEqual({ settings: { commitOnSuccess: false } });
+    expect(layerConfiguration({ stageModels: { review: { model: "m" } } }, undefined)).toEqual({ stageModels: { review: { model: "m" } } });
+    expect(layerConfiguration({}, "not an object")).toBe("not an object");
   });
 });

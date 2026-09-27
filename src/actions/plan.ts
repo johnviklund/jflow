@@ -491,10 +491,10 @@ export function authorizeExecution(root: string, authorization: Authorization): 
  * when they authorize, not at the first sub-agent.
  */
 export function stagesWithoutModel(context: ResolutionContext, scope: Authorization["scope"]): string[] {
-  const { configuration } = context;
-  const stages = [
-    ...(scope === "plan" && configuration.settings["implement.ticketWorker"] !== false ? ["implement"] : []),
-    "review",
-  ];
-  return stages.filter((stage) => configuration.stageModels[stage] === undefined);
+  return stagesRun(context, scope).filter((stage) => context.configuration.stageModels[stage] === undefined);
+}
+
+/** The stages an authorization will run sub-agents in. */
+export function stagesRun(context: ResolutionContext, scope: Authorization["scope"]): string[] {
+  return [...(scope === "plan" && context.configuration.settings["implement.ticketWorker"] !== false ? ["implement"] : []), "review"];
 }

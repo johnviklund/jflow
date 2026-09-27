@@ -417,18 +417,23 @@ refused, and the agent's own account goes in as a `claim`.
 
 ## Models and configuration
 
-Each project keeps its configuration in `jflow/config.json`; every command
-reads it unless `--config` names another file. `stageModels` sets the model
-for each stage that runs sub-agents:
+Your defaults for every project live in `~/.config/jflow/config.json`
+(beside the Jev key file; `$XDG_CONFIG_HOME/jflow/config.json` when that is
+set). Each project can override them in `jflow/config.json`, stage by stage
+and setting by setting; `--config` names another project file. Both use the
+same format; `stageModels` sets the model for each stage that runs
+sub-agents:
 
 ```json
 { "stageModels": { "implement": { "model": "<model>" }, "review": { "model": "<model>" } } }
 ```
 
-When you authorize implementation and a stage it will run sub-agents in has
-no model (review always; implement when you authorize the whole plan), the
-authorization is recorded and you are asked for the models before anything
-starts. jflow never picks a model itself.
+When you authorize implementation, jflow reports the models the work will
+use, so you can name others for this plan. If a stage it will run
+sub-agents in has no model in either file (review always; implement when
+you authorize the whole plan), the authorization is recorded and you are
+asked for the models before anything starts. jflow never picks a model
+itself.
 
 ## Jev key
 

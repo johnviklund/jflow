@@ -63,6 +63,7 @@ import { cleanTraces, listTraces } from "./jev/traces.js";
 import {
   acceptPlan,
   authorizeExecution,
+  stagesRun,
   stagesWithoutModel,
   writeClassifiedPlan,
   type Authorization,
@@ -76,7 +77,13 @@ import {
   writeSpecification,
   type SpecificationDraft,
 } from "./actions/specification.js";
-import { readJevKeyFile, resolveConfiguration, resolveJevApiKey } from "./config/configuration.js";
+import {
+  layerConfiguration,
+  readJevKeyFile,
+  resolveConfiguration,
+  resolveJevApiKey,
+  userConfigPath,
+} from "./config/configuration.js";
 import { readRecord, type CriterionVerdict, type RealignSource } from "./project/records.js";
 import { checkHostCapabilities, processProbeOptions, type HostProbeOptions } from "./host/capabilities.js";
 import { loadShippedWorkflowPackage } from "./workflow/package.js";
@@ -112,6 +119,12 @@ export interface CliIo {
   };
   /** Runs a ticket's check commands; the real shell unless a test injects a script. */
   readonly checkRunner?: CheckRunner;
+  /**
+   * The developer's default configuration for every project
+   * (`userConfigPath`), under the project's own. Only the real command line
+   * sets it, so tests never read the developer's home folder.
+   */
+  readonly userConfigFile?: string;
   /** Told of each Jev decision asked while the command runs; `runCli` lists them in its output. */
   readonly onJevDecision?: (entry: JevDecisionEntry) => void;
   /** The package directory an accepted proposal writes; the shipped package unless a test injects a copy. */
@@ -519,10 +532,16 @@ function readDraft<T>(target: string | undefined, what: string, io: CliIo): Draf
 /** Where a project keeps its configuration when no `--config` names another file. */
 const PROJECT_CONFIG = join("jflow", "config.json");
 
-function readConfigurationDocument(path: string | undefined, cwd: string, root: string): unknown {
-  if (path !== undefined) return JSON.parse(readFileSync(resolvePath(cwd, path), "utf8"));
-  const projectConfig = join(root, PROJECT_CONFIG);
-  return existsSync(projectConfig) ? JSON.parse(readFileSync(projectConfig, "utf8")) : {};
+/** A JSON file's contents, or undefined when there is no file. */
+function readJsonIfPresent(path: string): unknown {
+  return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
+}
+
+/** The developer's defaults (when the command line has them) with the project's configuration over them. */
+function readConfigurationDocument(path: string | undefined, cwd: string, root: string, userConfigFile: string | undefined): unknown {
+  const project = path !== undefined ? JSON.parse(readFileSync(resolvePath(cwd, path), "utf8")) : readJsonIfPresent(join(root, PROJECT_CONFIG));
+  const defaults = userConfigFile === undefined ? undefined : readJsonIfPresent(userConfigFile);
+  return layerConfiguration(defaults, project) ?? {};
 }
 
 function buildContext(options: ParsedArgs["options"], io: CliIo): ContextResult {
@@ -538,7 +557,7 @@ function buildContext(options: ParsedArgs["options"], io: CliIo): ContextResult 
 
   let document: unknown;
   try {
-    document = readConfigurationDocument(options["config"], io.cwd, resolvePath(io.cwd, options["root"] ?? "."));
+    document = readConfigurationDocument(options["config"], io.cwd, resolvePath(io.cwd, options["root"] ?? "."), io.userConfigFile);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -744,15 +763,23 @@ function reportAuthorization(result: PlanResult, authorization: Authorization, a
     return built.exit;
   }
   const missing = stagesWithoutModel(built.context, authorization.scope);
-  if (missing.length === 0) return report(result, io);
+  // The models the authorized work will use, so the developer can override one for this plan.
+  const stageModels = Object.fromEntries(
+    stagesRun(built.context, authorization.scope).flatMap((stage) => {
+      const configured = built.context.configuration.stageModels[stage];
+      return configured === undefined ? [] : [[stage, configured]];
+    }),
+  );
+  if (missing.length === 0) return report({ ...result, stageModels }, io);
   const askHuman: HumanAskEvent = {
     kind: "human-ask",
     reasons: [
       `Execution is authorized, but no model is configured for ${missing.join(" and ")}. ` +
-        `Which model should each use? Record them under stageModels in ${PROJECT_CONFIG} before implementation starts.`,
+        `Which model should each use? Record them under stageModels in ${PROJECT_CONFIG} for this project, ` +
+        `or in ${io.userConfigFile ?? "your jflow config.json beside the Jev key file"} as your defaults for every project, before implementation starts.`,
     ],
   };
-  io.stdout(`${JSON.stringify({ ...result, missingStageModels: missing, askHuman }, null, 2)}\n`);
+  io.stdout(`${JSON.stringify({ ...result, stageModels, missingStageModels: missing, askHuman }, null, 2)}\n`);
   return EXIT_NEEDS_HUMAN;
 }
 
@@ -1772,6 +1799,7 @@ export async function main(): Promise<void> {
   try {
     process.exitCode = await runCli(process.argv.slice(2), {
       cwd: process.cwd(),
+      userConfigFile: userConfigPath(process.env),
       stdout: (text) => process.stdout.write(text),
       stderr: (text) => process.stderr.write(text),
     });

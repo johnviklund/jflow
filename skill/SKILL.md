@@ -45,7 +45,7 @@ asked, answered or not (see "Rules the helper cannot enforce for you").
 | `scripts/jflow resume`, `resume verify\|reconcile\|settle` | Start of a fresh conversation on existing work: reconcile the records with the files and evidence before continuing; see "Resuming in a fresh conversation". |
 | `scripts/jflow wrap <draft.json>`, `wrap show` | End a session: write the resume record a fresh session continues from, and report where the records and the project disagree without reconciling it. Never pushes, merges, publishes or cleans up; see `actions/wrap.md`. |
 | `scripts/jflow run <request…>` | Resolve a request to one action and check its prerequisites; `status` and `next` run, the rest come back `ready` for their method file. |
-| `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. Every command reads the project's configuration from `jflow/config.json` unless `--config` names another file. |
+| `scripts/jflow validate [--config <file>]` | Check the workflow package and a configuration before doing anything. Every command reads the developer's defaults from `~/.config/jflow/config.json` and the project's configuration from `jflow/config.json` (or `--config`) over them. |
 | `scripts/jflow check-host` | Which host capabilities are verified by execution, and which are not. Run it before claiming anything about the host. |
 | `scripts/jflow specification write\|confirm\|reject\|accept` | Record what `brainstorm` produced and what the developer decided; see `actions/brainstorm.md`. |
 | `scripts/jflow plan write\|accept\|authorize` | Record the ticket breakdown, its acceptance, and execution authorization as separate facts; see `actions/plan.md`. |
