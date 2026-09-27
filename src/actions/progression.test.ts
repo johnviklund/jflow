@@ -129,6 +129,23 @@ describe("moving to the next ticket", () => {
     expect(progressOf(h)).toMatchObject({ assignedTicketId: "T2", authorizationScope: "plan" });
   });
 
+  it("gives escalate the authorization, the ticket's dependencies and the latest review, so a routine start can proceed", async () => {
+    const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], {
+      ...WHOLE_PLAN,
+      reviews: {
+        T1: { reviewer: { agent: "t1-reviewer", model: "gpt-review" }, disposition: "passed", findings: [], reviewedAt: now },
+      },
+    });
+    const transport = jev(PROCEED);
+
+    await nextTicket(h.root, dependencies(h, transport));
+
+    const body = transport.sent[0]?.body ?? "";
+    expect(body).toContain("Execution is authorized for the whole plan: implement the whole plan");
+    expect(body).toContain("T2 depends on T1, done.");
+    expect(body).toContain("T1 passed independent review by t1-reviewer (gpt-review)");
+  });
+
   it("hands each ticket to a fresh implementer sub-agent under whole-plan authorization, unless configured off", async () => {
     const first = project();
     const on = await nextTicket(first.root, dependencies(first, jev(PROCEED)));

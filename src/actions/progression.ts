@@ -169,6 +169,7 @@ export async function nextTicket(
       kind: "next-ticket",
       summary: boundary,
       excerpts: [
+        ...startEvidence(target, tickets, progress),
         ...summarizeParked(read.records).map((parked) => ({ source: `parked ${parked.id}`, text: parked.blocker })),
         ...(check === undefined
           ? []
@@ -316,4 +317,39 @@ function chosenProceed(
     };
   }
   return { ok: true };
+}
+
+/**
+ * What a routine start rests on: the recorded authorization, the ticket's
+ * dependencies and the latest review. Without them escalate cannot tell a
+ * routine start from an unsafe one, and every start goes to the developer.
+ */
+function startEvidence(
+  target: TicketRecord,
+  tickets: TicketsRecord,
+  progress: ProgressRecord,
+): { readonly source: string; readonly text: string }[] {
+  const note = progress.authorizationNote?.trim();
+  const dependencies =
+    target.dependsOn.length === 0
+      ? `${target.id} depends on no other ticket.`
+      : `${target.id} depends on ${target.dependsOn
+          .map((id) => `${id}, ${tickets.tickets.find((entry) => entry.id === id)?.status ?? "missing"}`)
+          .join("; ")}.`;
+  const latest = Object.entries(progress.reviews ?? {}).sort(([, a], [, b]) => b.reviewedAt.localeCompare(a.reviewedAt))[0];
+  return [
+    {
+      source: "authorization",
+      text: `Execution is authorized for the whole plan${note ? `: ${note}` : "."}`,
+    },
+    { source: "dependencies", text: dependencies },
+    ...(latest === undefined
+      ? []
+      : [
+          {
+            source: `review ${latest[0]}`,
+            text: `${latest[0]} ${latest[1].disposition} independent review by ${latest[1].reviewer.agent} (${latest[1].reviewer.model}) with ${latest[1].findings.length} finding${latest[1].findings.length === 1 ? "" : "s"}.`,
+          },
+        ]),
+  ];
 }
