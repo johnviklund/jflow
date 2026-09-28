@@ -18,7 +18,7 @@ import { completeTrace, startTrace } from "./traces.js";
  */
 
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-export const JEV_MODEL = "jev-latest";
+export const JEV_MODEL = "jev-1.13.0";
 
 /** A declared decision's question, as its question file carries it. */
 export interface DecisionQuestion {
@@ -29,6 +29,12 @@ export interface DecisionQuestion {
   readonly answers: readonly string[];
   /** The closed set every answer's reason code comes from (D35). */
   readonly reasons: readonly string[];
+  /**
+   * What each answer and reason code means, in plain words, keyed by its
+   * name. Jev judges against these descriptions, so an option without one is
+   * sent with its bare name.
+   */
+  readonly descriptions?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -52,6 +58,7 @@ export function loadDecisionQuestion(workflowPackage: WorkflowPackage, decision:
     prompt: file.prompt,
     answers: file.answers,
     reasons: file.reasons,
+    ...(file.descriptions === undefined ? {} : { descriptions: file.descriptions }),
   };
 }
 
@@ -162,7 +169,8 @@ export function jevRequestBody(
   evidence: EvidencePacket,
   frame: RequestFrame = REQUEST_FRAME,
 ): string {
-  const choices = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, name]));
+  // Each option carries its plain-language description, which is what Jev judges against.
+  const choices = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, question.descriptions?.[name] ?? name]));
   return JSON.stringify({
     model: frame.model,
     state: evidence,

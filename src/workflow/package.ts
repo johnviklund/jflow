@@ -509,6 +509,20 @@ function validateQuestionFile(
     issues.add(field("reasons"), "must be a non-empty array of distinct reason codes");
   }
 
+  // Plain-language descriptions of the options: Jev judges against these, not the bare names.
+  const descriptions = parsed["descriptions"];
+  if (descriptions !== undefined) {
+    const known = new Set([...(Array.isArray(answers) ? answers : []), ...(Array.isArray(reasons) ? reasons : [])]);
+    if (!isRecord(descriptions)) {
+      issues.add(field("descriptions"), "must be an object keyed by answer or reason code");
+    } else {
+      for (const [name, text] of Object.entries(descriptions)) {
+        if (!known.has(name)) issues.add(`${field("descriptions")}.${name}`, "describes neither an answer nor a reason code");
+        else if (typeof text !== "string" || text.trim() === "") issues.add(`${field("descriptions")}.${name}`, "must be a non-empty description");
+      }
+    }
+  }
+
   // Wording counts as accepted only with the developer's recorded acceptance
   // (D37): when, and in their words.
   const acceptance = parsed["acceptance"];
@@ -533,6 +547,7 @@ export interface ProposedQuestion {
   readonly prompt: string;
   readonly answers: readonly string[];
   readonly reasons: readonly string[];
+  readonly descriptions?: Readonly<Record<string, string>>;
 }
 
 export type ProposedQuestionResult =
@@ -558,6 +573,7 @@ export function validateProposedQuestion(value: unknown, decision: string): Prop
       prompt: file.prompt,
       answers: file.answers,
       reasons: file.reasons,
+      ...(file.descriptions === undefined ? {} : { descriptions: file.descriptions }),
     },
   };
 }

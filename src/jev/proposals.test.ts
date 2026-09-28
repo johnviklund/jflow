@@ -311,6 +311,19 @@ describe("the acceptance gate", () => {
     expect(loadWorkflowPackage(s.packageDirectory).decisions["escalate"]!.version).toBe(Number(QUESTION["version"]) + 1);
   });
 
+  it("takes a wording that only adds plain-language descriptions as a change, and writes them on acceptance", async () => {
+    const s = setup();
+    await recorded(s);
+    const described = { ...QUESTION, descriptions: { proceed: "Continue within the authority already granted.", escalate: "Stop and ask the developer." } };
+
+    const drafted = await draftProposal(s.h.root, { ...thresholdDraft(s, { kind: "question", question: described }), lessons: [] }, s.deps(jev([["", ["proceed", "routine", above]]])));
+    expect(drafted).toMatchObject({ ok: true, outcome: { proposal: { change: { question: { descriptions: described.descriptions } } } } });
+    expect(acceptProposal(s.h.root, "P-1", { note: "Accept the descriptions." }, s.deps())).toMatchObject({ ok: true });
+
+    const question = JSON.parse(readFileSync(join(s.packageDirectory, "questions/escalate.json"), "utf8")) as Record<string, unknown>;
+    expect(question["descriptions"]).toEqual(described.descriptions);
+  });
+
   it("refuses a proposal whose replay found nothing to replay", async () => {
     const s = setup();
     await recorded(s);

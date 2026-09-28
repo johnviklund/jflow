@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { loadShippedWorkflowPackage, validateWorkflowPackage } from "./package.js";
+import { loadShippedWorkflowPackage, validateProposedQuestion, validateWorkflowPackage } from "./package.js";
 import { WorkflowPackageError } from "./types.js";
 
 /** In-memory question files for the fixture package, keyed by package-relative path. */
@@ -749,5 +749,28 @@ describe("loadShippedWorkflowPackage", () => {
       const result = validate(doc);
       if (!result.ok) throw new WorkflowPackageError(result.issues);
     }).toThrow(WorkflowPackageError);
+  });
+});
+
+describe("validateProposedQuestion descriptions", () => {
+  const question = {
+    decision: "escalate",
+    version: 1,
+    status: "proposed",
+    prompt: "Must the developer be consulted?",
+    answers: ["proceed", "escalate"],
+    reasons: ["routine", "uncertain"],
+  };
+
+  it("accepts a plain-language description for an answer or a reason code", () => {
+    const result = validateProposedQuestion({ ...question, descriptions: { proceed: "Continue without asking.", uncertain: "The packet leaves it open." } }, "escalate");
+
+    expect(result).toMatchObject({ ok: true, question: { descriptions: { proceed: "Continue without asking.", uncertain: "The packet leaves it open." } } });
+  });
+
+  it("refuses a description for something that is not an answer or reason, or an empty one", () => {
+    expect(validateProposedQuestion({ ...question, descriptions: { defer: "Wait." } }, "escalate")).toMatchObject({ ok: false });
+    expect(validateProposedQuestion({ ...question, descriptions: { proceed: " " } }, "escalate")).toMatchObject({ ok: false });
+    expect(validateProposedQuestion({ ...question, descriptions: ["proceed"] }, "escalate")).toMatchObject({ ok: false });
   });
 });

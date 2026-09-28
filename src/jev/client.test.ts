@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { readWorkingTree } from "../project/worktree.js";
 import { createProjectHarness, type ProjectHarness } from "../testing/harness.js";
-import { askJev, JEV_ENDPOINT, loadDecisionQuestion, type JevTransport, type TransportRequest } from "./client.js";
+import { askJev, JEV_ENDPOINT, JEV_MODEL, jevRequestBody, loadDecisionQuestion, type JevTransport, type TransportRequest } from "./client.js";
 import { buildEvidencePacket } from "./evidence.js";
 import { cleanTraces, listTraces } from "./traces.js";
 import { loadShippedWorkflowPackage } from "../workflow/package.js";
@@ -58,6 +58,32 @@ function configured(root: string, transport: JevTransport) {
   };
 }
 
+describe("jevRequestBody", () => {
+  it("describes each answer and reason in plain words where the question does, and names the rest", () => {
+    const described = {
+      ...question,
+      descriptions: { [question.answers[0]!]: "What this answer means, in plain words.", [question.reasons[0]!]: "Why, in plain words." },
+    };
+
+    const body = JSON.parse(jevRequestBody(described, evidence)) as {
+      model: string;
+      questions: Record<string, { criteria: Record<string, string> }>;
+    };
+
+    const answers = body.questions[question.decision]!.criteria;
+    const reasons = body.questions[`${question.decision}.reason`]!.criteria;
+    expect(answers[question.answers[0]!]).toBe("What this answer means, in plain words.");
+    expect(answers[question.answers[1]!]).toBe(question.answers[1]);
+    expect(reasons[question.reasons[0]!]).toBe("Why, in plain words.");
+    expect(body.model).toBe(JEV_MODEL);
+  });
+
+  it("asks a pinned Jev version, never whatever is latest", () => {
+    expect(JEV_MODEL).not.toContain("latest");
+    expect(JEV_MODEL).toMatch(/^jev-\d+\.\d+/);
+  });
+});
+
 describe("askJev", () => {
   it("asks the developer how to configure a missing key, calling nothing and falling back to nothing", async () => {
     const h = harness();
@@ -91,7 +117,7 @@ describe("askJev", () => {
     expect(request?.url).toBe(JEV_ENDPOINT);
     expect(request?.headers["Authorization"]).toBe(`Bearer ${KEY}`);
     expect(JSON.parse(request?.body ?? "")).toEqual({
-      model: "jev-latest",
+      model: JEV_MODEL,
       state: evidence,
       questions: {
         escalate: {

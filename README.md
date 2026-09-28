@@ -298,7 +298,11 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   developer retained stays retained, with the contradiction recorded, and
   only their own word supersedes it; one that only touched an accepted
   decision is superseded, which never writes that decision.
-- `src/jev/` — the Jev client (issue #16).
+- `src/jev/` — the Jev client (issue #16). It asks a pinned Jev version
+  (`jev-1.13.0`), never `latest`, so thresholds and replays stay valid;
+  moving to a new version is a deliberate change. Each answer and reason code
+  is sent with its plain-language description from the question file's
+  `descriptions`, since Jev judges against those rather than bare names.
   - `evidence.ts` builds the bounded packet for one decision: task summary,
     candidates and selected excerpts. It redacts credentials, including the
     key itself, and drops full-conversation or full-repository content

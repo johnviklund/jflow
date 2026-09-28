@@ -202,7 +202,11 @@ function recordedChange(draft: ProposalDraft, dependencies: DecisionDependencies
       if (JSON.stringify(validated.question.answers) !== JSON.stringify(current.answers)) {
         return refuse(`a proposed wording keeps the ${decision} answers as they are (${current.answers.join(", ")}); the workflow acts on them`);
       }
-      if (validated.question.prompt === current.prompt && JSON.stringify(validated.question.reasons) === JSON.stringify(current.reasons)) {
+      if (
+        validated.question.prompt === current.prompt &&
+        JSON.stringify(validated.question.reasons) === JSON.stringify(current.reasons) &&
+        JSON.stringify(validated.question.descriptions ?? {}) === JSON.stringify(current.descriptions ?? {})
+      ) {
         return refuse(`the proposed ${decision} question is the current one`);
       }
       // Recorded as proposed wording: it is accepted only by `acceptProposal`, and replay routes it as if accepted.
@@ -392,6 +396,7 @@ export function acceptProposal(
         prompt: change.question.prompt,
         answers: change.question.answers,
         reasons: change.question.reasons,
+        ...(change.question.descriptions === undefined ? {} : { descriptions: change.question.descriptions }),
         acceptance: { acceptedAt: now, note: `${note} (developer, accepting proposal ${id} for ${decision})` },
       };
       nextQuestion = `${JSON.stringify(accepted, null, 2)}\n`;
