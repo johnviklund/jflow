@@ -44,6 +44,18 @@ describe("writePlan", () => {
     expect(readRecord(h.root, "tickets").kind).toBe("absent");
   });
 
+  it("keeps a ticket's review notes, what the reviewer checks in the code that no criterion can show", () => {
+    const h = specAccepted();
+    const notes = ["tests go through the public argument parser", "the tests never import the renderer"];
+
+    const result = writePlan(h.root, { ...draft, tickets: [{ ...draft.tickets[0]!, reviewNotes: notes }, draft.tickets[1]!] }, { now: NOW });
+
+    expect(result.ok).toBe(true);
+    expect(readRecord(h.root, "tickets")).toMatchObject({ record: { tickets: [{ id: "T1", reviewNotes: notes }, { id: "T2" }] } });
+    const bad = writePlan(h.root, { ...draft, tickets: [{ ...draft.tickets[0]!, reviewNotes: "one string" as unknown as string[] }] }, { now: NOW });
+    expect(bad.ok).toBe(false);
+  });
+
   it("writes the breakdown awaiting acceptance with every ticket ready, so implement is refused", () => {
     const h = specAccepted();
 

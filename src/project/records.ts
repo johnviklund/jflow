@@ -131,6 +131,12 @@ export interface TicketRecord {
   readonly commit?: string;
   /** Each acceptance criterion's `classify` testability, as `plan write` asked it (issue #29). */
   readonly testability?: readonly CriterionTestability[];
+  /**
+   * How the code or its tests must be built (what a test imports, which
+   * interface it goes through): no check's output shows it, so the reviewer
+   * checks it in the code rather than `validate` as a criterion.
+   */
+  readonly reviewNotes?: readonly string[];
 }
 
 /**
@@ -1098,7 +1104,7 @@ const validateTickets: Validator<TicketsRecord> = (value, issues) => {
     const ticket = requireObject(
       entry,
       path,
-      ["id", "title", "acceptanceCriteria", "dependsOn", "status", "parkedReason", "commit", "testability"],
+      ["id", "title", "acceptanceCriteria", "dependsOn", "status", "parkedReason", "commit", "testability", "reviewNotes"],
       issues,
     );
     if (!ticket) return;
@@ -1135,6 +1141,8 @@ const validateTickets: Validator<TicketsRecord> = (value, issues) => {
         {
           parkedReason,
           commit: optionalString(ticket["commit"], `${path}.commit`, issues),
+          reviewNotes:
+            ticket["reviewNotes"] === undefined ? undefined : validateStringArray(ticket["reviewNotes"], `${path}.reviewNotes`, issues),
           testability: optionalList(ticket["testability"], `${path}.testability`, issues, (entry, itemPath) => {
             const item = requireObject(entry, itemPath, ["criterion", "answer", "envelope", "route", "unavailable", "setAside"], issues);
             if (!item) return undefined;

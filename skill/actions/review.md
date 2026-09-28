@@ -63,6 +63,10 @@ be the implementer's model. Give it a fresh context
 that holds only:
 
 - the ticket's title and accepted criteria;
+- the ticket's `reviewNotes`, when it has them: how the code or its tests
+  must be built, which no check could show and `validate` therefore did
+  not judge. The reviewer checks each one in the code, and one that does
+  not hold is a `requirement` finding;
 - the project's standards (its agent instructions and any documented
   coding standards);
 - the ticket's changes, as the reviewer reads them from the working tree

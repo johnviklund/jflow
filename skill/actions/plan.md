@@ -94,12 +94,24 @@ For each ticket give:
   many criteria, which is fine; if it has too many to check comfortably,
   split the ticket.
 
+  A criterion states what the software does, never how the code or its
+  tests are built: which module a test imports or avoids, whether it goes
+  through the public interface, which ticket it can run without, or that
+  an error is "useful". No check's output can show such a condition, so
+  it always comes back unproven. Put it in the ticket's `reviewNotes`
+  instead: the reviewer checks those in the code. Keep criteria to
+  behaviour a test name or check result shows.
+
   A command written in a criterion is the command that proves it. Write
   it exactly as it will run from the project root, and name it only when
   that exact command matters; otherwise name the test or the behaviour
   and leave the command to the ticket's checks.
 - `dependsOn` — the ticket ids that must be done first. Keep it minimal;
   the helper refuses a cycle.
+- `reviewNotes` (optional) — how the code or its tests must be built, one
+  note each ("the tests go through the public argument parser", "the
+  tests never import the renderer"). The reviewer checks them; they are
+  not criteria.
 
 Order tickets so the first delivers something the developer can see. Put
 into `summary` how the tickets add up to the specification, and into

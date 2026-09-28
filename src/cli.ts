@@ -225,7 +225,8 @@ A specification draft holds title, problem, scenarios, acceptanceCriteria,
 constraints, exclusions and decisions (id, statement, basis); every
 decision is recorded as a proposal until the developer confirms it.
 A plan draft holds title, summary, source and tickets (id, title,
-acceptanceCriteria, dependsOn); a ticket without criteria is refused.
+acceptanceCriteria, dependsOn, optional reviewNotes for the reviewer); a
+ticket without criteria is refused.
 "plan write" asks classify (testability) for every criterion first and
 records each answer on its ticket. A criterion classed untestable with
 confidence stops the write until it is rewritten, or set aside in

@@ -31,6 +31,8 @@ export interface TicketDraft {
   readonly title: string;
   readonly acceptanceCriteria: readonly string[];
   readonly dependsOn: readonly string[];
+  /** What the reviewer checks in the code that no check's output can show. */
+  readonly reviewNotes?: readonly string[];
 }
 
 export interface PlanDraft {
