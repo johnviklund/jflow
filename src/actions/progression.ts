@@ -39,7 +39,14 @@ export interface ParkedSummary {
 }
 
 export type NextResult =
-  | ({ readonly kind: "started"; readonly escalation?: string } & StartedTicket)
+  | ({
+      readonly kind: "started";
+      /** What let the ticket start: the developer's fresh authorization, the ordinary-start rules, or escalate's proceed. */
+      readonly startedBy: "authorization" | "rules" | "escalate";
+      /** The facts the start rested on, for the developer to see. */
+      readonly startReasons: readonly string[];
+      readonly escalation?: string;
+    } & StartedTicket)
   | { readonly kind: "ask"; readonly ticket: string; readonly askHuman: EscalationAsk; readonly escalation?: string }
   | { readonly kind: "needs-independence-check"; readonly candidates: readonly string[]; readonly parked: readonly ParkedSummary[] }
   | { readonly kind: "waiting"; readonly reasons: readonly string[] }
@@ -157,7 +164,12 @@ export async function nextTicket(
   if (progress.firstStartAuthorized === true) {
     const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
     if (!started.ok) return { kind: "refused", reason: started.reason };
-    return { kind: "started", ...started.outcome };
+    return {
+      kind: "started",
+      ...started.outcome,
+      startedBy: "authorization",
+      startReasons: [`the developer has just authorized the whole plan (${progress.authorizationNote ?? "no words recorded"}) and no ticket has started since`],
+    };
   }
 
   // A proceed already chosen at this very boundary starts the ticket; asking Jev again would never let it.
@@ -166,7 +178,21 @@ export async function nextTicket(
     if (!chosen.ok) return { kind: "refused", reason: chosen.reason };
     const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
     if (!started.ok) return { kind: "refused", reason: started.reason };
-    return { kind: "started", ...started.outcome, escalation: options.escalation };
+    return {
+      kind: "started",
+      ...started.outcome,
+      startedBy: "escalate",
+      startReasons: [`a proceed was recorded on ${options.escalation} at this start`],
+      escalation: options.escalation,
+    };
+  }
+
+  // An ordinary start is decided by rule; Jev is asked only about what makes a start unusual (D44 as amended).
+  const assessed = assessStart(target, tickets, progress);
+  if (assessed.ordinary) {
+    const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
+    if (!started.ok) return { kind: "refused", reason: started.reason };
+    return { kind: "started", ...started.outcome, startedBy: "rules", startReasons: assessed.reasons };
   }
 
   // Every start under whole-plan authorization is the next-ticket boundary, the first one included (D44).
@@ -177,6 +203,7 @@ export async function nextTicket(
       kind: "next-ticket",
       summary: boundary,
       excerpts: [
+        ...assessed.unusual.map((text) => ({ source: "unusual", text })),
         ...startEvidence(target, tickets, progress),
         ...summarizeParked(read.records).map((parked) => ({ source: `parked ${parked.id}`, text: parked.blocker })),
         ...(check === undefined
@@ -199,7 +226,13 @@ export async function nextTicket(
 
   const started = startTicket(root, { ticketId: target.id }, dependencies.context, { escalated: true });
   if (!started.ok) return { kind: "refused", reason: started.reason };
-  return { kind: "started", ...started.outcome, ...(escalation === undefined ? {} : { escalation }) };
+  return {
+    kind: "started",
+    ...started.outcome,
+    startedBy: "escalate",
+    startReasons: [`escalate answered proceed about: ${assessed.unusual.join("; ")}`],
+    ...(escalation === undefined ? {} : { escalation }),
+  };
 }
 
 export type ParkResult =
@@ -360,4 +393,57 @@ function startEvidence(
           },
         ]),
   ];
+}
+
+/**
+ * Whether a start under whole-plan authorization is ordinary, so rules
+ * decide it, or unusual, so escalate is asked about what makes it so (D44 as
+ * amended 2026-09-28). Ordinary means nothing is parked, no independence
+ * check stands in for a dependency, no discrepancy from resume is open, and
+ * the latest finished ticket passed validate and review with no failed fix
+ * attempt and no verdict set aside.
+ */
+function assessStart(
+  target: TicketRecord,
+  tickets: TicketsRecord,
+  progress: ProgressRecord,
+): { readonly ordinary: true; readonly reasons: string[] } | { readonly ordinary: false; readonly unusual: string[] } {
+  const unusual: string[] = [];
+  const parked = parkedTickets(tickets).map((ticket) => ticket.id);
+  if (parked.length > 0) unusual.push(`${parked.join(", ")} ${parked.length === 1 ? "is" : "are"} parked`);
+  if (progress.independenceChecks?.[target.id] !== undefined) unusual.push(`${target.id} starts beside a parked ticket on an independence check`);
+  const open = progress.reconciliation?.discrepancies.length ?? 0;
+  if (open > 0) unusual.push(`${open} discrepanc${open === 1 ? "y" : "ies"} from resume ${open === 1 ? "is" : "are"} open`);
+
+  const done = tickets.tickets.filter((ticket) => ticket.status === "done");
+  const latest = [...done].sort((a, b) =>
+    (progress.reviews?.[b.id]?.reviewedAt ?? "").localeCompare(progress.reviews?.[a.id]?.reviewedAt ?? ""),
+  )[0];
+  let previous = "no ticket has finished yet";
+  if (latest !== undefined) {
+    const before = unusual.length;
+    if (progress.reviews?.[latest.id]?.disposition !== "passed") unusual.push(`${latest.id} has no passed review recorded`);
+    const attempts = progress.fixAttempts?.[latest.id] ?? 0;
+    if (attempts > 0) unusual.push(`${latest.id} had ${attempts} unsuccessful fix attempt${attempts === 1 ? "" : "s"}`);
+    const setAside = (progress.validations?.[latest.id]?.criteria ?? []).filter((entry) => entry.by === "developer" || entry.by === "agent");
+    if (setAside.length > 0) {
+      unusual.push(`${latest.id} had ${setAside.length} validate verdict${setAside.length === 1 ? "" : "s"} set aside by ${[...new Set(setAside.map((entry) => entry.by))].join(" and ")}`);
+    }
+    if (unusual.length === before) {
+      previous = `${latest.id} passed validate and independent review with no failed fix attempts and no verdict set aside`;
+    }
+  }
+  if (unusual.length > 0) return { ordinary: false, unusual };
+
+  const dependencies =
+    target.dependsOn.length === 0 ? `${target.id} depends on no other ticket` : `${target.id} depends on ${target.dependsOn.join(", ")}, all done`;
+  return {
+    ordinary: true,
+    reasons: [
+      `execution is authorized for the whole plan (${progress.authorizationNote ?? "no words recorded"})`,
+      dependencies,
+      previous,
+      "nothing is parked and no discrepancy is open",
+    ],
+  };
 }

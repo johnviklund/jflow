@@ -135,10 +135,13 @@ through, start it again and redo it from its definition.
 Under whole-plan authorization, once a ticket is complete, run
 `scripts/jflow implement next`. Act on `kind`:
 
-- `started`: the ticket started without asking. Either `escalate`
-  answered proceed (`escalation` names its envelope), or this is the first
-  start since the developer authorized the whole plan, which their
-  authorization covers. Work on it from step 2.
+- `started`: the ticket started without asking. `startedBy` says what
+  let it: `rules` (an ordinary start: nothing parked, the previous ticket
+  passed cleanly), `authorization` (the first start since the developer
+  authorized the whole plan) or `escalate` (Jev answered proceed about
+  what made the start unusual; `escalation` names its envelope). Tell the
+  developer in one line which it was and the `startReasons`, then work on
+  it from step 2.
 - `ask` (exit 1): put `askHuman` to the developer and wait. Without
   whole-plan authorization this is always the answer: each ticket needs
   the developer's authorization, and Jev is not asked. With an

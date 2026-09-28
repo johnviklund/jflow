@@ -149,9 +149,61 @@ describe("moving to the next ticket", () => {
     expect(transport.sent).toHaveLength(1);
   });
 
-  it("gives escalate the authorization, the ticket's dependencies and the latest review, so a routine start can proceed", async () => {
+  it("starts an ordinary next ticket by rule, without Jev, and says which rules allowed it", async () => {
     const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], {
       ...WHOLE_PLAN,
+      reviews: { T1: { reviewer: { agent: "t1-reviewer", model: "m" }, disposition: "passed", findings: [], reviewedAt: now } },
+    });
+    const transport = jev();
+
+    const result = await nextTicket(h.root, dependencies(h, transport));
+
+    expect(result).toMatchObject({ kind: "started", ticket: { id: "T2" }, startedBy: "rules" });
+    expect(result).not.toHaveProperty("escalation");
+    if (result.kind !== "started") return;
+    expect(result.startReasons.join(" ")).toContain("T1 passed validate and independent review");
+    expect(transport.sent).toHaveLength(0);
+  });
+
+  it("asks escalate when the start is not ordinary, naming what is unusual", async () => {
+    const reviewed = { T1: { reviewer: { agent: "r", model: "m" }, disposition: "passed" as const, findings: [], reviewedAt: now } };
+    const cases: { name: string; progress: ProgressRecord; unusual: string }[] = [
+      { name: "failed fix attempts", progress: { ...WHOLE_PLAN, reviews: reviewed, fixAttempts: { T1: 1 } }, unusual: "1 unsuccessful fix attempt" },
+      {
+        name: "a verdict set aside",
+        progress: {
+          ...WHOLE_PLAN,
+          reviews: reviewed,
+          validations: {
+            T1: {
+              disposition: "admitted-to-review",
+              criteria: [{ criterion: "T1 works", verdict: "met", by: "developer", note: "I checked it" }],
+              missingChecks: [],
+              validatedAt: now,
+            },
+          },
+        },
+        unusual: "set aside",
+      },
+      { name: "no review recorded", progress: WHOLE_PLAN, unusual: "no passed review" },
+    ];
+    for (const { name, progress, unusual } of cases) {
+      const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], progress);
+      const transport = jev(PROCEED);
+
+      const result = await nextTicket(h.root, dependencies(h, transport));
+
+      expect(result, name).toMatchObject({ kind: "started", escalation: expect.any(String) });
+      expect(transport.sent, name).toHaveLength(1);
+      expect(transport.sent[0]?.body, name).toContain(unusual);
+    }
+  });
+
+  it("gives escalate the authorization, the ticket's dependencies and the latest review when it is asked", async () => {
+    // A failed fix attempt on T1 makes the start unusual, so escalate is asked.
+    const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], {
+      ...WHOLE_PLAN,
+      fixAttempts: { T1: 1 },
       reviews: {
         T1: { reviewer: { agent: "t1-reviewer", model: "gpt-review" }, disposition: "passed", findings: [], reviewedAt: now },
       },
@@ -181,16 +233,21 @@ describe("moving to the next ticket", () => {
     expect(off).toMatchObject({ kind: "started", ticketWorker: false });
   });
 
-  it("asks escalate for the first ticket under whole-plan authorization too, and never starts one without it", async () => {
+  it("starts the first ticket by rule when nothing has finished, and never through implement start", async () => {
     const h = project([ticket("T1", "ready"), ticket("T2", "ready")]);
-    const transport = jev(PROCEED);
+    const transport = jev();
 
     expect(startTicket(h.root, { ticketId: "T1" }, h.context)).toMatchObject({
       ok: false,
       reason: expect.stringContaining("implement next"),
     });
-    expect(await nextTicket(h.root, dependencies(h, transport))).toMatchObject({ kind: "started", ticket: { id: "T1" } });
-    expect(transport.sent).toHaveLength(1);
+    expect(await nextTicket(h.root, dependencies(h, transport))).toMatchObject({
+      kind: "started",
+      ticket: { id: "T1" },
+      startedBy: "rules",
+      startReasons: expect.arrayContaining(["no ticket has finished yet"]),
+    });
+    expect(transport.sent).toHaveLength(0);
   });
 
   it("keeps whole-plan authorization as it was when a ticket is parked", async () => {

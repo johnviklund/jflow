@@ -874,6 +874,17 @@ call site. Their authorization is the human decision at that start; asking
 whether to consult them again, with nothing run since, is redundant, and in
 three trials Jev answered it unsure every time. Every later start is asked.
 
+Amended again 2026-09-28 (developer's decision, option A after the third
+trial): rules decide every ordinary start under whole-plan authorization,
+and `escalate` is asked only about what makes a start unusual (a parked
+ticket, an independence check, an open resume discrepancy, or a latest
+finished ticket with a failed fix attempt, a verdict set aside or no passed
+review). Across six ordinary starts Jev answered proceed every time, and the
+developer proceeded every time; only its confidence varied (0.31 to 0.91),
+and not with the situation. The helper's rules already establish everything
+an ordinary start rests on, so Jev had nothing left to judge. The started
+ticket reports `startedBy` and `startReasons`.
+
 ### D45: The first escalation threshold is conservative, lowered only by proposal
 
 Source: user's acceptance of grill Q3, 2026-09-20. Applies D37's basis rule to
