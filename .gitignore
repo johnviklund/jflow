@@ -22,3 +22,5 @@ dist/
 
 # Probe file check-host writes and removes; left behind only by a crash
 .jflow-host-check-*
+
+notes.md
