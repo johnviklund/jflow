@@ -158,7 +158,8 @@ Release-1 issues #1–#22 and #25–#31 are implemented, and #23's helper side (
   ticket, and `escalate` is asked at `next-ticket` only when the start is
   unusual: a parked ticket, an independence check, an open resume
   discrepancy, or a previous ticket with a failed fix attempt, a verdict
-  set aside or no passed review (D44 as amended). The result names
+  the agent set aside or no passed review (D44 as amended; the developer's
+  own override is already their decision). The result names
   `startedBy` and `startReasons`, and `proceed` starts an unusual ticket;
   `implement start` there only restarts the ticket in progress. Without whole-plan
   authorization it asks the developer without Jev. It reports

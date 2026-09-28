@@ -455,7 +455,9 @@ claim that Jev improves routing (D36).
     next ticket under whole-plan authorization it is asked only when the
     start is unusual: a ticket is parked, an independence check stands in
     for a dependency, a resume discrepancy is open, or the latest finished
-    ticket had a failed fix attempt, a verdict set aside or no passed review.
+    ticket had a failed fix attempt, a verdict the agent set aside or no
+    passed review (the developer's own override is already their decision;
+    fourth jflow trial, 2026-09-28).
     An ordinary start is decided by those rules without Jev (amended
     2026-09-27 for the first start, 2026-09-28 for every ordinary one, third
     jflow trial: at six ordinary starts Jev answered proceed every time, at

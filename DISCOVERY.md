@@ -885,6 +885,12 @@ and not with the situation. The helper's rules already establish everything
 an ordinary start rests on, so Jev had nothing left to judge. The started
 ticket reports `startedBy` and `startReasons`.
 
+Narrowed 2026-09-28 after the fourth trial (developer's decision): a
+verdict the developer set aside no longer makes the next start unusual.
+They made that decision themselves, with its reason recorded; asking again
+at the next start only repeated it back to them (Jev answered escalate at
+0.55). A verdict the agent set aside still does.
+
 ### D45: The first escalation threshold is conservative, lowered only by proposal
 
 Source: user's acceptance of grill Q3, 2026-09-20. Applies D37's basis rule to

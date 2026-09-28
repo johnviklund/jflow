@@ -401,7 +401,8 @@ function startEvidence(
  * amended 2026-09-28). Ordinary means nothing is parked, no independence
  * check stands in for a dependency, no discrepancy from resume is open, and
  * the latest finished ticket passed validate and review with no failed fix
- * attempt and no verdict set aside.
+ * attempt and no verdict the agent set aside (one the developer set aside
+ * is already their decision).
  */
 function assessStart(
   target: TicketRecord,
@@ -425,12 +426,15 @@ function assessStart(
     if (progress.reviews?.[latest.id]?.disposition !== "passed") unusual.push(`${latest.id} has no passed review recorded`);
     const attempts = progress.fixAttempts?.[latest.id] ?? 0;
     if (attempts > 0) unusual.push(`${latest.id} had ${attempts} unsuccessful fix attempt${attempts === 1 ? "" : "s"}`);
-    const setAside = (progress.validations?.[latest.id]?.criteria ?? []).filter((entry) => entry.by === "developer" || entry.by === "agent");
-    if (setAside.length > 0) {
-      unusual.push(`${latest.id} had ${setAside.length} validate verdict${setAside.length === 1 ? "" : "s"} set aside by ${[...new Set(setAside.map((entry) => entry.by))].join(" and ")}`);
-    }
+    // The agent's own override deserves a second look; the developer's is already their decision.
+    const criteria = progress.validations?.[latest.id]?.criteria ?? [];
+    const byAgent = criteria.filter((entry) => entry.by === "agent").length;
+    const byDeveloper = criteria.filter((entry) => entry.by === "developer").length;
+    if (byAgent > 0) unusual.push(`${latest.id} had ${byAgent} validate verdict${byAgent === 1 ? "" : "s"} set aside by agent`);
     if (unusual.length === before) {
-      previous = `${latest.id} passed validate and independent review with no failed fix attempts and no verdict set aside`;
+      previous =
+        `${latest.id} passed validate and independent review with no failed fix attempts` +
+        (byDeveloper === 0 ? " and no verdict set aside" : `, and ${byDeveloper} verdict${byDeveloper === 1 ? "" : "s"} set aside by the developer`);
     }
   }
   if (unusual.length > 0) return { ordinary: false, unusual };

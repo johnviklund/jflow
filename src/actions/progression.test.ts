@@ -165,25 +165,48 @@ describe("moving to the next ticket", () => {
     expect(transport.sent).toHaveLength(0);
   });
 
+  it("keeps a start ordinary when the developer set a verdict aside themselves", async () => {
+    const h = project([ticket("T1", "done"), ticket("T2", "ready", ["T1"])], {
+      ...WHOLE_PLAN,
+      reviews: { T1: { reviewer: { agent: "r", model: "m" }, disposition: "passed", findings: [], reviewedAt: now } },
+      validations: {
+        T1: {
+          disposition: "admitted-to-review",
+          criteria: [{ criterion: "T1 works", verdict: "met", by: "developer", note: "the README part belongs to T2" }],
+          missingChecks: [],
+          validatedAt: now,
+        },
+      },
+    });
+    const transport = jev();
+
+    const result = await nextTicket(h.root, dependencies(h, transport));
+
+    expect(result).toMatchObject({ kind: "started", ticket: { id: "T2" }, startedBy: "rules" });
+    expect(transport.sent).toHaveLength(0);
+    if (result.kind !== "started") return;
+    expect(result.startReasons.join(" ")).toContain("1 verdict set aside by the developer");
+  });
+
   it("asks escalate when the start is not ordinary, naming what is unusual", async () => {
     const reviewed = { T1: { reviewer: { agent: "r", model: "m" }, disposition: "passed" as const, findings: [], reviewedAt: now } };
     const cases: { name: string; progress: ProgressRecord; unusual: string }[] = [
       { name: "failed fix attempts", progress: { ...WHOLE_PLAN, reviews: reviewed, fixAttempts: { T1: 1 } }, unusual: "1 unsuccessful fix attempt" },
       {
-        name: "a verdict set aside",
+        name: "a verdict the agent set aside",
         progress: {
           ...WHOLE_PLAN,
           reviews: reviewed,
           validations: {
             T1: {
               disposition: "admitted-to-review",
-              criteria: [{ criterion: "T1 works", verdict: "met", by: "developer", note: "I checked it" }],
+              criteria: [{ criterion: "T1 works", verdict: "met", by: "agent", note: "flaky run; passed on rerun" }],
               missingChecks: [],
               validatedAt: now,
             },
           },
         },
-        unusual: "set aside",
+        unusual: "set aside by agent",
       },
       { name: "no review recorded", progress: WHOLE_PLAN, unusual: "no passed review" },
     ];

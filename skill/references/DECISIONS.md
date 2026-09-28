@@ -179,7 +179,7 @@ the project with `kind`, `summary` and `excerpts`, then run
   next ticket under whole-plan authorization, only when the start is
   unusual (a parked ticket, an independence check, an open resume
   discrepancy, or a previous ticket with a failed fix attempt, a verdict
-  set aside or no passed review); do not ask it yourself. An ordinary start
+  the agent set aside or no passed review); do not ask it yourself. An ordinary start
   is decided by rule and names its reasons.
 - `fix-failed`: asked for you by `implement check` when the ticket's fix
   counter reaches its limit; do not ask it yourself for a `not-met`.
