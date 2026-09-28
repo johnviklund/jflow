@@ -118,6 +118,17 @@ name (for example `node --test --test-reporter=spec`). A condition no test
 name shows reads as unproven, and the verdict
 comes back unsure and goes to the developer.
 
+`validate` matches each criterion's words against the test names, so
+name a test in the criterion's own words, and give every part of a
+criterion its own test. For "--help exits successfully and describes the
+file argument", write `help_exits_successfully` and
+`help_describes_the_file_argument`, not `help_describes_file_argument`
+alone. For "query strings are excluded from path grouping", write
+`query_strings_are_excluded_from_path_grouping`, not a name that could
+read the other way. Keep the criterion's terms: "exits nonzero" stays
+"exits nonzero", not "fails"; "invalid" stays "invalid", not one kind of
+invalid.
+
 A failed test is the normal reason to ask the developer during
 implementation, but only once the fix counter reaches its limit. The
 helper keeps that counter; never count attempts yourself. Do not change a

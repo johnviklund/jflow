@@ -106,6 +106,12 @@ For each ticket give:
   it exactly as it will run from the project root, and name it only when
   that exact command matters; otherwise name the test or the behaviour
   and leave the command to the ticket's checks.
+
+  A ticket's criteria hold only what that ticket delivers. Never require
+  something a later ticket builds (a test, a command, a README section
+  about it): its ticket carries that criterion. Read each ticket's
+  criteria against its `reviewNotes` and against the tickets that depend
+  on it, and move anything that belongs later.
 - `dependsOn` — the ticket ids that must be done first. Keep it minimal;
   the helper refuses a cycle.
 - `reviewNotes` (optional) — how the code or its tests must be built, one
