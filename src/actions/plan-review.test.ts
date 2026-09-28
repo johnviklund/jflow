@@ -131,6 +131,22 @@ describe("the integrated review gates a multi-ticket plan's completion", () => {
     });
   });
 
+  it("finds each done ticket's commit by its Jflow-Ticket trailer when the record holds no hash", () => {
+    const h = project();
+    const { commit: _t1, ...t1 } = done("T1");
+    const { commit: _t2, ...t2 } = done("T2");
+    writeRecord(h.root, "tickets", { tickets: [t1, t2] });
+    git(h, "commit", "--quiet", "--allow-empty", "-m", "T1: Ticket T1", "-m", "Jflow-Ticket: T1");
+    const t1Hash = git(h, "rev-parse", "HEAD").trim();
+    git(h, "commit", "--quiet", "--allow-empty", "-m", "unrelated work");
+
+    const result = startPlanReview(h.root, h.context);
+
+    expect(result).toMatchObject({ ok: true, outcome: { tickets: [{ id: "T1", commit: t1Hash }, { id: "T2" }] } });
+    if (!result.ok) return;
+    expect(result.outcome.tickets[1]).not.toHaveProperty("commit");
+  });
+
   it("is refused while a ticket is still open", () => {
     const h = project([done("T1"), { ...done("T2"), status: "ready" }]);
 

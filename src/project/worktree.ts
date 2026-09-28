@@ -176,12 +176,25 @@ export const PLAN_TRAILER = "Jflow-Plan";
  * the earlier plan's commit.
  */
 export function ticketCommitExists(root: string, ticketId: string): boolean {
+  return ticketCommit(root, ticketId) !== undefined;
+}
+
+/**
+ * The latest commit whose ticket trailer names `ticketId`, read-only, or
+ * undefined when there is none (or no history to read).
+ */
+export function ticketCommit(root: string, ticketId: string): string | undefined {
+  let log: string;
   try {
-    const trailers = readOnlyGit(root, ["log", `--format=%(trailers:key=${TICKET_TRAILER},valueonly)`]);
-    return trailers.split("\n").some((line) => line.trim() === ticketId);
+    log = readOnlyGit(root, ["log", `--format=%H%x09%(trailers:key=${TICKET_TRAILER},valueonly,separator=%x2C)`]);
   } catch {
-    return false;
+    return undefined;
   }
+  for (const line of log.split("\n")) {
+    const [hash, trailers = ""] = line.split("\t");
+    if (trailers.split(",").some((value) => value.trim() === ticketId)) return hash;
+  }
+  return undefined;
 }
 
 /** Whether the repository has `commit`, read-only (`rev-parse --verify`). */

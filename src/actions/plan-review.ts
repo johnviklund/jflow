@@ -14,7 +14,7 @@ import {
   type TicketRecord,
   type TicketsRecord,
 } from "../project/records.js";
-import { commitPaths, PLAN_TRAILER, readChangedRecords, readWorkingTree } from "../project/worktree.js";
+import { commitPaths, PLAN_TRAILER, readChangedRecords, readWorkingTree, ticketCommit } from "../project/worktree.js";
 import { hasText } from "../validation.js";
 import { decideConflict } from "./conflicts.js";
 import type { HumanAskEvent } from "./dispatch.js";
@@ -166,8 +166,10 @@ export function startPlanReview(root: string, context: ResolutionContext): Start
   return {
     ok: true,
     outcome: {
-      tickets: live(read.records.tickets).map(({ id, title, acceptanceCriteria, commit }) => {
+      tickets: live(read.records.tickets).map(({ id, title, acceptanceCriteria, status, commit: recorded }) => {
         const evidence = `${EVIDENCE_DIRECTORY}/${encodeURIComponent(id)}.json`;
+        // A done ticket's commit holds its records, so its hash is found by trailer, not in them.
+        const commit = recorded ?? (status === "done" ? ticketCommit(root, id) : undefined);
         return {
           id,
           title,
