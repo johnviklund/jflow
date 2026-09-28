@@ -6,7 +6,7 @@ next. Read this first in a new session.
 ## Where the code is
 
 - All work is committed and pushed to the branch **`host-trials`** on
-  GitHub. It is 57 commits ahead of `main`, which still holds the state
+  GitHub. It is well ahead of `main`, which still holds the state
   before the trials.
 - GitHub issues #1–#35 are delivered but still show as open, because their
   commits are not on `main` yet. They close when `host-trials` reaches
